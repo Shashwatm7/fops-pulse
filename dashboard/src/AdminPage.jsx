@@ -1,0 +1,188 @@
+import React, { useState, useEffect } from 'react';
+
+export default function AdminPage({ onBack }) {
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === 'users') {
+        const res = await fetch('http://localhost:3001/api/auth/admin/users', { credentials: 'include' });
+        const data = await res.json();
+        if (res.ok) setUsers(data.users);
+        else setError(data.error || 'Failed to fetch users');
+      } else if (activeTab === 'storage') {
+        const res = await fetch('http://localhost:3001/api/auth/admin/db-stats', { credentials: 'include' });
+        const data = await res.json();
+        if (res.ok) setStats(data.layers);
+        else setError(data.error || 'Failed to fetch storage stats');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [activeTab]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) return;
+    try {
+      await fetch(`http://localhost:3001/api/auth/admin/users/${id}`, { method: 'DELETE', credentials: 'include' });
+      fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleToggleAdmin = async (id, currentStatus) => {
+    try {
+      await fetch(`http://localhost:3001/api/auth/admin/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ is_admin: !currentStatus })
+      });
+      fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  return (
+    <div style={styles.container}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={styles.title}>🛡️ Admin Dashboard</h2>
+        <button onClick={onBack} style={styles.btnSecondary}>Back to Pulse</button>
+      </div>
+
+      <div style={styles.tabs}>
+        <button 
+          style={activeTab === 'users' ? styles.tabActive : styles.tab} 
+          onClick={() => setActiveTab('users')}
+        >👥 User Management</button>
+        <button 
+          style={activeTab === 'storage' ? styles.tabActive : styles.tab} 
+          onClick={() => setActiveTab('storage')}
+        >🗄️ Storage Architecture</button>
+      </div>
+
+      {loading && <div style={{ color: 'var(--text-muted)' }}>Loading {activeTab}...</div>}
+      {error && <div style={{ color: 'var(--danger)' }}>Error: {error}</div>}
+
+      {!loading && !error && activeTab === 'users' && (
+        <div style={styles.card}>
+          <table style={styles.table}>
+            <thead>
+              <tr style={styles.thRow}>
+                <th style={styles.th}>ID</th><th style={styles.th}>Username</th><th style={styles.th}>Email</th>
+                <th style={styles.th}>Company</th><th style={styles.th}>Template / Focus</th><th style={styles.th}>Role</th><th style={styles.th}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} style={styles.tr}>
+                  <td style={styles.td}>{u.id}</td>
+                  <td style={styles.td}><strong>{u.username}</strong></td>
+                  <td style={styles.td}>{u.email}</td>
+                  <td style={styles.td}>{u.company_name || '—'}</td>
+                  <td style={styles.td}>
+                    <span style={styles.badge}>{u.template_name || 'None'}</span>
+                    {u.focus_product && <div style={{fontSize:'12px', color:'var(--text-dim)', marginTop:'4px'}}>{u.focus_product} / {u.focus_region}</div>}
+                  </td>
+                  <td style={styles.td}>
+                    {u.is_admin ? <span style={{...styles.badge, background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', borderColor: 'rgba(139, 92, 246, 0.5)'}}>Admin</span> : <span style={styles.badge}>User</span>}
+                  </td>
+                  <td style={styles.td}>
+                    <div style={{display:'flex', gap:'10px'}}>
+                      <button style={styles.actionBtn} onClick={() => handleToggleAdmin(u.id, u.is_admin)}>
+                        {u.is_admin ? 'Revoke' : 'Make Admin'}
+                      </button>
+                      <button style={{...styles.actionBtn, color: 'var(--danger)', borderColor: 'var(--danger)'}} onClick={() => handleDelete(u.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && <tr><td colSpan="7" style={{...styles.td, textAlign:'center'}}>No users found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && !error && activeTab === 'storage' && stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
+          
+          {/* Layer 1 */}
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #3b82f6' }}>
+            <div style={styles.layerTitle}>Layer 1: Core State</div>
+            <div style={styles.layerDesc}>PostgreSQL — Primary relational store for user states, config, and alerts.</div>
+            <div style={styles.statGrid}>
+              <div style={styles.statBox}><div style={styles.statVal}>{stats.core.users}</div><div style={styles.statLabel}>Users</div></div>
+              <div style={styles.statBox}><div style={styles.statVal}>{stats.core.sessions}</div><div style={styles.statLabel}>Active Sessions</div></div>
+              <div style={styles.statBox}><div style={styles.statVal}>{stats.core.alerts}</div><div style={styles.statLabel}>Price Alerts</div></div>
+            </div>
+          </div>
+
+          {/* Layer 2 */}
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #8b5cf6' }}>
+            <div style={styles.layerTitle}>Layer 2: Semantic AI</div>
+            <div style={styles.layerDesc}>pgvector — Mathematical 768-dimensional embeddings for Gemini-powered news similarity.</div>
+            <div style={styles.statGrid}>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#c4b5fd'}}>{stats.vector.embeddings}</div><div style={styles.statLabel}>AI Embeddings</div></div>
+            </div>
+          </div>
+
+          {/* Layer 3 */}
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #10b981' }}>
+            <div style={styles.layerTitle}>Layer 3: Time-Series Engine</div>
+            <div style={styles.layerDesc}>PostgreSQL BRIN Indexed — High-speed ingest for every market tick and weather snapshot.</div>
+            <div style={styles.statGrid}>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#6ee7b7'}}>{stats.timeSeries.price_ticks.toLocaleString()}</div><div style={styles.statLabel}>Price Ticks</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#6ee7b7'}}>{stats.timeSeries.weather_snapshots.toLocaleString()}</div><div style={styles.statLabel}>Weather Snapshots</div></div>
+            </div>
+          </div>
+
+          {/* Layer 4 */}
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #f59e0b' }}>
+            <div style={styles.layerTitle}>Layer 4: Cold Storage</div>
+            <div style={styles.layerDesc}>Local Filesystem — Permanent daily JSON archives of all raw API responses.</div>
+            <div style={styles.statGrid}>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.prices?.files || 0}</div><div style={styles.statLabel}>Price Archive Files</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.weather?.files || 0}</div><div style={styles.statLabel}>Weather Archives</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.news?.files || 0}</div><div style={styles.statLabel}>News Archives</div></div>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+const styles = {
+  container: { padding: '40px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-primary)' },
+  title: { fontSize: '28px', margin: 0 },
+  card: { background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden' },
+  tabs: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' },
+  tab: { background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '16px', cursor: 'pointer', padding: '10px 15px', borderRadius: '6px', transition: '0.2s' },
+  tabActive: { background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', fontSize: '16px', cursor: 'pointer', padding: '10px 15px', borderRadius: '6px' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
+  thRow: { borderBottom: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)' },
+  th: { padding: '16px', fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' },
+  tr: { borderBottom: '1px solid rgba(255,255,255,0.05)' },
+  td: { padding: '16px', fontSize: '14px', verticalAlign: 'middle' },
+  badge: { display: 'inline-block', padding: '4px 10px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
+  btnSecondary: { padding: '10px 20px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' },
+  actionBtn: { padding: '6px 12px', background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' },
+  layerTitle: { fontSize: '20px', fontWeight: 'bold', marginBottom: '6px' },
+  layerDesc: { fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' },
+  statGrid: { display: 'flex', gap: '20px', flexWrap: 'wrap' },
+  statBox: { background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', minWidth: '120px', border: '1px solid rgba(255,255,255,0.05)' },
+  statVal: { fontSize: '32px', fontWeight: 'bold', color: '#60a5fa', marginBottom: '4px', fontFamily: 'var(--font-mono)' },
+  statLabel: { fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+};

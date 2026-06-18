@@ -1,0 +1,90 @@
+{
+  "symbols": {
+    "RICE_ACQUISITIO": "KRSP",
+    "DISC_MEDICINE__": "IRON",
+    "PLATINUM_JUL_26": "PL=F",
+    "COPPER_JUL_26": "HG=F",
+    "RIO_TINTO_PLC": "RIO",
+    "COCONUT_CHICKEN": "CCC29059-USD",
+    "NASDAQ_100_JUN_": "NQ=F"
+  },
+  "commodities": {
+    "RICE_ACQUISITIO": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "DISC_MEDICINE__": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "PLATINUM_JUL_26": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "COPPER_JUL_26": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "RIO_TINTO_PLC": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "COCONUT_CHICKEN": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    },
+    "NASDAQ_100_JUN_": {
+      "price": "0.00",
+      "unit": "USD",
+      "producers": [
+        "Global Market"
+      ],
+      "regions": [],
+      "currencies": [
+        "USD"
+      ]
+    }
+  }
+}
