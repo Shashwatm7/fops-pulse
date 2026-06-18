@@ -18,7 +18,7 @@ export default function OnboardingWizard({ user, onComplete }) {
   const [newsKeywords, setNewsKeywords] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/auth/templates')
+    fetch('/api/auth/templates')
       .then(res => res.json())
       .then(data => {
         setTemplates(data.templates);
@@ -66,7 +66,7 @@ export default function OnboardingWizard({ user, onComplete }) {
             news_keywords: newsKeywords.split(',').map(k => k.trim()).filter(Boolean)
           };
 
-      const res = await fetch('http://localhost:3001/api/auth/onboard', {
+      const res = await fetch('/api/auth/onboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

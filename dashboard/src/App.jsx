@@ -48,7 +48,7 @@ const CustomTooltip = ({ active, payload, label, symbol }) => {
   return null;
 };
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = '/api';
 const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 function AnimatedValue({ value, prefix = '', suffix = '', decimals = 2, duration = 800 }) {

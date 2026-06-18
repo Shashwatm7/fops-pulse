@@ -11,12 +11,12 @@ export default function AdminPage({ onBack }) {
     setLoading(true);
     try {
       if (activeTab === 'users') {
-        const res = await fetch('http://localhost:3001/api/auth/admin/users', { credentials: 'include' });
+        const res = await fetch('/api/auth/admin/users', { credentials: 'include' });
         const data = await res.json();
         if (res.ok) setUsers(data.users);
         else setError(data.error || 'Failed to fetch users');
       } else if (activeTab === 'storage') {
-        const res = await fetch('http://localhost:3001/api/auth/admin/db-stats', { credentials: 'include' });
+        const res = await fetch('/api/auth/admin/db-stats', { credentials: 'include' });
         const data = await res.json();
         if (res.ok) setStats(data.layers);
         else setError(data.error || 'Failed to fetch storage stats');
@@ -35,14 +35,14 @@ export default function AdminPage({ onBack }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
     try {
-      await fetch(`http://localhost:3001/api/auth/admin/users/${id}`, { method: 'DELETE', credentials: 'include' });
+      await fetch(`/api/auth/admin/users/${id}`, { method: 'DELETE', credentials: 'include' });
       fetchData();
     } catch (err) { console.error(err); }
   };
 
   const handleToggleAdmin = async (id, currentStatus) => {
     try {
-      await fetch(`http://localhost:3001/api/auth/admin/users/${id}`, {
+      await fetch(`/api/auth/admin/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

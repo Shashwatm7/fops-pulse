@@ -21,7 +21,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const [addingRegion, setAddingRegion] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/auth/templates')
+    fetch('/api/auth/templates')
       .then(res => res.json())
       .then(data => {
         setAllCommodities(data.commodities);
@@ -33,7 +33,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
     if (!customRegionName) return;
     setAddingRegion(true);
     try {
-      const res = await fetch('http://localhost:3001/api/regions/add', {
+      const res = await fetch('/api/regions/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -84,7 +84,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
         price_alerts: priceAlerts
       };
 
-      const res = await fetch('http://localhost:3001/api/auth/profile', {
+      const res = await fetch('/api/auth/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

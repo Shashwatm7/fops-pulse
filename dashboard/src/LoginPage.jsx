@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = '/api';
 
 /* ═══════════════════════════════════════════════════════
    FOPs Market Pulse — Login / Sign Up Page
