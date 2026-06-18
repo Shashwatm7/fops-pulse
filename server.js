@@ -20,7 +20,13 @@ import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 
-if (fs.existsSync('/etc/secrets/.env')) { dotenv.config({ path: '/etc/secrets/.env' }); } else { dotenv.config(); }
+if (fs.existsSync('/etc/secrets/.env')) { 
+    dotenv.config({ path: '/etc/secrets/.env' }); 
+} else if (fs.existsSync('/etc/secrets/env')) { 
+    dotenv.config({ path: '/etc/secrets/env' }); 
+} else { 
+    dotenv.config(); 
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
