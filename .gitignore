@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+__pycache__/
+
+# Environment / Secrets
+.env
+env_copy.txt
+
+# Database files
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+dashboard/dist/
+
+# Outputs
+outputs/
+
+# Misc
+*.log
