@@ -2350,7 +2350,7 @@ const distPath = path.join(process.cwd(), 'dashboard', 'dist');
 app.use(express.static(distPath));
 
 // Catch-all route to serve React's index.html for client-side routing
-app.get('*', (req, res) => {
+app.use((req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
 });
 

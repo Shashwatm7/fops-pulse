@@ -1,5 +1,5 @@
 # Use official Node.js image based on Debian slim (supports Python install)
-FROM node:20-slim
+FROM node:22-slim
 
 # Install Python, pip, and required system dependencies
 RUN apt-get update && apt-get install -y \
