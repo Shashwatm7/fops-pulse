@@ -2097,6 +2097,9 @@ async function scanUserSpecificNews() {
       }
 
       if (candidateArticles.length === 0) continue;
+      
+      // Cap the articles to protect API quota
+      const cappedArticles = candidateArticles.slice(0, 40);
 
       let criteriaEmb = null;
       try {
@@ -2108,7 +2111,7 @@ async function scanUserSpecificNews() {
       // 2. Batch embed the candidate articles to prevent rate limit spikes (Max 50 per batch)
       let articleEmbeddings = [];
       if (criteriaEmb) {
-          const textsToEmbed = candidateArticles.map(a => a.title);
+          const textsToEmbed = cappedArticles.map(a => a.title);
           for (let i = 0; i < textsToEmbed.length; i += 50) {
               const batch = textsToEmbed.slice(i, i + 50);
               try {
