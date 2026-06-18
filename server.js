@@ -59,34 +59,11 @@ if (process.env.SMTP_HOST && process.env.SMTP_PASS) {
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
 const YAHOO_SYMBOLS = {
-    WHEAT: 'ZW=F', CORN: 'ZC=F', SOYBEANS: 'ZS=F', RICE: 'ZR=F', 
-    SUGAR: 'SB=F', COFFEE: 'KC=F', COCOA: 'CC=F', 
-    FEEDER_CATTLE: 'GF=F', MILK: 'DC=F', PALM_OIL: 'ZL=F',
-    COPPER: 'HG=F', ALUMINUM: 'ALI=F', LUMBER: 'LBS=F',
-    GOLD: 'GC=F', SILVER: 'SI=F', PLATINUM: 'PL=F', LEAN_HOGS: 'HE=F', OATS: 'ZO=F',
-    BRENT_CRUDE: 'BZ=F', NATURAL_GAS: 'NG=F'
+    BRENT_CRUDE: 'BZ=F',
+    NATURAL_GAS: 'NG=F'
 };
 
 const COMMODITY_DATA = {
-    WHEAT:        { price: '0', unit: 'USD/bushel', producers: ['Saudi Arabia', 'Egypt', 'UAE'], regions: ['Egypt Nile Delta', 'Saudi Arabia Al-Hasa'], currencies: ['USD', 'SAR', 'EGP', 'AED'] },
-    CORN:         { price: '0', unit: 'USD/bushel', producers: ['Egypt', 'UAE', 'Saudi Arabia'], regions: ['Egypt Nile Delta', 'Saudi Arabia Al-Hasa'], currencies: ['USD', 'EGP', 'AED', 'SAR'] },
-    SOYBEANS:     { price: '0', unit: 'USD/bushel', producers: ['Egypt', 'Saudi Arabia'], regions: ['Egypt Nile Delta', 'Saudi Arabia Al-Hasa'], currencies: ['USD', 'EGP', 'SAR'] },
-    RICE:         { price: '0', unit: 'USD/cwt', producers: ['Egypt', 'UAE'], regions: ['Egypt Nile Delta'], currencies: ['USD', 'EGP', 'AED'] },
-    SUGAR:        { price: '0', unit: 'USc/lb', producers: ['Egypt', 'Saudi Arabia'], regions: ['Egypt Nile Delta'], currencies: ['USD', 'EGP', 'SAR'] },
-    COFFEE:       { price: '0', unit: 'USc/lb', producers: ['Yemen', 'Saudi Arabia'], regions: ['Saudi Arabia Al-Hasa', 'Oman Al Batinah'], currencies: ['USD', 'YER', 'SAR', 'OMR'] },
-    COCOA:        { price: '0', unit: 'USD/ton', producers: ['UAE'], regions: ['UAE Sweihan'], currencies: ['USD', 'AED'] },
-    PALM_OIL:     { price: '0', unit: 'USD/MT', producers: ['UAE', 'Saudi Arabia'], regions: ['UAE Sweihan', 'Saudi Arabia Al-Hasa'], currencies: ['USD', 'AED', 'SAR'] },
-    MILK:         { price: '0', unit: 'USD/cwt', producers: ['Saudi Arabia', 'UAE', 'Qatar'], regions: ['Saudi Arabia Al-Hasa', 'Qatar Al Khor'], currencies: ['USD', 'SAR', 'AED', 'QAR'] },
-    FEEDER_CATTLE:{ price: '0', unit: 'USD/cwt', producers: ['Saudi Arabia', 'Kuwait', 'UAE'], regions: ['Saudi Arabia Al-Hasa', 'Kuwait Wafra', 'UAE Sweihan'], currencies: ['USD', 'SAR', 'KWD', 'AED'] },
-    COPPER:       { price: '0', unit: 'USD/lb', producers: ['Chile', 'Peru', 'China', 'USA'], regions: [], currencies: ['USD', 'CLP', 'PEN'] },
-    ALUMINUM:     { price: '0', unit: 'USD/MT', producers: ['China', 'Russia', 'India', 'Canada'], regions: [], currencies: ['USD', 'CNY', 'RUB'] },
-    LUMBER:       { price: '0', unit: 'USD/1000 bd ft', producers: ['USA', 'Canada', 'Russia'], regions: [], currencies: ['USD', 'CAD'] },
-    COTTON:       { price: '0', unit: 'USc/lb', producers: ['China', 'India', 'USA', 'Brazil'], regions: [], currencies: ['USD', 'CNY', 'INR'] },
-    GOLD:         { price: '0', unit: 'USD/oz', producers: ['China', 'Australia', 'Russia', 'USA'], regions: [], currencies: ['USD', 'AUD'] },
-    SILVER:         { price: '0', unit: 'USD/oz', producers: ['Mexico', 'China', 'Peru', 'Chile'], regions: [], currencies: ['USD', 'MXN'] },
-    PLATINUM:     { price: '0', unit: 'USD/oz', producers: ['South Africa', 'Russia', 'Zimbabwe'], regions: [], currencies: ['USD', 'ZAR'] },
-    LEAN_HOGS:    { price: '0', unit: 'USc/lb', producers: ['China', 'EU', 'USA', 'Brazil'], regions: [], currencies: ['USD', 'CNY'] },
-    OATS:         { price: '0', unit: 'USD/bushel', producers: ['Russia', 'Canada', 'Poland', 'Australia'], regions: [], currencies: ['USD', 'CAD', 'AUD'] },
     BRENT_CRUDE:  { price: '0', unit: 'USD/bbl', producers: ['Saudi Arabia', 'USA', 'Russia', 'UAE', 'Oman'], regions: [], currencies: ['USD', 'SAR', 'AED', 'OMR'] },
     NATURAL_GAS:  { price: '0', unit: 'USD/MMBtu', producers: ['USA', 'Russia', 'Iran', 'Qatar', 'Canada'], regions: [], currencies: ['USD'] },
 };
