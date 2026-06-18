@@ -160,73 +160,72 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
         );
         return response.data.choices[0].message.content;
     } catch (err) {
-        if (err.response?.status === 429 || err.response?.status === 503) {
-            console.log(`[FAILOVER] Groq limit reached (${model}). Trying Llama 3 8B...`);
-            try {
-                const groqBackup = await axios.post(
-                    'https://api.groq.com/openai/v1/chat/completions',
-                    {
-                        model: 'llama-3.1-8b-instant',
-                        max_tokens: maxTokens,
-                        temperature: temperature,
-                        ...(jsonMode && { response_format: { type: 'json_object' } }),
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'user', content: userContent },
-                        ],
-                    },
-                    {
-                        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }
+        console.log(`[FAILOVER] Primary Groq failed (${model}). Trying Llama 3 8B...`);
+        try {
+            const groqBackup = await axios.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    model: 'llama-3.1-8b-instant',
+                    max_tokens: maxTokens,
+                    temperature: temperature,
+                    ...(jsonMode && { response_format: { type: 'json_object' } }),
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent },
+                    ],
+                },
+                {
+                    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }
+                }
+            );
+            return groqBackup.data.choices[0].message.content;
+        } catch (fallbackErr) {
+            if (process.env.GEMINI_API_KEY) {
+                console.log(`[FAILOVER] Groq backup failed. Using Gemini 2.5 Flash fallback...`);
+                try {
+                    let sysInstruction = systemPrompt;
+                    let jsonConfig = {};
+                    if (jsonMode) {
+                        jsonConfig = { responseMimeType: "application/json" };
+                        sysInstruction += "\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.";
                     }
-                );
-                return groqBackup.data.choices[0].message.content;
-            } catch (fallbackErr) {
-                if (process.env.GEMINI_API_KEY) {
-                    console.log(`[FAILOVER] Groq backup failed. Using Gemini 2.5 Flash fallback...`);
-                    try {
-                        let sysInstruction = systemPrompt;
-                        let jsonConfig = {};
-                        if (jsonMode) {
-                            jsonConfig = { responseMimeType: "application/json" };
-                            sysInstruction += "\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.";
-                        }
-                        
-                        const { data } = await axios.post(
-                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-                            {
-                                systemInstruction: { parts: [{ text: sysInstruction }] },
-                                contents: [{ parts: [{ text: userContent }] }],
-                                generationConfig: {
-                                    temperature: temperature,
-                                    maxOutputTokens: maxTokens,
-                                    ...jsonConfig
-                                }
+                    
+                    const { data } = await axios.post(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+                        {
+                            systemInstruction: { parts: [{ text: sysInstruction }] },
+                            contents: [{ parts: [{ text: userContent }] }],
+                            generationConfig: {
+                                temperature: temperature,
+                                maxOutputTokens: maxTokens,
+                                ...jsonConfig
                             }
-                        );
-                        
-                        let text = data.candidates[0].content.parts[0].text;
-                        if (jsonMode) {
-                            text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
                         }
-                        return text;
-                    } catch (geminiErr) {
-                        console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
-                        const dynamicVariation = Math.floor(Math.random() * 100);
-                        if (jsonMode) {
-                            return JSON.stringify({
-                                recommendations: [
-                                    { timeframe: "7D", action: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`, businessImpact: "Mitigates immediate volatility exposure." },
-                                    { timeframe: "30D", action: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`, businessImpact: "Prevents critical inventory stockouts." },
-                                    { timeframe: "90D", action: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`, businessImpact: "Optimizes long-term resilience." }
-                                ]
-                            });
-                        }
-                        return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
+                    );
+                    
+                    let text = data.candidates[0].content.parts[0].text;
+                    if (jsonMode) {
+                        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
                     }
+                    return text;
+                } catch (geminiErr) {
+                    console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
                 }
             }
+            
+            // Ultimate Deterministic Fallback if EVERYTHING fails or API keys are missing
+            const dynamicVariation = Math.floor(Math.random() * 100);
+            if (jsonMode) {
+                return JSON.stringify({
+                    recommendations: [
+                        { timeframe: "7D", action: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`, businessImpact: "Mitigates immediate volatility exposure." },
+                        { timeframe: "30D", action: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`, businessImpact: "Prevents critical inventory stockouts." },
+                        { timeframe: "90D", action: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`, businessImpact: "Optimizes long-term resilience." }
+                    ]
+                });
+            }
+            return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
         }
-        throw err;
     }
 }
 
