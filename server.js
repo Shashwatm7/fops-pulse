@@ -194,7 +194,7 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
                         const { data } = await axios.post(
                             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
                             {
-                                system_instruction: { parts: [{ text: sysInstruction }] },
+                                systemInstruction: { parts: [{ text: sysInstruction }] },
                                 contents: [{ parts: [{ text: userContent }] }],
                                 generationConfig: {
                                     temperature: temperature,
@@ -214,11 +214,11 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
                         const dynamicVariation = Math.floor(Math.random() * 100);
                         if (jsonMode) {
                             return JSON.stringify({
-                                next7d: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`,
-                                next30d: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`,
-                                next90d: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`,
-                                confidence: "MEDIUM",
-                                deepDive: "⚠️ The AI Deep-Dive engine is currently heavily throttled by external API rate limits. Please wait 60 seconds and try again to receive your fully detailed, news-integrated analysis."
+                                recommendations: [
+                                    { timeframe: "7D", action: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`, businessImpact: "Mitigates immediate volatility exposure." },
+                                    { timeframe: "30D", action: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`, businessImpact: "Prevents critical inventory stockouts." },
+                                    { timeframe: "90D", action: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`, businessImpact: "Optimizes long-term resilience." }
+                                ]
                             });
                         }
                         return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
