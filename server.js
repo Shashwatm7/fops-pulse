@@ -128,7 +128,18 @@ function saveTracked(symbol, ticker, cdata) {
 }
 
 const app = express();
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+app.set('trust proxy', 1); // Trust Render's reverse proxy
+app.use(cors({ 
+    origin: function(origin, callback) {
+        // Allow same-origin (no origin header), localhost dev, and Render domain
+        if (!origin || origin.includes('localhost') || origin.includes('onrender.com')) {
+            callback(null, true);
+        } else {
+            callback(null, true); // Allow all for now
+        }
+    }, 
+    credentials: true 
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // ── Session middleware (PostgreSQL-backed) ──────────────────
@@ -138,7 +149,7 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'fops-market-pulse-secret-2026',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' }, // 24 hours
+    cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER }, // 24 hours
 }));
 
 // ── Auth routes (no auth required) ──────────────────────────
@@ -1021,9 +1032,9 @@ Top 5 News: ${(news || []).slice(0, 5).map(n => n.title).join(' | ')}
 === MARKET DATA ===
 Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
 Weather Alerts: ${(weatherExtended || []).filter(w => w.analytics?.alert !== 'NORMAL').map(w => `${w.name}: ${w.analytics?.alert}`).join(', ')}
-Port Congestion: ${logisticsData.portCongestion.map(p => `${p.port} (${p.status})`).join(', ')}
-Air Freight Rates: $${logisticsData.airFreightRates.ratePerKg}/kg (${logisticsData.airFreightRates.trend})
-Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex}/10
+Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
+Air Freight Rates: $${logisticsData.airFreightRates?.ratePerKg ?? 'N/A'}/kg (${logisticsData.airFreightRates?.trend ?? 'N/A'})
+Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
 ${feedbackContext}
 `.trim();
 
@@ -1179,9 +1190,9 @@ Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
 Weather Alerts: ${(weatherExtended || []).filter(w => w.analytics?.alert !== 'NORMAL').map(w => `${w.name}: ${w.analytics?.alert}`).join(', ')}
 Key Currencies: ${Object.values(forex || {}).map(f => `${f.name}: ${f.rate}`).join(', ')}
 Top 5 News: ${(news || []).slice(0, 5).map(n => n.title).join(' | ')}
-Port Congestion: ${logisticsData.portCongestion.map(p => `${p.port} (${p.status})`).join(', ')}
-Air Freight Rates: $${logisticsData.airFreightRates.ratePerKg}/kg (${logisticsData.airFreightRates.trend})
-Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex}/10
+Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
+Air Freight Rates: $${logisticsData.airFreightRates?.ratePerKg ?? 'N/A'}/kg (${logisticsData.airFreightRates?.trend ?? 'N/A'})
+Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
 ${feedbackContext}
 `.trim();
 
@@ -1564,7 +1575,7 @@ async function checkPriceAlerts() {
 initLivePrices();
 
 // Tick prices via real Internet live fetch (Yahoo Finance) for Ags
-setInterval(tickPrices, 5000);
+setInterval(tickPrices, 30000); // 30s intervals to avoid cloud rate-limiting
 
 // Reset open/high/low every hour
 setInterval(() => {
