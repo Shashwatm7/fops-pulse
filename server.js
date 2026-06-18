@@ -182,20 +182,47 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
                 return groqBackup.data.choices[0].message.content;
             } catch (fallbackErr) {
                 if (process.env.GEMINI_API_KEY) {
-                    console.log(`[FAILOVER] Groq backup failed. Using localized deterministic fallback...`);
-                    // If all APIs fail due to rate limits, generate a localized dynamic response
-                    // so the UI never crashes and always provides varying insights.
-                    const dynamicVariation = Math.floor(Math.random() * 100);
-                    if (jsonMode) {
-                        return JSON.stringify({
-                            next7d: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`,
-                            next30d: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`,
-                            next90d: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`,
-                            confidence: "MEDIUM",
-                            deepDive: "⚠️ The AI Deep-Dive engine is currently heavily throttled by external API rate limits. Please wait 60 seconds and try again to receive your fully detailed, news-integrated analysis."
-                        });
+                    console.log(`[FAILOVER] Groq backup failed. Using Gemini 2.5 Flash fallback...`);
+                    try {
+                        let sysInstruction = systemPrompt;
+                        let jsonConfig = {};
+                        if (jsonMode) {
+                            jsonConfig = { responseMimeType: "application/json" };
+                            sysInstruction += "\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.";
+                        }
+                        
+                        const { data } = await axios.post(
+                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+                            {
+                                system_instruction: { parts: [{ text: sysInstruction }] },
+                                contents: [{ parts: [{ text: userContent }] }],
+                                generationConfig: {
+                                    temperature: temperature,
+                                    maxOutputTokens: maxTokens,
+                                    ...jsonConfig
+                                }
+                            }
+                        );
+                        
+                        let text = data.candidates[0].content.parts[0].text;
+                        if (jsonMode) {
+                            text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+                        }
+                        return text;
+                    } catch (geminiErr) {
+                        console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
+                        const dynamicVariation = Math.floor(Math.random() * 100);
+                        if (jsonMode) {
+                            return JSON.stringify({
+                                next7d: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`,
+                                next30d: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`,
+                                next90d: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`,
+                                confidence: "MEDIUM",
+                                deepDive: "⚠️ The AI Deep-Dive engine is currently heavily throttled by external API rate limits. Please wait 60 seconds and try again to receive your fully detailed, news-integrated analysis."
+                            });
+                        }
+                        return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
                     }
-                    return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
                 }
             }
         }
