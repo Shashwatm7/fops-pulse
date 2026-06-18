@@ -2010,7 +2010,6 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
 });
-
 // ── Run scanner on startup (30s delay to let everything boot) ──
 setTimeout(scanGeopoliticalNews, 30000);
 setTimeout(scanUserSpecificNews, 45000);
@@ -2123,6 +2122,7 @@ async function scanUserSpecificNews() {
                   console.warn(`[USER-SCANNER] Batch embedding failed for ${user.username}. Using fallback.`, err.message);
                   articleEmbeddings.push(...new Array(batch.length).fill(null));
               }
+              await new Promise(r => setTimeout(r, 3000)); // 3s cooldown to protect Gemini quota
           }
       }
 
@@ -2239,6 +2239,10 @@ async function scanUserSpecificNews() {
   }
 }
 
+// Start scanner with initial 60s delay
+setTimeout(() => scanUserSpecificNews(), 60000);
+setInterval(scanUserSpecificNews, 5 * 60 * 1000);
+
 // ── AI Worker: Process Unprocessed News Embeddings ──
 async function startAIWorker() {
     if (!ai) return console.warn('[AI-WORKER] Missing Gemini API key. Worker disabled.');
@@ -2304,7 +2308,7 @@ async function startAIWorker() {
     }, 120000); // Check every 120 seconds (2 minutes)
 }
 
-startAIWorker();
+setTimeout(() => startAIWorker(), 90000); // Start after 90s
 
 // ── AI Worker: Live Market Forecaster ──────────────────────────────
 let cachedLLMForecast = {
@@ -2352,7 +2356,7 @@ Keep each forecast concise, professional, and action-oriented (1-2 sentences). D
     setInterval(generate, 180000); // Update every 3 minutes
 }
 
-runLLMForecastLoop();
+setTimeout(() => runLLMForecastLoop(), 15000); // Start after 15s
 
 const PORT = process.env.PORT || 3001;
 
