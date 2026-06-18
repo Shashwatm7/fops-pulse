@@ -1026,7 +1026,7 @@ export default function Dashboard() {
             <div className="mb-xl">
               <div className="section-label">Market Drivers</div>
               <div className="grid-auto">
-                {drivers.map((d, i) => (
+                {(drivers || []).map((d, i) => (
                   <div key={i} className={`intel-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                     <div className="driver-card">
                       <div className={`driver-direction ${d.direction}`}>
@@ -1052,10 +1052,10 @@ export default function Dashboard() {
           {chains.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Cause → Effect Chains</div>
-              {chains.map((c, i) => (
+              {(chains || []).map((c, i) => (
                 <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.1}s` }}>
                   <div className="chain-container animate">
-                    {c.chain.map((node, j) => (
+                    {(c.chain || []).map((node, j) => (
                       <Fragment key={j}>
                         {j > 0 && <div className="chain-arrow">→</div>}
                         <div className="chain-node">{node}</div>
@@ -1107,7 +1107,7 @@ export default function Dashboard() {
                 </div>
                 <div className="intel-card" style={{ borderLeftColor: 'var(--accent-pink)' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                   <div className="label" style={{ color: 'var(--accent-pink)' }}>Live Port Buffers & Congestion</div>
-                  {analysis.logistics.portCongestion.map((port, i) => (
+                  {(analysis.logistics?.portCongestion || []).map((port, i) => (
                     <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: i < analysis.logistics.portCongestion.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', padding: '8px 0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                         <span style={{ fontSize: '14px', color: '#fff', fontWeight: 'bold' }}>{port.port}</span>
@@ -1133,7 +1133,7 @@ export default function Dashboard() {
           <div className="section-label">Risk Alerts ({alerts.length})</div>
           {alerts.length === 0 ? (
             <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No active alerts</div>
-          ) : alerts.map((a, i) => (
+          ) : (alerts || []).map((a, i) => (
             <div key={i} className={`alert-card ${a.severity}`} style={{ animationDelay: `${i * 0.08}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
               <div className="alert-header">
                 <div className="alert-title">
@@ -1149,13 +1149,13 @@ export default function Dashboard() {
               </div>
               {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
               <div className="alert-reason">{a.reason || a.description}</div>
-              {a.regions?.length > 0 && <div className="alert-regions">{a.regions.map((r, j) => <span key={j} className="region-tag">{r}</span>)}</div>}
+              {a.regions?.length > 0 && <div className="alert-regions">{(a.regions || []).map((r, j) => <span key={j} className="region-tag">{r}</span>)}</div>}
             </div>
           ))}
 
           <div className="mt-lg">
             <div className="section-label">News Feed — {profile?.focus_product || 'Commodities'} / {profile?.focus_region || 'Global'} ({news.length})</div>
-            {news.map((a, i) => (
+            {(news || []).map((a, i) => (
               <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                 <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
                 <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
@@ -1186,12 +1186,12 @@ export default function Dashboard() {
             <div className="mb-xl">
               <div className="section-label">Scenario Engine</div>
               <div className="grid-2">
-                {scenarios.map((sc, i) => (
+                {(scenarios || []).map((sc, i) => (
                   <div key={i} className={`intel-card scenario-card ${sc.name} stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                     <div className="scenario-name">{sc.name === 'BASE' ? '◉ Base Case' : '⚠ Stress Scenario'}</div>
                     <div className="scenario-probability"><div className="prob-bar"><div className={`prob-fill ${sc.name}`} style={{ width: `${sc.probability}%` }} /></div><span className="prob-value">{sc.probability}%</span></div>
                     <div className="scenario-outcome">{sc.outcome}</div>
-                    {sc.watchSignals?.length > 0 && <div className="watch-signals">{sc.watchSignals.map((s, j) => <span key={j} className="signal-chip">{s}</span>)}</div>}
+                    {sc.watchSignals?.length > 0 && <div className="watch-signals">{(sc.watchSignals || []).map((s, j) => <span key={j} className="signal-chip">{s}</span>)}</div>}
                   </div>
                 ))}
               </div>
@@ -1214,13 +1214,13 @@ export default function Dashboard() {
             <div className="mb-xl">
               <div className="section-label">Planner Recommendations</div>
               <div className="grid-auto">
-                {recommendations.map((r, i) => (
+                {(recommendations || []).map((r, i) => (
                   <div key={i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                     <span className="rec-priority" style={{ background: 'var(--accent-violet)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>{r.timeframe}</span>
                     <div className="rec-action" style={{ marginTop: '12px' }}>
                       {Array.isArray(r.action) ? (
                         <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
-                          {r.action.map((act, actIdx) => <li key={actIdx} style={{ marginBottom: '4px' }}>{act}</li>)}
+                          {(r.action || []).map((act, actIdx) => <li key={actIdx} style={{ marginBottom: '4px' }}>{act}</li>)}
                         </ul>
                       ) : (
                         r.action
@@ -1254,11 +1254,11 @@ export default function Dashboard() {
           {counterfactuals.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Counterfactual Analysis</div>
-              <div className="grid-auto">{counterfactuals.map((cf, i) => (<div key={i} className={`intel-card cf-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="cf-question">{cf.question}</div><div className="cf-answer">{cf.answer}</div></div>))}</div>
+              <div className="grid-auto">{(counterfactuals || []).map((cf, i) => (<div key={i} className={`intel-card cf-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="cf-question">{cf.question}</div><div className="cf-answer">{cf.answer}</div></div>))}</div>
             </div>
           )}
           {missingData.length > 0 && (
-            <div className="missing-data-strip mb-xl"><div className="label">⊘ Data Gaps</div><div className="missing-data-list">{missingData.map((m, i) => <span key={i} className="missing-item">{m}</span>)}</div></div>
+            <div className="missing-data-strip mb-xl"><div className="label">⊘ Data Gaps</div><div className="missing-data-list">{(missingData || []).map((m, i) => <span key={i} className="missing-item">{m}</span>)}</div></div>
           )}
           <div className="section-label">Raw JSON</div>
           <button className="refresh-btn mb-md" onClick={() => setShowJson(!showJson)}>{showJson ? 'Hide' : 'Show'} Analysis JSON</button>
