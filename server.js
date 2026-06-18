@@ -1029,9 +1029,19 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
 
         const logisticsData = cachedRealTimeLogistics;
 
+        let mlForecasts = 'No local ML forecasts available.';
+        try {
+            if (fs.existsSync('outputs/forecast_recommendations.csv')) {
+                mlForecasts = fs.readFileSync('outputs/forecast_recommendations.csv', 'utf8');
+            }
+        } catch(e) { console.error('Failed to read ML forecasts:', e.message); }
+
         const contextBundle = `
 === TARGET ACTION PLAN (${timeframe}) ===
 ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (deterministicAction || 'No action provided.')}
+
+=== LOCAL ML FORECASTS & SAFETY STOCKS ===
+${mlForecasts}
 
 === REAL-TIME LIVE NEWS ===
 Top 5 News: ${(news || []).slice(0, 5).map(n => n.title).join(' | ')}
@@ -1053,6 +1063,7 @@ CRITICAL INSTRUCTIONS:
 2. DO NOT use generic phrases like "variance index" or "macroeconomic indicators" unless it is explicitly tied to the news provided.
 3. Be highly detailed, specific, and actionable. Provide 2-3 paragraphs of deep analysis.
 4. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
+5. You MUST explicitly incorporate insights and specific SKU data from the LOCAL ML FORECASTS to justify the plan.
 
 Return a JSON object: {"deepDive": "your highly detailed 2-3 paragraph analysis text"}`;
 
@@ -2015,9 +2026,9 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
 });
-// ── Run scanner on startup (30s delay to let everything boot) ──
-setTimeout(scanGeopoliticalNews, 30000);
-setTimeout(scanUserSpecificNews, 45000);
+// ── Run scanner on startup (staggered delay to let everything boot) ──
+setTimeout(scanGeopoliticalNews, 60000); // 60s
+setTimeout(scanUserSpecificNews, 120000); // 120s
 
 // ── Run scanner every 10 minutes ──
 setInterval(scanGeopoliticalNews, 10 * 60 * 1000);
@@ -2257,7 +2268,8 @@ async function startAIWorker() {
     
     console.log('[AI-WORKER] Background processor initialized.');
     
-    setInterval(async () => {
+    setTimeout(() => {
+        setInterval(async () => {
         try {
             const unprocessed = await getUnprocessedNews(10);
             if (!unprocessed || unprocessed.length === 0) return;
@@ -2313,7 +2325,8 @@ async function startAIWorker() {
         } catch (err) {
             console.error('[AI-WORKER] Error:', err.message);
         }
-    }, 120000); // Check every 120 seconds (2 minutes)
+    }, 120000); 
+    }, 180000); 
 }
 
 setTimeout(() => startAIWorker(), 90000); // Start after 90s
@@ -2360,11 +2373,11 @@ Keep each forecast concise, professional, and action-oriented (1-2 sentences). D
         }
     };
 
-    setTimeout(generate, 15000); // 15s delay to let prices init
+    setTimeout(generate, 150000); // 2.5 min delay to stagger from other tasks
     setInterval(generate, 180000); // Update every 3 minutes
 }
 
-setTimeout(() => runLLMForecastLoop(), 15000); // Start after 15s
+setTimeout(() => runLLMForecastLoop(), 10000); // Init loop after 10s
 
 const PORT = process.env.PORT || 3001;
 
