@@ -320,9 +320,7 @@ async function generateBatchEmbeddings(texts) {
 
 // ── ROUTE: commodity prices (reads from live Yahoo-fed engine) ──────
 app.get('/api/commodities', requireAuth, async (req, res) => {
-    const userCommodities = req.userProfile?.commodities || [];
     const prices = Object.entries(COMMODITY_DATA)
-        .filter(([symbol]) => userCommodities.length === 0 || userCommodities.includes(symbol))
         .map(([symbol, data]) => {
             const live = livePrices[symbol];
             const currentPrice = live?.current || 0;
@@ -1648,9 +1646,7 @@ setInterval(() => {
             const clientTick = {};
             const userCommodities = client.userCommodities || [];
             for (const [symbol, data] of Object.entries(fullTick)) {
-                if (userCommodities.length === 0 || userCommodities.includes(symbol)) {
-                    clientTick[symbol] = data;
-                }
+                clientTick[symbol] = data;
             }
             client.write(`data: ${JSON.stringify({ type: 'tick', prices: clientTick })}\n\n`);
         } catch (e) {
