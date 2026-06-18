@@ -1,7 +1,8 @@
 // ── db.js — Layer 4 Storage Architecture (PostgreSQL + pgvector) ──
 import pg from 'pg';
 import dotenv from 'dotenv';
-dotenv.config();
+import fs from 'fs';
+if (fs.existsSync('/etc/secrets/.env')) { dotenv.config({ path: '/etc/secrets/.env' }); } else { dotenv.config(); }
 
 const { Pool } = pg;
 
