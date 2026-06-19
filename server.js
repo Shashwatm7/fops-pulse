@@ -176,7 +176,7 @@ const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
 const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 3);
 
-async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1) {
+async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
     try {
         if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
         const response = await axios.post(
@@ -252,6 +252,10 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
                 } catch (geminiErr) {
                     console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
                 }
+            }
+
+            if (!allowDeterministicFallback) {
+                throw new Error('AI providers unavailable. Check GROQ_API_KEY or GEMINI_API_KEY quota/configuration.');
             }
             
             // Ultimate Deterministic Fallback if EVERYTHING fails or API keys are missing
@@ -1262,7 +1266,8 @@ Return a JSON object: {"deepDive": "your highly detailed 2-3 paragraph analysis 
             contextBundle,
             true,
             1200,
-            0.5
+            0.5,
+            false
         );
         
         let deepDive = '';
@@ -1445,7 +1450,8 @@ Each object must represent a different timeframe and have these exact keys:
             contextBundle,
             true,
             1000,
-            0.5
+            0.5,
+            false
         );
         
         let recs = [];
@@ -1477,7 +1483,13 @@ Each object must represent a different timeframe and have these exact keys:
         if (recs.length < 3) throw new Error('No recommendations generated');
         res.json({ success: true, recommendations: recs });
     } catch (err) {
-        console.error('AI Planner Recommendations failed, using fallback:', err.message);
+        console.error('AI Planner Recommendations failed:', err.message);
+        if (process.env.ALLOW_PLANNER_FALLBACK !== 'true') {
+            return res.status(503).json({
+                success: false,
+                error: 'AI planner is unavailable. Set a valid GROQ_API_KEY or restore Gemini generation quota to get AI recommendations.'
+            });
+        }
         
         const focusProduct = req.userProfile?.focus_product || 'Commodities';
         const focusRegion = req.userProfile?.focus_region || 'Global';
@@ -2252,6 +2264,18 @@ app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
 });
 
+function getMatchingKeywords(text, keywords) {
+  const lowerText = String(text || '').toLowerCase();
+  return (keywords || [])
+    .map(k => String(k || '').trim())
+    .filter(k => k && lowerText.includes(k.toLowerCase()));
+}
+
+function buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords) {
+  const keywordText = matchedKeywords.length > 0 ? ` (${matchedKeywords.join(', ')})` : '';
+  return `Matched your tracked keyword${matchedKeywords.length === 1 ? '' : 's'}${keywordText} for ${focusProduct} in ${focusRegion}. Review the article for possible supply, pricing, logistics, or demand impact.`;
+}
+
 async function scanUserSpecificNews() {
   console.log('[USER-SCANNER] Running user-specific profile scan...');
   try {
@@ -2315,16 +2339,19 @@ async function scanUserSpecificNews() {
           if (!isNaN(pubTime) && (now - pubTime) > MAX_AGE_MS) continue;
         }
 
-        const articleKey = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
-        if (alertedArticles.has(articleKey)) continue;
-
         const lowerTitle = article.title.toLowerCase();
+        const articleKey = lowerTitle.replace(/[^a-z0-9]/g, '').slice(0, 80);
+        const userArticleKey = `user:${user.id}:${articleKey}`;
+        if (alertedArticles.has(userArticleKey)) continue;
+
+        const matchedKeywords = getMatchingKeywords(article.title, keywords);
+        const hasKeywordMatch = matchedKeywords.length > 0;
         const hasContextMatch = scKeywords.some(c => lowerTitle.includes(c));
         
-        // 1. Hard deterministic filter to drop consumer noise and save API calls
-        if (!hasContextMatch) continue;
+        // 1. Deterministic filter: keep user keyword matches and supply-chain context.
+        if (!hasKeywordMatch && !hasContextMatch) continue;
 
-        candidateArticles.push(article);
+        candidateArticles.push({ ...article, matchedKeywords });
       }
 
       if (candidateArticles.length === 0) continue;
@@ -2367,12 +2394,14 @@ async function scanUserSpecificNews() {
       for (let i = 0; i < cappedArticles.length; i++) {
         const article = cappedArticles[i];
         const articleKey = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
+        const userArticleKey = `user:${user.id}:${articleKey}`;
 
         let accepted = false;
         let simScore = 0;
 
         const lowerTitle = article.title.toLowerCase();
-        const hasKeywordMatch = keywords.some(k => lowerTitle.includes(k.toLowerCase()));
+        const matchedKeywords = article.matchedKeywords || getMatchingKeywords(article.title, keywords);
+        const hasKeywordMatch = matchedKeywords.length > 0;
 
         if (criteriaEmb && articleEmbeddings[i]) {
             simScore = cosineSimilarity(articleEmbeddings[i], criteriaEmb);
@@ -2390,7 +2419,7 @@ async function scanUserSpecificNews() {
         if (accepted) {
           console.log(`[USER-SCANNER] Initial Match for ${user.username} (sim: ${simScore.toFixed(2)}): ${article.title}`);
           
-          let aiReason = `Detected strong relevance to your tracked profile keywords.`;
+          let aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
           let finalAccept = true;
 
           try {
@@ -2398,22 +2427,25 @@ async function scanUserSpecificNews() {
             const userPrompt = `Headline: "${article.title}"\n\nTask:\n1. If this is a real supply chain risk/opportunity, generate a concise 1-sentence reason explaining the exact business impact.\n2. If this is generic news, local crime, or unrelated to supply chain, output exactly the word "DISCARD".\n\nOutput only the 1-sentence reason, or "DISCARD".`;
             
             // Call LLM in text mode (jsonMode=false)
-            const llmRes = await callGroq('llama-3.1-8b-instant', systemPrompt, userPrompt, false, 150);
+            const llmRes = await callGroq('llama-3.1-8b-instant', systemPrompt, userPrompt, false, 150, 0.1, false);
             
             const cleanRes = llmRes.trim();
             if (cleanRes.toUpperCase() === 'DISCARD' || cleanRes.toUpperCase().includes('DISCARD')) {
               console.log(`[USER-SCANNER] AI discarded: ${article.title}`);
+              alertedArticles.add(userArticleKey);
+              saveAlertedArticles();
               finalAccept = false;
             } else if (cleanRes.length > 5) {
               aiReason = cleanRes.replace(/^["']|["']$/g, ''); // remove surrounding quotes if any
             }
           } catch (e) {
-            console.warn(`[USER-SCANNER] AI evaluation failed, DISCARDING to prevent spam: ${article.title}`);
-            finalAccept = false;
+            console.warn(`[USER-SCANNER] AI evaluation unavailable, sending deterministic keyword alert: ${article.title}`);
+            aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
+            finalAccept = true;
           }
 
           if (finalAccept) {
-            alertedArticles.add(articleKey);
+            alertedArticles.add(userArticleKey);
             saveAlertedArticles();
             triggeredAlerts.push({
               id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),

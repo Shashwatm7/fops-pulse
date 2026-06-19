@@ -220,6 +220,7 @@ export default function Dashboard() {
   const [analysis, setAnalysis] = useState(null);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
+  const [aiRecommendationsError, setAiRecommendationsError] = useState('');
   const [aiRecsLoading, setAiRecsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -458,16 +459,25 @@ export default function Dashboard() {
       setMlForecasts(mlFore);
 
       setAiRecsLoading(true);
+      setAiRecommendationsError('');
       fetch(`${API_BASE}/analyze-planner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prices: p, energy: e, news: n, weather: w, forex: fx, weatherExtended: wExt }),
-      }).then(r => r.json()).then(data => {
+        body: JSON.stringify({ prices: p, energy: e, news: n, weather: w, forex: fx, weatherExtended: wExt, keywords: profile?.news_keywords || [] }),
+      }).then(async r => {
+        const data = await r.json();
+        if (!r.ok || !data.success) throw new Error(data.error || 'AI recommendations unavailable.');
+        return data;
+      }).then(data => {
         if (data.success && data.recommendations) {
           setAiRecommendations(data.recommendations);
         }
-      }).catch(err => console.error('Failed to load AI recommendations', err))
+      }).catch(err => {
+        console.error('Failed to load AI recommendations', err);
+        setAiRecommendations([]);
+        setAiRecommendationsError(err.message || 'AI recommendations unavailable.');
+      })
         .finally(() => setAiRecsLoading(false));
 
       const analysisRes = await fetch(`${API_BASE}/analyze`, {
@@ -1211,6 +1221,11 @@ export default function Dashboard() {
           {aiRecsLoading ? (
             <div className="section-label" style={{ color: 'var(--accent-emerald)', animation: 'pulse 1.5s infinite' }}>
               ✨ Generating personalized AI recommendations...
+            </div>
+          ) : aiRecommendationsError ? (
+            <div className="intel-card" style={{ borderLeft: '3px solid var(--accent-amber)', color: 'var(--text-secondary)', marginBottom: '18px' }}>
+              <strong style={{ color: '#fff', display: 'block', marginBottom: '6px' }}>AI recommendations unavailable</strong>
+              {aiRecommendationsError}
             </div>
           ) : recommendations.length > 0 && (
             <div className="mb-xl">
