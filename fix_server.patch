@@ -1,0 +1,8 @@
+--- server.js
++++ server.js
+@@ -2392,6 +2392,6 @@
+-function requireAuth(req, res, next) {
+-    req.session = { userId: 1 };
+-    req.userProfile = { id: 1, email: "test@example.com", username: "Test User", focus_product: "WHEAT", focus_region: "Global", custom_regions: [], price_alerts: [] };
+-    next();
+-}
