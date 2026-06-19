@@ -269,7 +269,14 @@ Return valid JSON exactly matching this format:
 }`;
 
         const llmResponse = await callGroq('llama-3.3-70b-versatile', 'You are a maritime logistics extraction API. Output only raw JSON.', prompt, true);
-        cachedRealTimeLogistics = JSON.parse(llmResponse);
+        const data = JSON.parse(llmResponse);
+        
+        cachedRealTimeLogistics = {
+            portCongestion: data.portCongestion || [{ port: 'Jebel Ali (Real-Time)', status: 'LOADING...', delayDays: 0, reason: 'Pending fetch' }],
+            freightRates: data.freightRates || { reeferIndexFEU: 0, bunkerSurchargeImpact: 'NORMAL', trend: 'LOADING...' },
+            airFreightRates: data.airFreightRates || { ratePerKg: 0, trend: 'LOADING...' },
+            geopoliticalRiskIndex: data.geopoliticalRiskIndex || 5
+        };
         console.log('[LOGISTICS] Real-Time Logistics Data Fetched and Cached successfully.');
     } catch (e) {
         console.error('[LOGISTICS] Failed to fetch real-time logistics via LLM:', e.message);
