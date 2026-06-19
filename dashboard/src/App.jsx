@@ -259,12 +259,15 @@ export default function Dashboard() {
         })
       });
       const data = await res.json();
+      if (!res.ok || !data.success || !data.deepDive) {
+        throw new Error(data.error || 'AI Deep-Dive failed.');
+      }
       if (data.success) {
         setDeepDiveText(prev => ({...prev, [timeframeStr]: data.deepDive}));
       }
     } catch (err) {
       console.error(err);
-      setDeepDiveText(prev => ({...prev, [timeframeStr]: 'AI Deep-Dive failed.'}));
+      setDeepDiveText(prev => ({...prev, [timeframeStr]: err.message || 'AI Deep-Dive failed.'}));
     } finally {
       setDeepDiveLoading(prev => ({...prev, [timeframeStr]: false}));
     }
