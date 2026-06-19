@@ -160,6 +160,7 @@ const GEMINI_EMBEDDINGS_ENABLED = process.env.ENABLE_GEMINI_EMBEDDINGS !== 'fals
 const LIVE_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_LIVE_SEMANTIC_FILTER === 'true';
 const GEO_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_GEO_SEMANTIC_FILTER === 'true';
 const USER_SCANNER_EMBEDDINGS_ENABLED = process.env.ENABLE_USER_SCANNER_EMBEDDINGS === 'true';
+const USER_SCANNER_AI_REVIEW_ENABLED = process.env.ENABLE_USER_SCANNER_AI_REVIEW === 'true';
 
 const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-2';
 const EMBEDDING_OUTPUT_DIMENSIONS = envInt('GEMINI_EMBEDDING_DIMENSIONS', 768);
@@ -2422,26 +2423,28 @@ async function scanUserSpecificNews() {
           let aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
           let finalAccept = true;
 
-          try {
-            const systemPrompt = `You are an elite Supply Chain Intelligence AI. Determine if this news headline represents a genuine, actionable supply chain risk, disruption, or price volatility event for a user tracking ${focusProduct} in ${focusRegion}.`;
-            const userPrompt = `Headline: "${article.title}"\n\nTask:\n1. If this is a real supply chain risk/opportunity, generate a concise 1-sentence reason explaining the exact business impact.\n2. If this is generic news, local crime, or unrelated to supply chain, output exactly the word "DISCARD".\n\nOutput only the 1-sentence reason, or "DISCARD".`;
-            
-            // Call LLM in text mode (jsonMode=false)
-            const llmRes = await callGroq('llama-3.1-8b-instant', systemPrompt, userPrompt, false, 150, 0.1, false);
-            
-            const cleanRes = llmRes.trim();
-            if (cleanRes.toUpperCase() === 'DISCARD' || cleanRes.toUpperCase().includes('DISCARD')) {
-              console.log(`[USER-SCANNER] AI discarded: ${article.title}`);
-              alertedArticles.add(userArticleKey);
-              saveAlertedArticles();
-              finalAccept = false;
-            } else if (cleanRes.length > 5) {
-              aiReason = cleanRes.replace(/^["']|["']$/g, ''); // remove surrounding quotes if any
+          if (USER_SCANNER_AI_REVIEW_ENABLED) {
+            try {
+              const systemPrompt = `You are an elite Supply Chain Intelligence AI. Determine if this news headline represents a genuine, actionable supply chain risk, disruption, or price volatility event for a user tracking ${focusProduct} in ${focusRegion}.`;
+              const userPrompt = `Headline: "${article.title}"\n\nTask:\n1. If this is a real supply chain risk/opportunity, generate a concise 1-sentence reason explaining the exact business impact.\n2. If this is generic news, local crime, or unrelated to supply chain, output exactly the word "DISCARD".\n\nOutput only the 1-sentence reason, or "DISCARD".`;
+
+              // Call LLM in text mode (jsonMode=false)
+              const llmRes = await callGroq('llama-3.1-8b-instant', systemPrompt, userPrompt, false, 150, 0.1, false);
+
+              const cleanRes = llmRes.trim();
+              if (cleanRes.toUpperCase() === 'DISCARD' || cleanRes.toUpperCase().includes('DISCARD')) {
+                console.log(`[USER-SCANNER] AI discarded: ${article.title}`);
+                alertedArticles.add(userArticleKey);
+                saveAlertedArticles();
+                finalAccept = false;
+              } else if (cleanRes.length > 5) {
+                aiReason = cleanRes.replace(/^["']|["']$/g, ''); // remove surrounding quotes if any
+              }
+            } catch (e) {
+              console.warn(`[USER-SCANNER] AI evaluation unavailable, sending deterministic keyword alert: ${article.title}`);
+              aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
+              finalAccept = true;
             }
-          } catch (e) {
-            console.warn(`[USER-SCANNER] AI evaluation unavailable, sending deterministic keyword alert: ${article.title}`);
-            aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
-            finalAccept = true;
           }
 
           if (finalAccept) {
