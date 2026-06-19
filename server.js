@@ -65,13 +65,11 @@ if (process.env.SMTP_HOST && process.env.SMTP_PASS) {
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
 const YAHOO_SYMBOLS = {
-    BRENT_CRUDE: 'BZ=F',
-    NATURAL_GAS: 'NG=F'
+    BRENT_CRUDE: 'BZ=F'
 };
 
 const COMMODITY_DATA = {
-    BRENT_CRUDE:  { price: '0', unit: 'USD/bbl', producers: ['Saudi Arabia', 'USA', 'Russia', 'UAE', 'Oman'], regions: [], currencies: ['USD', 'SAR', 'AED', 'OMR'] },
-    NATURAL_GAS:  { price: '0', unit: 'USD/MMBtu', producers: ['USA', 'Russia', 'Iran', 'Qatar', 'Canada'], regions: [], currencies: ['USD'] },
+    BRENT_CRUDE:  { price: '0', unit: 'USD/bbl', producers: ['Saudi Arabia', 'USA', 'Russia', 'UAE', 'Oman'], regions: [], currencies: ['USD', 'SAR', 'AED', 'OMR'] }
 };
 
 let lastAnalysis = null;
