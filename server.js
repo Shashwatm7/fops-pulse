@@ -143,8 +143,42 @@ const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const NEWS_KEY = process.env.NEWSDATA_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
+const envInt = (name, fallback) => {
+    const value = Number.parseInt(process.env[name], 10);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const envMs = (name, fallback) => envInt(name, fallback);
+
+const BACKGROUND_AI_ENABLED = process.env.ENABLE_BACKGROUND_AI !== 'false';
+const GEO_SCANNER_ENABLED = process.env.ENABLE_GEO_SCANNER !== 'false';
+const USER_SCANNER_ENABLED = process.env.ENABLE_USER_SCANNER !== 'false';
+const AI_WORKER_ENABLED = process.env.ENABLE_AI_WORKER !== 'false';
+const AI_FORECASTER_ENABLED = process.env.ENABLE_AI_FORECASTER !== 'false';
+
+const GEMINI_EMBEDDINGS_ENABLED = process.env.ENABLE_GEMINI_EMBEDDINGS !== 'false';
+const LIVE_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_LIVE_SEMANTIC_FILTER === 'true';
+const GEO_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_GEO_SEMANTIC_FILTER === 'true';
+const USER_SCANNER_EMBEDDINGS_ENABLED = process.env.ENABLE_USER_SCANNER_EMBEDDINGS === 'true';
+
+const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-2';
+const EMBEDDING_OUTPUT_DIMENSIONS = envInt('GEMINI_EMBEDDING_DIMENSIONS', 768);
+const EMBEDDING_DAILY_BUDGET = envInt('GEMINI_EMBEDDING_DAILY_BUDGET', 200);
+const EMBEDDING_COOLDOWN_MS = envMs('GEMINI_EMBEDDING_COOLDOWN_MS', 60 * 60 * 1000);
+const EMBEDDING_CACHE_LIMIT = envInt('GEMINI_EMBEDDING_CACHE_LIMIT', 500);
+
+const GEO_SCAN_INTERVAL_MS = envMs('GEO_SCAN_INTERVAL_MS', 30 * 60 * 1000);
+const USER_SCAN_INTERVAL_MS = envMs('USER_SCAN_INTERVAL_MS', 30 * 60 * 1000);
+const AI_WORKER_INTERVAL_MS = envMs('AI_WORKER_INTERVAL_MS', 30 * 60 * 1000);
+const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 15 * 60 * 1000);
+
+const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
+const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
+const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 3);
+
 async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1) {
     try {
+        if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
         const response = await axios.post(
             'https://api.groq.com/openai/v1/chat/completions',
             {
@@ -168,6 +202,7 @@ async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTo
     } catch (err) {
         console.log(`[FAILOVER] Primary Groq failed (${model}). Trying Llama 3 8B...`);
         try {
+            if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
             const groqBackup = await axios.post(
                 'https://api.groq.com/openai/v1/chat/completions',
                 {
@@ -298,34 +333,154 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+const embeddingCache = new Map();
+let embeddingUsageDay = null;
+let embeddingUsageCount = 0;
+let embeddingCircuitOpenUntil = 0;
+
+function normalizeEmbeddingText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
+}
+
+function geminiEmbeddingModelResource() {
+    return EMBEDDING_MODEL.startsWith('models/') ? EMBEDDING_MODEL : `models/${EMBEDDING_MODEL}`;
+}
+
+function geminiEmbeddingEndpoint(method) {
+    return `https://generativelanguage.googleapis.com/v1beta/${geminiEmbeddingModelResource()}:${method}?key=${process.env.GEMINI_API_KEY}`;
+}
+
+function getCachedEmbedding(text) {
+    if (!embeddingCache.has(text)) return null;
+    const value = embeddingCache.get(text);
+    embeddingCache.delete(text);
+    embeddingCache.set(text, value);
+    return value;
+}
+
+function setCachedEmbedding(text, embedding) {
+    if (!embedding || !text) return;
+    embeddingCache.set(text, embedding);
+    if (embeddingCache.size > EMBEDDING_CACHE_LIMIT) {
+        const oldestKey = embeddingCache.keys().next().value;
+        embeddingCache.delete(oldestKey);
+    }
+}
+
+function resetEmbeddingBudgetIfNeeded() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (embeddingUsageDay !== today) {
+        embeddingUsageDay = today;
+        embeddingUsageCount = 0;
+    }
+}
+
+function msUntilNextUtcDay() {
+    const next = new Date();
+    next.setUTCHours(24, 0, 0, 0);
+    return next.getTime() - Date.now();
+}
+
+function reserveEmbeddingBudget(count) {
+    if (!GEMINI_EMBEDDINGS_ENABLED || !process.env.GEMINI_API_KEY) return false;
+    if (Date.now() < embeddingCircuitOpenUntil) return false;
+
+    resetEmbeddingBudgetIfNeeded();
+    if (embeddingUsageCount + count > EMBEDDING_DAILY_BUDGET) {
+        embeddingCircuitOpenUntil = Date.now() + msUntilNextUtcDay();
+        console.warn(`[EMBEDDINGS] Daily embedding budget reached (${embeddingUsageCount}/${EMBEDDING_DAILY_BUDGET}). Skipping Gemini embeddings until tomorrow.`);
+        return false;
+    }
+
+    embeddingUsageCount += count;
+    return true;
+}
+
+function pauseEmbeddingsAfterFailure(err) {
+    const status = err.response?.status;
+    const message = err.response?.data?.error?.message || err.message || '';
+    if (status === 429 || /quota|rate.?limit|exceed/i.test(message)) {
+        const retryAfterSeconds = Number.parseInt(err.response?.headers?.['retry-after'], 10);
+        const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? retryAfterSeconds * 1000
+            : EMBEDDING_COOLDOWN_MS;
+        embeddingCircuitOpenUntil = Date.now() + cooldownMs;
+        console.warn(`[EMBEDDINGS] Gemini quota/rate limit hit. Pausing embedding calls for ${Math.ceil(cooldownMs / 60000)} minutes.`);
+    }
+}
+
 async function generateEmbedding(text) {
-    if (!process.env.GEMINI_API_KEY) return null;
+    const normalizedText = normalizeEmbeddingText(text);
+    if (!normalizedText) return null;
+
+    const cached = getCachedEmbedding(normalizedText);
+    if (cached) return cached;
+    if (!reserveEmbeddingBudget(1)) return null;
+
     try {
-        const { data } = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent?key=${process.env.GEMINI_API_KEY}`, {
-            model: 'models/gemini-embedding-2',
-            content: { parts: [{ text }] },
-            outputDimensionality: 768
+        const { data } = await axios.post(geminiEmbeddingEndpoint('embedContent'), {
+            model: geminiEmbeddingModelResource(),
+            content: { parts: [{ text: normalizedText }] },
+            outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS
         }, { headers: { 'Content-Type': 'application/json' } });
-        return data.embedding.values;
+        const embedding = data.embedding.values;
+        setCachedEmbedding(normalizedText, embedding);
+        return embedding;
     } catch (err) {
         console.error('Gemini embedding failed:', err.response?.data?.error?.message || err.message);
+        pauseEmbeddingsAfterFailure(err);
         return null;
     }
 }
 
 async function generateBatchEmbeddings(texts) {
-    if (!process.env.GEMINI_API_KEY || !texts || texts.length === 0) return [];
+    if (!texts || texts.length === 0) return [];
+
+    const normalizedTexts = texts.map(normalizeEmbeddingText);
+    const embeddings = new Array(texts.length);
+    const missing = new Map();
+
+    normalizedTexts.forEach((text, index) => {
+        if (!text) return;
+        const cached = getCachedEmbedding(text);
+        if (cached) {
+            embeddings[index] = cached;
+            return;
+        }
+        if (!missing.has(text)) missing.set(text, []);
+        missing.get(text).push(index);
+    });
+
+    if (missing.size === 0) return embeddings;
+    if (!reserveEmbeddingBudget(missing.size)) return [];
+
+    const missingTexts = Array.from(missing.keys());
     try {
-        const { data } = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents?key=${process.env.GEMINI_API_KEY}`, {
-            requests: texts.map(text => ({
-                model: 'models/gemini-embedding-2',
+        const { data } = await axios.post(geminiEmbeddingEndpoint('batchEmbedContents'), {
+            requests: missingTexts.map(text => ({
+                model: geminiEmbeddingModelResource(),
                 content: { parts: [{ text }] },
-                outputDimensionality: 768
+                outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS
             }))
         }, { headers: { 'Content-Type': 'application/json' } });
-        return data.embeddings.map(e => e.values);
+
+        const freshEmbeddings = data.embeddings?.map(e => e.values) || [];
+        if (freshEmbeddings.length !== missingTexts.length) {
+            throw new Error(`Gemini returned ${freshEmbeddings.length} embeddings for ${missingTexts.length} texts`);
+        }
+
+        missingTexts.forEach((text, missingIndex) => {
+            const embedding = freshEmbeddings[missingIndex];
+            setCachedEmbedding(text, embedding);
+            for (const originalIndex of missing.get(text)) {
+                embeddings[originalIndex] = embedding;
+            }
+        });
+
+        return embeddings;
     } catch (err) {
         console.error('Gemini batch embedding failed:', err.response?.data?.error?.message || err.message);
+        pauseEmbeddingsAfterFailure(err);
         return [];
     }
 }
@@ -714,6 +869,9 @@ CRITICAL RULES:
 
         const rawResult = await callGroq('llama-3.3-70b-versatile', prompt, "Analyze the crop yield risk.", true, 500);
         const jsonResult = JSON.parse(rawResult);
+        if (typeof jsonResult.forecast !== 'string' || !jsonResult.forecast.trim()) {
+            throw new Error('AI forecast response missing forecast text');
+        }
 
         res.json({ success: true, forecast: jsonResult.forecast });
     } catch (err) {
@@ -935,23 +1093,26 @@ app.get('/api/news', requireAuth, async (req, res) => {
             insertNewsEmbedding(a, null).catch(err => console.error("DB Insert Error (News):", err.message));
         }
 
-        // ── Live Semantic Filtering ──
+        // ── Optional Live Semantic Filtering ──
         let verifiedArticles = unique.slice(0, 40);
-        try {
-            const contextText = `${focusProduct} supply chain, market pricing, and trade dynamics in ${focusRegion}`;
-            const textsToEmbed = [contextText, ...verifiedArticles.map(a => a.title)];
-            
-            const batchEmbeddings = await generateBatchEmbeddings(textsToEmbed);
-            if (batchEmbeddings && batchEmbeddings.length === textsToEmbed.length) {
-                const contextEmb = batchEmbeddings[0];
-                verifiedArticles = verifiedArticles.filter((a, i) => {
-                    const sim = cosineSimilarity(contextEmb, batchEmbeddings[i + 1]);
-                    return sim >= 0.55;
-                });
-                console.log(`[SEMANTIC-FILTER] Kept ${verifiedArticles.length} relevant articles out of ${textsToEmbed.length - 1}`);
+        if (LIVE_SEMANTIC_FILTER_ENABLED) {
+            try {
+                const contextText = `${focusProduct} supply chain, market pricing, and trade dynamics in ${focusRegion}`;
+                verifiedArticles = verifiedArticles.slice(0, MAX_NEWS_SEMANTIC_ARTICLES);
+                const textsToEmbed = [contextText, ...verifiedArticles.map(a => a.title)];
+
+                const batchEmbeddings = await generateBatchEmbeddings(textsToEmbed);
+                if (batchEmbeddings && batchEmbeddings.length === textsToEmbed.length) {
+                    const contextEmb = batchEmbeddings[0];
+                    verifiedArticles = verifiedArticles.filter((a, i) => {
+                        const sim = cosineSimilarity(contextEmb, batchEmbeddings[i + 1]);
+                        return sim >= 0.55;
+                    });
+                    console.log(`[SEMANTIC-FILTER] Kept ${verifiedArticles.length} relevant articles out of ${textsToEmbed.length - 1}`);
+                }
+            } catch (err) {
+                console.error('[SEMANTIC-FILTER] Error:', err.message);
             }
-        } catch (err) {
-            console.error('[SEMANTIC-FILTER] Error:', err.message);
         }
 
         res.json({
@@ -1016,14 +1177,38 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
     }
 });
 
+function buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData }) {
+    const actionText = Array.isArray(deterministicAction)
+        ? deterministicAction.join(' | ')
+        : (deterministicAction || 'hold the current plan and prioritize exception monitoring');
+    const topNews = (news || []).slice(0, 3).map(n => n.title).filter(Boolean);
+    const weatherAlerts = (weatherExtended || [])
+        .filter(w => w.analytics?.alert && w.analytics.alert !== 'NORMAL')
+        .map(w => `${w.name}: ${w.analytics.alert}`);
+    const brent = energy?.brent?.current?.value ? `$${energy.brent.current.value}/barrel` : 'not available';
+    const portStatus = (logisticsData?.portCongestion || [])
+        .map(p => `${p.port} ${p.status}`)
+        .filter(Boolean)
+        .join(', ') || 'no major live port exception';
+
+    const newsText = topNews.length
+        ? `The live feed is currently led by: ${topNews.join('; ')}.`
+        : 'The live feed does not show a dominant breaking-news driver right now.';
+    const weatherText = weatherAlerts.length
+        ? `Weather exceptions to watch: ${weatherAlerts.join(', ')}.`
+        : 'Weather telemetry is not flagging a major exception in the selected regions.';
+
+    return `For the ${timeframe || 'selected'} window, the practical move is: ${actionText}. ${newsText} Brent crude is ${brent}, port conditions show ${portStatus}, and the geopolitical risk index is ${logisticsData?.geopoliticalRiskIndex ?? 'not available'}/10. These signals point to protecting service levels first, then adjusting procurement or routing only where the data shows a material cost or disruption risk for ${focusProduct || 'the tracked portfolio'} in ${focusRegion || 'the selected region'}.\n\n${weatherText} Use this as a conservative fallback read: prioritize open purchase orders, lanes with long lead times, and SKUs closest to reorder-point pressure; avoid broad changes until the next live news and forecast refresh confirms the same direction.`;
+}
+
 // ── ROUTE: AI Deep Dive (On-Demand) ────────────────────────────────
 app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
     const { timeframe, prices, news, weather, energy, forex, weatherExtended, deterministicAction } = req.body;
+    const focusProduct = req.userProfile?.focus_product || 'Commodities';
+    const focusRegion = req.userProfile?.focus_region || 'Global';
+    const logisticsData = cachedRealTimeLogistics;
     
     try {
-        const focusProduct = req.userProfile?.focus_product || 'Commodities';
-        const focusRegion = req.userProfile?.focus_region || 'Global';
-
         let feedbackContext = '';
         try {
             const pastFeedback = await getRecentAiFeedback(req.session.userId, 'DEEP_DIVE', 5);
@@ -1033,9 +1218,6 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
                     negativeFeedback.map(f => `- You previously provided this Deep Dive: "${f.ai_response}". The user REJECTED this because: "${f.user_notes}". DO NOT repeat similar mistakes in your tone or content.`).join('\n');
             }
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
-
-        const logisticsData = cachedRealTimeLogistics;
-
         let mlForecasts = 'No local ML forecasts available.';
         try {
             if (fs.existsSync('outputs/forecast_recommendations.csv')) {
@@ -1083,11 +1265,27 @@ Return a JSON object: {"deepDive": "your highly detailed 2-3 paragraph analysis 
             0.5
         );
         
-        const analysis = JSON.parse(analysisRaw);
-        res.json({ success: true, deepDive: analysis.deepDive });
+        let deepDive = '';
+        try {
+            const analysis = JSON.parse(analysisRaw);
+            deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : '';
+        } catch (parseErr) {
+            console.warn('Deep Dive JSON parse failed, using deterministic fallback:', parseErr.message);
+        }
+
+        if (!deepDive) {
+            console.warn('Deep Dive response missing deepDive text, using deterministic fallback.');
+            deepDive = buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData });
+        }
+
+        res.json({ success: true, deepDive });
     } catch (err) {
         console.error('Deep Dive LLM Analysis failed:', err.response?.data || err.message);
-        res.status(500).json({ error: 'Failed to generate AI deep dive.' });
+        res.json({
+            success: true,
+            fallback: true,
+            deepDive: buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData })
+        });
     }
 });
 
@@ -1711,7 +1909,7 @@ app.get('/api/live-prices', (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-// LIVE GEOPOLITICAL ALERT SCANNER — Background polling every 10 minutes
+// LIVE GEOPOLITICAL ALERT SCANNER — Background polling on a configurable interval
 // Scans Google News RSS + GDELT for critical supply chain disruption events
 // and pushes real-time alerts via SSE + Email
 // ═══════════════════════════════════════════════════════════════════════
@@ -1857,24 +2055,25 @@ async function scanGeopoliticalNews() {
     for (const trigger of GEOPOLITICAL_TRIGGERS) {
       if (trigger.pattern.test(article.title)) {
         
-        // ── SEMANTIC FILTERING: Verify relevance using embeddings ──
-        try {
-          const articleEmb = await generateEmbedding(article.title);
-          if (!trigger.embedding) {
-            trigger.embedding = await generateEmbedding(`A critical geopolitical supply chain disruption event causing: ${trigger.impact}`);
-          }
-          if (articleEmb && trigger.embedding) {
-            const similarity = cosineSimilarity(articleEmb, trigger.embedding);
-            if (similarity < 0.55) {
-              console.log(`[GEO-SCANNER] Filtered false positive (sim: ${similarity.toFixed(2)}): ${article.title}`);
-              continue; // Not semantically relevant enough, check next trigger
-            } else {
-              console.log(`[GEO-SCANNER] Accepted (sim: ${similarity.toFixed(2)}): ${article.title}`);
+        // ── Optional semantic filtering: keep off by default to protect Gemini quota ──
+        if (GEO_SEMANTIC_FILTER_ENABLED) {
+          try {
+            const articleEmb = await generateEmbedding(article.title);
+            if (!trigger.embedding) {
+              trigger.embedding = await generateEmbedding(`A critical geopolitical supply chain disruption event causing: ${trigger.impact}`);
             }
+            if (articleEmb && trigger.embedding) {
+              const similarity = cosineSimilarity(articleEmb, trigger.embedding);
+              if (similarity < 0.55) {
+                console.log(`[GEO-SCANNER] Filtered false positive (sim: ${similarity.toFixed(2)}): ${article.title}`);
+                continue; // Not semantically relevant enough, check next trigger
+              } else {
+                console.log(`[GEO-SCANNER] Accepted (sim: ${similarity.toFixed(2)}): ${article.title}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`[GEO-SCANNER] Embedding verification failed, accepting deterministic match: ${article.title}`);
           }
-        } catch (e) {
-          console.warn(`[GEO-SCANNER] Embedding verification failed, DISCARDING to prevent spam: ${article.title}`);
-          continue;
         }
 
         alertedArticles.add(articleKey);
@@ -1988,7 +2187,7 @@ async function scanGeopoliticalNews() {
                 <div style="margin-top: 24px; text-align: center;">
                   <a href="http://localhost:5173" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Open Dashboard</a>
                 </div>
-                <p style="color: #94a3b8; font-size: 11px; margin-top: 20px; text-align: center;">This is an automated alert from the FOPs Market Pulse Geopolitical Scanner. Alerts are scanned every 10 minutes from Google News, NewsData.io, and GDELT.</p>
+                <p style="color: #94a3b8; font-size: 11px; margin-top: 20px; text-align: center;">This is an automated alert from the FOPs Market Pulse Geopolitical Scanner. Alerts are scanned every ${Math.round(GEO_SCAN_INTERVAL_MS / 60000)} minutes from Google News, NewsData.io, and GDELT.</p>
               </div>
             </div>
           `
@@ -2052,16 +2251,6 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
 });
-// ── Run scanner on startup (staggered delay to let everything boot) ──
-setTimeout(scanGeopoliticalNews, 60000); // 60s
-setTimeout(scanUserSpecificNews, 120000); // 120s
-
-// ── Run scanner every 10 minutes ──
-setInterval(scanGeopoliticalNews, 10 * 60 * 1000);
-setInterval(scanUserSpecificNews, 15 * 60 * 1000);
-
-console.log('[GEO-SCANNER] Live Geopolitical Alert Scanner initialized (polling every 10 min)');
-console.log('[USER-SCANNER] User-Specific Profile Scanner initialized (polling every 15 min)');
 
 async function scanUserSpecificNews() {
   console.log('[USER-SCANNER] Running user-specific profile scan...');
@@ -2141,13 +2330,15 @@ async function scanUserSpecificNews() {
       if (candidateArticles.length === 0) continue;
       
       // Cap the articles to protect API quota
-      const cappedArticles = candidateArticles.slice(0, 40);
+      const cappedArticles = candidateArticles.slice(0, MAX_USER_SCANNER_CANDIDATES);
 
       let criteriaEmb = null;
-      try {
-        criteriaEmb = await generateEmbedding(`A critical supply chain risk or opportunity impacting ${focusProduct} in ${focusRegion}`);
-      } catch (e) {
-        console.warn(`[USER-SCANNER] Failed to generate criteria embedding for ${user.username}`, e.message);
+      if (USER_SCANNER_EMBEDDINGS_ENABLED) {
+        try {
+          criteriaEmb = await generateEmbedding(`A critical supply chain risk or opportunity impacting ${focusProduct} in ${focusRegion}`);
+        } catch (e) {
+          console.warn(`[USER-SCANNER] Failed to generate criteria embedding for ${user.username}`, e.message);
+        }
       }
 
       // 2. Batch embed the candidate articles to prevent rate limit spikes (Max 50 per batch)
@@ -2173,8 +2364,8 @@ async function scanUserSpecificNews() {
 
 
 
-      for (let i = 0; i < candidateArticles.length; i++) {
-        const article = candidateArticles[i];
+      for (let i = 0; i < cappedArticles.length; i++) {
+        const article = cappedArticles[i];
         const articleKey = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
 
         let accepted = false;
@@ -2235,6 +2426,7 @@ async function scanUserSpecificNews() {
               reason: aiReason,
               detectedAt: new Date().toISOString(),
             });
+            if (triggeredAlerts.length >= MAX_USER_SCANNER_ALERTS) break;
           }
         }
       }
@@ -2284,18 +2476,43 @@ async function scanUserSpecificNews() {
   }
 }
 
-// Start scanner with initial 60s delay
-setTimeout(() => scanUserSpecificNews(), 60000);
-setInterval(scanUserSpecificNews, 5 * 60 * 1000);
+function scheduleScannerJobs() {
+    if (!BACKGROUND_AI_ENABLED) {
+        console.log('[SCANNERS] Background AI jobs disabled by configuration.');
+        return;
+    }
+
+    if (GEO_SCANNER_ENABLED) {
+        setTimeout(scanGeopoliticalNews, 60000);
+        setInterval(scanGeopoliticalNews, GEO_SCAN_INTERVAL_MS);
+        console.log(`[GEO-SCANNER] Live Geopolitical Alert Scanner initialized (polling every ${Math.round(GEO_SCAN_INTERVAL_MS / 60000)} min)`);
+    } else {
+        console.log('[GEO-SCANNER] Disabled by configuration.');
+    }
+
+    if (USER_SCANNER_ENABLED) {
+        setTimeout(scanUserSpecificNews, 120000);
+        setInterval(scanUserSpecificNews, USER_SCAN_INTERVAL_MS);
+        console.log(`[USER-SCANNER] User-Specific Profile Scanner initialized (polling every ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min)`);
+    } else {
+        console.log('[USER-SCANNER] Disabled by configuration.');
+    }
+}
+
+scheduleScannerJobs();
 
 // ── AI Worker: Process Unprocessed News Embeddings ──
 async function startAIWorker() {
-    if (!ai) return console.warn('[AI-WORKER] Missing Gemini API key. Worker disabled.');
+    if (!BACKGROUND_AI_ENABLED || !AI_WORKER_ENABLED) {
+        return console.log('[AI-WORKER] Disabled by configuration.');
+    }
+    if (!ai || !GEMINI_EMBEDDINGS_ENABLED) {
+        return console.warn('[AI-WORKER] Missing Gemini API key or embeddings disabled. Worker disabled.');
+    }
     
-    console.log('[AI-WORKER] Background processor initialized.');
+    console.log(`[AI-WORKER] Background processor initialized (polling every ${Math.round(AI_WORKER_INTERVAL_MS / 60000)} min).`);
     
-    setTimeout(() => {
-        setInterval(async () => {
+    const processBatch = async () => {
         try {
             const unprocessed = await getUnprocessedNews(10);
             if (!unprocessed || unprocessed.length === 0) return;
@@ -2312,9 +2529,8 @@ async function startAIWorker() {
                     throw new Error('Batch embedding generation failed or returned mismatched count');
                 }
             } catch (embErr) {
-                console.warn('[AI-WORKER] Embedding API limit hit. Applying fallback zero-embeddings to clear queue.', embErr.message);
-                const dummyEmb = new Array(768).fill(0);
-                embeddings = unprocessed.map(() => dummyEmb);
+                console.warn('[AI-WORKER] Embedding unavailable. Leaving articles queued for the next budget window.', embErr.message);
+                return;
             }
             
             // 2. Batch Classify using Groq (1 API Call)
@@ -2351,8 +2567,10 @@ async function startAIWorker() {
         } catch (err) {
             console.error('[AI-WORKER] Error:', err.message);
         }
-    }, 120000); 
-    }, 180000); 
+    };
+
+    setTimeout(processBatch, Math.min(5 * 60 * 1000, AI_WORKER_INTERVAL_MS));
+    setInterval(processBatch, AI_WORKER_INTERVAL_MS);
 }
 
 setTimeout(() => startAIWorker(), 90000); // Start after 90s
@@ -2366,7 +2584,11 @@ let cachedLLMForecast = {
 };
 
 async function runLLMForecastLoop() {
-    console.log('[AI-FORECASTER] Background loop initialized. (Runs every 3 mins)');
+    if (!BACKGROUND_AI_ENABLED || !AI_FORECASTER_ENABLED) {
+        return console.log('[AI-FORECASTER] Disabled by configuration.');
+    }
+
+    console.log(`[AI-FORECASTER] Background loop initialized. (Runs every ${Math.round(AI_FORECAST_INTERVAL_MS / 60000)} mins)`);
 
     const generate = async () => {
         try {
@@ -2399,8 +2621,8 @@ Keep each forecast concise, professional, and action-oriented (1-2 sentences). D
         }
     };
 
-    setTimeout(generate, 150000); // 2.5 min delay to stagger from other tasks
-    setInterval(generate, 180000); // Update every 3 minutes
+    setTimeout(generate, Math.min(150000, AI_FORECAST_INTERVAL_MS)); // Stagger from other tasks
+    setInterval(generate, AI_FORECAST_INTERVAL_MS);
 }
 
 setTimeout(() => runLLMForecastLoop(), 10000); // Init loop after 10s
