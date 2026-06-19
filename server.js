@@ -1284,23 +1284,42 @@ Each object must represent a different timeframe and have these exact keys:
         const focusProduct = req.userProfile?.focus_product || 'Commodities';
         const focusRegion = req.userProfile?.focus_region || 'Global';
         
-        let fallbackRecs = [
-            {
-                timeframe: "7D",
-                action: `Accelerate hedging and secure spot contracts for ${focusProduct} based on recent news trends.`,
-                businessImpact: `Mitigates immediate volatility exposure in ${focusRegion} markets`,
-            },
-            {
-                timeframe: "30D",
-                action: `Diversify ${focusProduct} routing away from primary chokepoints indicated by current alerts.`,
-                businessImpact: `Prevents critical inventory stockouts during unexpected disruptions`,
-            },
-            {
-                timeframe: "90D",
-                action: `Review and renegotiate logistics terms for ${focusRegion} suppliers to build long-term resilience.`,
-                businessImpact: `Optimizes margin retention amid rising operational costs`,
-            }
+                let fallbackRecs = [
+            { timeframe: "7D", action: `Accelerate hedging and secure spot contracts for ${focusProduct} based on recent news trends.`, businessImpact: `Mitigates immediate volatility exposure in ${focusRegion} markets` },
+            { timeframe: "30D", action: `Diversify ${focusProduct} routing away from primary chokepoints indicated by current alerts.`, businessImpact: `Prevents critical inventory stockouts during unexpected disruptions` },
+            { timeframe: "90D", action: `Review and renegotiate logistics terms for ${focusRegion} suppliers to build long-term resilience.`, businessImpact: `Optimizes long-term supply chain resilience` }
         ];
+
+        try {
+            if (fs.existsSync('outputs/forecast_recommendations.csv')) {
+                const mlcsv = fs.readFileSync('outputs/forecast_recommendations.csv', 'utf8');
+                const rows = mlcsv.split('\n').slice(1).filter(r => r.trim() !== '');
+                
+                const recsByHorizon = { '7': [], '30': [], '90': [] };
+                for (const row of rows) {
+                    const cols = row.split(',');
+                    if (cols.length >= 9) {
+                        const [sku, name, horizon, model, total, avg, ss, rop, qty] = cols;
+                        if (recsByHorizon[horizon]) recsByHorizon[horizon].push({ name, sku, total: parseFloat(total), qty });
+                    }
+                }
+                
+                if (recsByHorizon['7'].length > 0) {
+                    const top7 = recsByHorizon['7'].sort((a,b) => b.total - a.total)[0];
+                    fallbackRecs[0].action = `(ML Recommended) Increase immediate orders for ${top7.name} (${top7.sku}) to cover the forecasted short-term demand spike. Target order qty: ${top7.qty}.`;
+                }
+                if (recsByHorizon['30'].length > 0) {
+                    const top30 = recsByHorizon['30'].sort((a,b) => b.total - a.total)[0];
+                    fallbackRecs[1].action = `(ML Recommended) Adjust Reorder Points (ROP) mid-term for ${top30.name} (${top30.sku}). Forecasted total 30-day demand is ${top30.total}.`;
+                }
+                if (recsByHorizon['90'].length > 0) {
+                    const top90 = recsByHorizon['90'].sort((a,b) => b.total - a.total)[0];
+                    fallbackRecs[2].action = `(ML Recommended) Build strategic buffer stock for ${top90.name} (${top90.sku}) to offset long-term supply friction. Projected 90-day demand volume: ${top90.total}.`;
+                }
+            }
+        } catch (csvErr) {
+            console.error('Failed to parse CSV for fallback', csvErr);
+        }
 
         // --- OVERRIDE WITH CUSTOM CSV INTELLIGENCE IF AVAILABLE ---
         try {
