@@ -1435,6 +1435,7 @@ CRITICAL INSTRUCTIONS:
 6. When referencing an SKU, you MUST write the product name alongside it exactly as it appears in the LOCAL ML FORECASTS (e.g., 'Product Name (SKU_XXX)').
 7. Focus ONLY on the Middle East region. Do NOT mention India, China, or other non-Middle Eastern regions.
 8. DO NOT mention specific technical data science model names (e.g., "HoltWinters"). Use user-friendly terms like "our forecasting engine".
+9. You MUST explicitly reference the specific events from the "Top 5 News" to justify your strategic actions. Do NOT invent or hallucinate news events.
 
 Return a JSON object containing an array of exactly 3 objects under the key "recommendations". 
 Each object must represent a different timeframe and have these exact keys:
