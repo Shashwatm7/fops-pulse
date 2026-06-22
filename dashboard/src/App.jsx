@@ -1255,37 +1255,7 @@ export default function Dashboard() {
             </div>
           ) : recommendations.length > 0 && (
             <div className="mb-xl">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div className="section-label" style={{ marginBottom: 0 }}>Planner Recommendations</div>
-                <button 
-                  onClick={regeneratePlanner}
-                  disabled={aiRecsLoading}
-                  style={{
-                    background: 'rgba(139, 92, 246, 0.2)',
-                    color: '#c4b5fd',
-                    border: '1px solid rgba(139, 92, 246, 0.5)',
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                    cursor: aiRecsLoading ? 'wait' : 'pointer',
-                    opacity: aiRecsLoading ? 0.5 : 1,
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseOver={(e) => {
-                    if (!aiRecsLoading) {
-                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!aiRecsLoading) {
-                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)';
-                    }
-                  }}
-                >
-                  {aiRecsLoading ? 'Generating...' : 'Regenerate ✨'}
-                </button>
-              </div>
+              <div className="section-label">Planner Recommendations</div>
               <div className="grid-auto">
                 {(recommendations || []).map((r, i) => (
                   <div key={i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
@@ -1305,13 +1275,32 @@ export default function Dashboard() {
                     <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
                       {deepDiveText[r.timeframe] ? (
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)' }}>
-                          <strong style={{ color: '#fff', display: 'block', marginBottom: '4px' }}>✨ AI Deep-Dive Analysis:</strong>
-                          {deepDiveText[r.timeframe]}
-                          <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[r.timeframe]} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <strong style={{ color: '#fff' }}>✨ AI Deep-Dive Analysis:</strong>
+                            <button 
+                              onClick={() => handleDeepDive(r)}
+                              disabled={deepDiveLoading[r.timeframe]}
+                              style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[r.timeframe] ? 'wait' : 'pointer', opacity: deepDiveLoading[r.timeframe] ? 0.5 : 1, transition: 'all 0.2s ease' }}
+                              onMouseOver={(e) => { if (!deepDiveLoading[r.timeframe]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)'; }}
+                              onMouseOut={(e) => { if (!deepDiveLoading[r.timeframe]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; }}
+                            >
+                              {deepDiveLoading[r.timeframe] ? 'Generating...' : 'Regenerate ✨'}
+                            </button>
+                          </div>
+                          {deepDiveLoading[r.timeframe] ? (
+                            <div style={{ color: 'var(--accent-emerald)', animation: 'pulse 1.5s infinite', margin: '10px 0' }}>Generating deep dive...</div>
+                          ) : (
+                            <>
+                              {deepDiveText[r.timeframe]}
+                              <div style={{ marginTop: '8px' }}>
+                                <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[r.timeframe]} />
+                              </div>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <button 
-                          onClick={() => handleDeepDive(r, r.timeframe)}
+                          onClick={() => handleDeepDive(r)}
                           disabled={deepDiveLoading[r.timeframe]}
                           style={{ background: 'var(--accent-violet)', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', opacity: deepDiveLoading[r.timeframe] ? 0.7 : 1 }}
                         >
