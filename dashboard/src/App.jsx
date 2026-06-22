@@ -244,6 +244,32 @@ export default function Dashboard() {
   const [livePrices, setLivePrices] = useState({});
   const [liveSelectedSymbol, setLiveSelectedSymbol] = useState('BRENT_CRUDE');
   const [timeframe, setTimeframe] = useState('LIVE');
+
+  const regeneratePlanner = () => {
+    setAiRecsLoading(true);
+    setAiRecommendationsError('');
+    setAiRecommendations([]);
+    fetch(`${API_BASE}/analyze-planner`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ prices, energy, news, weather, forex, weatherExtended: weatherExt, keywords: profile?.news_keywords || [] }),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok || !data.success) throw new Error(data.error || 'AI recommendations unavailable.');
+      return data;
+    }).then(data => {
+      if (data.success && data.recommendations) {
+        setAiRecommendations(data.recommendations);
+      }
+    }).catch(err => {
+      console.error('Failed to load AI recommendations', err);
+      setAiRecommendations([]);
+      setAiRecommendationsError(err.message || 'AI recommendations unavailable.');
+    }).finally(() => {
+      setAiRecsLoading(false);
+    });
+  };
   
   const handleDeepDive = async (r) => {
     const timeframeStr = r.timeframe;
@@ -1229,7 +1255,37 @@ export default function Dashboard() {
             </div>
           ) : recommendations.length > 0 && (
             <div className="mb-xl">
-              <div className="section-label">Planner Recommendations</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div className="section-label" style={{ marginBottom: 0 }}>Planner Recommendations</div>
+                <button 
+                  onClick={regeneratePlanner}
+                  disabled={aiRecsLoading}
+                  style={{
+                    background: 'rgba(139, 92, 246, 0.2)',
+                    color: '#c4b5fd',
+                    border: '1px solid rgba(139, 92, 246, 0.5)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: aiRecsLoading ? 'wait' : 'pointer',
+                    opacity: aiRecsLoading ? 0.5 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => {
+                    if (!aiRecsLoading) {
+                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!aiRecsLoading) {
+                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)';
+                    }
+                  }}
+                >
+                  {aiRecsLoading ? 'Generating...' : 'Regenerate ✨'}
+                </button>
+              </div>
               <div className="grid-auto">
                 {(recommendations || []).map((r, i) => (
                   <div key={i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>

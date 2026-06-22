@@ -1444,12 +1444,12 @@ Each object must represent a different timeframe and have these exact keys:
 `;
 
         const analysisRaw = await callGroq(
-            'llama-3.1-8b-instant',
+            'llama-3.3-70b-versatile',
             analysisPrompt,
             contextBundle,
             true,
             1000,
-            0.5,
+            0.1,
             false
         );
         
