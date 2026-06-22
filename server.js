@@ -2562,6 +2562,13 @@ async function startAIWorker() {
                 if (!embeddings || embeddings.length !== unprocessed.length) {
                     throw new Error('Batch embedding generation failed or returned mismatched count');
                 }
+                
+                // Anti-zero embedding failsafe
+                for (let emb of embeddings) {
+                    if (emb && emb.every(v => v === 0)) {
+                        throw new Error('Gemini returned an invalid zero-filled embedding');
+                    }
+                }
             } catch (embErr) {
                 console.warn('[AI-WORKER] Embedding unavailable. Leaving articles queued for the next budget window.', embErr.message);
                 return;
