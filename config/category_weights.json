@@ -1,0 +1,29 @@
+{
+  "Dairy": {
+    "demand_weights": {
+      "heatwave_demand_uplift": 0.15,
+      "festival_demand_uplift": 0.25
+    },
+    "cost_weights": {
+      "feed_cost_spike": 0.30,
+      "diesel_price_spike": 0.10
+    },
+    "supply_weights": {
+      "dairy_supply_shortage": 0.40,
+      "logistics_disruption": 0.20
+    }
+  },
+  "Poultry": {
+    "demand_weights": {
+      "festival_demand_uplift": 0.20
+    },
+    "cost_weights": {
+      "feed_cost_spike": 0.40,
+      "diesel_price_spike": 0.15
+    },
+    "supply_weights": {
+      "avian_flu_outbreak": 0.50,
+      "logistics_disruption": 0.25
+    }
+  }
+}
