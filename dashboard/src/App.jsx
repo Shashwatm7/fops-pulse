@@ -13,7 +13,7 @@ import LoginPage from './LoginPage.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import SettingsPage from './SettingsPage.jsx';
 import AdminPage from './AdminPage.jsx';
-
+import EventForecastEngine from './EventForecastEngine.jsx';
 const CustomTooltip = ({ active, payload, label, symbol }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -355,6 +355,7 @@ export default function Dashboard() {
 
   const tabs = [
     { id: 'pulse', label: 'Command Center', icon: <Activity size={14} /> },
+    { id: 'forecast', label: 'Forecast Engine', icon: <Activity size={14} /> },
     { id: 'alerts', label: 'Alerts', icon: <Zap size={14} /> },
     { id: 'actions', label: 'Recommendations', icon: <PlaySquare size={14} /> }
   ];
@@ -1220,6 +1221,7 @@ export default function Dashboard() {
               <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>Forecast confidence: {forecast.confidence}</div>
             </div>
           )}
+          <EventForecastEngine category="Dairy" />
           {scenarios.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Scenario Engine</div>

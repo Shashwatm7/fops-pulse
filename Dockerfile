@@ -2,7 +2,11 @@
 FROM node:22-slim
 
 # Install Python, pip, and required system dependencies
-RUN apt-get update && apt-get install -y \
+RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
+    echo "Acquire::http::No-Cache true;" >> /etc/apt/apt.conf.d/99custom && \
+    echo "Acquire::BrokenProxy true;" >> /etc/apt/apt.conf.d/99custom
+
+RUN apt-get clean && apt-get update --fix-missing -o Acquire::CompressionTypes::Order::=gz && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \

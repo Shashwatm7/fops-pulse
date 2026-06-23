@@ -1451,7 +1451,7 @@ Each object must represent a different timeframe and have these exact keys:
             true,
             1000,
             0.1,
-            false
+            true
         );
         
         let recs = [];
@@ -2666,7 +2666,34 @@ Keep each forecast concise, professional, and action-oriented (1-2 sentences). D
     setInterval(generate, AI_FORECAST_INTERVAL_MS);
 }
 
-setTimeout(() => runLLMForecastLoop(), 10000); // Init loop after 10s
+// ── Phase 5: Event-Aware Forecasting APIs ──────────────────────────────
+app.get('/api/forecast/:category', async (req, res) => {
+    try {
+        const cat = req.params.category;
+        const result = await pool.query(
+            `SELECT * FROM forecast_outputs WHERE category = $1 ORDER BY forecast_date DESC, horizon_days ASC LIMIT 10`,
+            [cat]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('Forecast fetch error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch forecast outputs' });
+    }
+});
+
+app.get('/api/recommendations/:category', async (req, res) => {
+    try {
+        const cat = req.params.category;
+        const result = await pool.query(
+            `SELECT * FROM recommendations WHERE category = $1 ORDER BY generated_at DESC LIMIT 10`,
+            [cat]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('Recommendations fetch error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch recommendations' });
+    }
+});
 
 const PORT = process.env.PORT || 3001;
 
