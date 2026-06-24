@@ -19,6 +19,7 @@ import nodemailer from 'nodemailer';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
+import { getDynamicContext } from './services/recommendations/context_router.js';
 
 if (fs.existsSync('/etc/secrets/.env')) { 
     dotenv.config({ path: '/etc/secrets/.env' }); 
@@ -175,7 +176,7 @@ const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
 const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 3);
 
-async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
+export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
     try {
         if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
         const response = await axios.post(
@@ -1228,6 +1229,8 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
             }
         } catch(e) { console.error('Failed to read ML forecasts:', e.message); }
 
+        const dynamicContext = await getDynamicContext(focusProduct, focusRegion, callGroq);
+
         const contextBundle = `
 === TARGET ACTION PLAN (${timeframe}) ===
 ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (deterministicAction || 'No action provided.')}
@@ -1235,14 +1238,15 @@ ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (determ
 === LOCAL ML FORECASTS & SAFETY STOCKS ===
 ${mlForecasts}
 
-=== REAL-TIME LIVE NEWS ===
-Top 5 News: ${(news || []).slice(0, 5).map(n => n.title).join(' | ')}
+=== DYNAMIC CONCEPTUAL CONTEXT (ROUTED FOR ${focusProduct}) ===
+Global Supply Regions Monitored: ${dynamicContext.routing_metadata.regions.map(r => r.name).join(', ')}
+Conceptual Reasoning: ${dynamicContext.routing_metadata.regions.map(r => r.reason).join(' | ')}
+Dynamic Weather Data: ${JSON.stringify(dynamicContext.dynamic_weather)}
+Targeted News Keywords: ${dynamicContext.dynamic_news_keywords.join(', ')}
 
-=== MARKET DATA ===
+=== MARKET DATA (SECONDARY) ===
 Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
-Weather Alerts: ${(weatherExtended || []).filter(w => w.analytics?.alert !== 'NORMAL').map(w => `${w.name}: ${w.analytics?.alert}`).join(', ')}
 Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
-Air Freight Rates: $${logisticsData.airFreightRates?.ratePerKg ?? 'N/A'}/kg (${logisticsData.airFreightRates?.trend ?? 'N/A'})
 Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
 ${feedbackContext}
 `.trim();
@@ -1251,7 +1255,7 @@ ${feedbackContext}
 The user requested an "AI Deep Dive" into the rationale behind their ${timeframe} supply chain action plan.
 
 CRITICAL INSTRUCTIONS:
-1. You MUST heavily analyze the "REAL-TIME LIVE NEWS" provided in the context. Connect the news events directly to the supply chain actions.
+1. You MUST heavily analyze the "DYNAMIC CONCEPTUAL CONTEXT" to provide real-world, logical backing for the action plan. Connect specific regional weather disruptions or targeted news keywords directly to the supply chain actions.
 2. DO NOT use generic phrases like "variance index" or "macroeconomic indicators" unless it is explicitly tied to the news provided.
 3. Be highly detailed, specific, and actionable. Provide 2-3 paragraphs of deep analysis.
 4. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
@@ -1402,6 +1406,8 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
 
         const logisticsData = cachedRealTimeLogistics;
 
+        const dynamicContext = await getDynamicContext(focusProduct, focusRegion, callGroq);
+
         const contextBundle = `
 === USER PROFILE ===
 Focus Product: ${focusProduct}
@@ -1412,22 +1418,26 @@ Custom Keywords: ${userKeywords.join(', ')}
 === LOCAL ML FORECASTS & SAFETY STOCKS ===
 ${mlForecasts}
 
-=== REAL-TIME DATA ===
+=== DYNAMIC CONCEPTUAL CONTEXT (ROUTED FOR ${focusProduct}) ===
+Global Supply Regions Monitored: ${dynamicContext.routing_metadata.regions.map(r => r.name).join(', ')}
+Conceptual Reasoning: ${dynamicContext.routing_metadata.regions.map(r => r.reason).join(' | ')}
+Dynamic Weather Data: ${JSON.stringify(dynamicContext.dynamic_weather)}
+Targeted News Keywords: ${dynamicContext.dynamic_news_keywords.join(', ')}
+
+=== REAL-TIME DATA (SECONDARY) ===
 Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
-Weather Alerts: ${(weatherExtended || []).filter(w => w.analytics?.alert !== 'NORMAL').map(w => `${w.name}: ${w.analytics?.alert}`).join(', ')}
 Key Currencies: ${Object.values(forex || {}).map(f => `${f.name}: ${f.rate}`).join(', ')}
-Top 5 News: ${(news || []).slice(0, 5).map(n => n.title).join(' | ')}
 Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
-Air Freight Rates: $${logisticsData.airFreightRates?.ratePerKg ?? 'N/A'}/kg (${logisticsData.airFreightRates?.trend ?? 'N/A'})
 Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
 ${feedbackContext}
 `.trim();
 
         const analysisPrompt = `You are FOPs Market Pulse — an executive-grade supply chain intelligence engine.
-Based on the LOCAL ML FORECASTS and REAL-TIME DATA (especially the Top 5 News), generate exactly 3 strategic, highly personalized planner recommendations.
+Based on the LOCAL ML FORECASTS and the DYNAMIC CONCEPTUAL CONTEXT (which identifies the global supply regions crucial to the user's specific commodity), generate exactly 3 strategic, highly personalized planner recommendations.
 
 CRITICAL INSTRUCTIONS:
-1. The 3 recommendations MUST form a cohesive, phased strategy addressing the most critical risk/opportunity found in the data. Do NOT just pick 3 random SKUs.
+1. The 3 recommendations MUST form a cohesive, phased strategy addressing the most critical risk/opportunity found in the Dynamic Conceptual Context (e.g. weather disruptions in a crucial supply region). Do NOT just pick 3 random SKUs.
+2. You MUST provide the conceptual backing for your recommendation (e.g. "Because of expected heavy rain in the US Midwest, grain feed costs will rise, impacting your dairy costs").
 2. The "7D" action must be an IMMEDIATE TACTICAL response (e.g., spot buys, rerouting shipments, emergency safety stock releases).
 3. The "30D" action must be a MID-TERM OPERATIONAL adjustment (e.g., updating Reorder Points, renegotiating short-term contracts, shifting allocations).
 4. The "90D" action must be a LONG-TERM STRATEGIC shift (e.g., onboarding new alternative suppliers, network redesign, product reformulation, hedging).
