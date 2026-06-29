@@ -1229,6 +1229,14 @@ ${feedbackContext}
 The user requested an "AI Deep Dive" into the rationale behind their ${timeframe} supply chain action plan.
 
 CRITICAL INSTRUCTIONS:
+=== FILTERING RULES (MANDATORY) ===
+- Treat the user-selected commodities as the only valid scope for analysis.
+- Before any reasoning, filter every API response to retain only records directly related to the selected commodities.
+- Discard: News about any non-selected commodity, weather impacts for regions growing non-selected commodities, supply chain events unrelated to selected commodities, price discussions of unrelated commodities, recommendations generated from indirect or irrelevant commodity trends.
+- If an article discusses multiple commodities, extract and retain only the portions relevant to the selected commodities. Ignore the rest.
+- Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
+- Never mention or recommend actions based on commodities that the user did not select.
+===================================
 1. You MUST heavily analyze the "DYNAMIC CONCEPTUAL CONTEXT" to provide real-world, logical backing for the action plan. Connect specific regional weather disruptions or targeted news keywords directly to the supply chain actions.
 2. DO NOT use generic phrases like "variance index" or "macroeconomic indicators" unless it is explicitly tied to the news provided.
 3. Be highly detailed, specific, and actionable. Provide 2-3 paragraphs of deep analysis.
@@ -1404,6 +1412,14 @@ ${feedbackContext}
 Based on the DYNAMIC CONCEPTUAL CONTEXT (which identifies the global supply regions crucial to the user's specific commodity), generate exactly 3 strategic, highly personalized planner recommendations.
 
 CRITICAL INSTRUCTIONS:
+=== FILTERING RULES (MANDATORY) ===
+- Treat the user-selected commodities as the only valid scope for analysis.
+- Before any reasoning, filter every API response to retain only records directly related to the selected commodities.
+- Discard: News about any non-selected commodity, weather impacts for regions growing non-selected commodities, supply chain events unrelated to selected commodities, price discussions of unrelated commodities, recommendations generated from indirect or irrelevant commodity trends.
+- If an article discusses multiple commodities, extract and retain only the portions relevant to the selected commodities. Ignore the rest.
+- Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
+- Never mention or recommend actions based on commodities that the user did not select.
+===================================
 1. The 3 recommendations MUST form a cohesive, phased strategy addressing the most critical risk/opportunity found in the Dynamic Conceptual Context (e.g. weather disruptions in a crucial supply region). Do NOT just pick 3 random SKUs.
 2. You MUST provide the conceptual backing for your recommendation (e.g. "Because of expected heavy rain in the US Midwest, grain feed costs will rise, impacting your dairy costs").
 2. The "7D" action must be an IMMEDIATE TACTICAL response (e.g., spot buys, rerouting shipments, emergency safety stock releases).
