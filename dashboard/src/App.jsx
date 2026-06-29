@@ -1181,23 +1181,7 @@ export default function Dashboard() {
         </div>
       )}
 
-          {scenarios.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Scenario Engine</div>
-              <div className="grid-2">
-                {(scenarios || []).map((sc, i) => (
-                  <div key={i} className={`intel-card scenario-card ${sc.name} stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                    <div className="scenario-name">{sc.name === 'BASE' ? '◉ Base Case' : '⚠ Stress Scenario'}</div>
-                    <div className="scenario-probability"><div className="prob-bar"><div className={`prob-fill ${sc.name}`} style={{ width: `${sc.probability}%` }} /></div><span className="prob-value">{sc.probability}%</span></div>
-                    <div className="scenario-outcome">{sc.outcome}</div>
-                    {sc.watchSignals?.length > 0 && <div className="watch-signals">{(sc.watchSignals || []).map((s, j) => <span key={j} className="signal-chip">{s}</span>)}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+
 
       {/* ═══════════ ACTIONS ═══════════ */}
       {tab === 'actions' && (
