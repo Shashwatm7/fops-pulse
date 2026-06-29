@@ -13,7 +13,7 @@ import LoginPage from './LoginPage.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import SettingsPage from './SettingsPage.jsx';
 import AdminPage from './AdminPage.jsx';
-import EventForecastEngine from './EventForecastEngine.jsx';
+
 const CustomTooltip = ({ active, payload, label, symbol }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -355,7 +355,6 @@ export default function Dashboard() {
 
   const tabs = [
     { id: 'pulse', label: 'Command Center', icon: <Activity size={14} /> },
-    { id: 'forecast', label: 'Forecast Engine', icon: <Activity size={14} /> },
     { id: 'alerts', label: 'Alerts', icon: <Zap size={14} /> },
     { id: 'actions', label: 'Recommendations', icon: <PlaySquare size={14} /> }
   ];
@@ -1182,21 +1181,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ═══════════ FORECAST ═══════════ */}
-      {tab === 'forecast' && (
-        <div className={`tab-content enter-${tabDirection}`} key="forecast">
-          {forecast && (
-            <div className="mb-xl">
-              <div className="section-label">Market Forecast</div>
-              <div className="forecast-grid">
-                {[{ period: 'Next 7 Days', text: forecast.next7d }, { period: 'Next 30 Days', text: forecast.next30d }, { period: 'Next 90 Days', text: forecast.next90d }].map((f, i) => (
-                  <div key={i} className={`intel-card forecast-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="period">{f.period}</div><div className="forecast-text">{f.text}</div></div>
-                ))}
-              </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>Forecast confidence: {forecast.confidence}</div>
-            </div>
-          )}
-          <EventForecastEngine category="Dairy" />
           {scenarios.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Scenario Engine</div>
