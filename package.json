@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node migrate.js && python3 services/forecast/baseline.py && python3 services/forecast/adjustment.py && node server.js",
+    "start": "node migrate.js && node server.js",
     "build": "cd dashboard && npm install && npm run build"
   },
   "keywords": [],
