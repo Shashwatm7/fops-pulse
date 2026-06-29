@@ -1107,31 +1107,6 @@ export default function Dashboard() {
           )}
 
 
-          {energy && (
-            <div className="mb-xl">
-              <div className="section-label">Brent Crude Market Feed</div>
-              <div className="grid-2">
-                {energy.brent?.current && (
-                  <div className="intel-card energy-card" onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                    <div className="label">Brent Crude Oil</div>
-                    <div className="price"><AnimatedValue value={parseFloat(energy.brent.current.value)} prefix="$" /><span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/bbl</span></div>
-                    <div className="context">Key input: fertiliser + transport costs</div>
-                    {energy.brent.history?.length > 3 && (
-                      <div style={{ marginTop: '12px', height: 60, minWidth: 0 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={energy.brent.history}>
-                            <defs><linearGradient id="oilGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/></linearGradient></defs>
-                            <Area type="monotone" dataKey="value" stroke="#f59e0b" fill="url(#oilGrad)" strokeWidth={1.5} dot={false} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {analysis?.logistics && (
             <div className="mb-xl">
               <div className="section-label">Real-Time Logistics Intelligence</div>
