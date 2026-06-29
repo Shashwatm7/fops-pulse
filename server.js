@@ -34,34 +34,14 @@ const upload = multer({ storage: multer.memoryStorage() });
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 
-// ── Nodemailer Setup ──
-let transporter;
-if (process.env.SMTP_HOST && process.env.SMTP_PASS) {
-    // Use Production/External API (e.g., Resend, SendGrid)
-    transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT || 465,
-        secure: true,
-        auth: {
-            user: process.env.SMTP_USER || 'resend',
-            pass: process.env.SMTP_PASS
-        }
-    });
-    console.log('Production SMTP Transporter initialized.');
-} else {
-    // Fallback to Ethereal (Testing) if no API key is provided
-    nodemailer.createTestAccount((err, account) => {
-        if (!err) {
-            transporter = nodemailer.createTransport({
-                host: account.smtp.host,
-                port: account.smtp.port,
-                secure: account.smtp.secure,
-                auth: { user: account.user, pass: account.pass }
-            });
-            console.log('Ethereal Test Email initialized. (Add SMTP_PASS to .env for real emails)');
-        }
-    });
-}
+/// ── Nodemailer Setup ──
+let transporter = {
+    sendMail: (options, callback) => {
+        console.log(`[EMAIL DISABLED] Blocked email to: ${options.to} (Subject: ${options.subject})`);
+        if (callback) callback(null, { messageId: 'disabled' });
+        return Promise.resolve({ messageId: 'disabled' });
+    }
+};
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
