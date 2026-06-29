@@ -1,8 +1,0 @@
-numpy
-pandas
-matplotlib
-statsmodels
-scikit-learn
-lightgbm
-psycopg2-binary
-python-dotenv
