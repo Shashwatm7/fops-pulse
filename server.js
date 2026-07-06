@@ -1091,7 +1091,13 @@ app.get('/api/pipeline-audit', requireAuth, async (req, res) => {
 
 app.post('/api/trigger-scan', requireAuth, async (req, res) => {
     try {
-        scanUserSpecificNews(); // Run async without blocking
+        // Run the scan specifically for this user and wait for it to finish
+        // so that the frontend's refresh actually sees the new logs.
+        if (global.triggerUserScan) {
+            await global.triggerUserScan(req.session.userId);
+        } else {
+            scanUserSpecificNews(); // fallback if global not registered yet
+        }
         res.json({ success: true, message: 'Scanner triggered successfully' });
     } catch (err) {
         console.error('Failed to trigger scanner:', err);

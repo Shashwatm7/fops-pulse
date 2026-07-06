@@ -54,8 +54,7 @@ export class NewsPipeline {
         }
 
         const doReturn = async (res) => {
-            // Do not log duplicates to the database to prevent spamming the analytics dashboard
-            if (this.auditLogFn && !(res.stage === 9 && !res.accepted)) {
+            if (this.auditLogFn) {
                 const userId = userProfile.user_id || userProfile.id || userProfile.userId;
                 const stageToLog = res.accepted ? null : res.stage;
                 await this.auditLogFn(userId, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
