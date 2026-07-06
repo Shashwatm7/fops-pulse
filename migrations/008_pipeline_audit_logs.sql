@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS pipeline_audit_logs (
     rejection_reason TEXT,
     relevance_score NUMERIC,
     is_accepted BOOLEAN DEFAULT FALSE,
+    extracted_features JSONB,
     scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
