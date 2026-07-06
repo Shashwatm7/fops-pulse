@@ -3,37 +3,30 @@ import json
 import httpx
 import asyncio
 import re
+
 def get_groq_keys():
     keys_env = os.getenv("GROQ_API_KEY", "")
     return [k.strip() for k in keys_env.split(",") if k.strip()]
 
-GROQ_API_KEYS = get_groq_keys()
 _current_groq_key_idx = 0
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = True):
-    headers = {
-        "Content-Type": "application/json"
-    }
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("GEMINI_API_KEY is not set — cannot use Gemini fallback.")
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     payload = {
-        "system_instruction": {
-            "parts": [{"text": system_prompt}]
-        },
-        "contents": [
-            {"parts": [{"text": user_prompt}]}
-        ],
-        "generationConfig": {
-            "temperature": 0.1
-        }
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": user_prompt}]}],
+        "generationConfig": {"temperature": 0.1}
     }
     
     if json_mode:
         payload["generationConfig"]["responseMimeType"] = "application/json"
         
-    
     for attempt in range(3):
         try:
             async with httpx.AsyncClient() as client:
@@ -56,12 +49,19 @@ async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = Tr
                         raise e
                 return content
         except Exception as e:
-            print(f"[ERROR] Gemini failed in Python microservice: {e}")
+            print(f"[ERROR] Gemini failed: {e}")
             raise e
 
 async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500):
     global _current_groq_key_idx
-    keys = GROQ_API_KEYS or [None]
+    
+    # Read keys FRESH each call (not at import time)
+    keys = get_groq_keys()
+    print(f"[GROQ DEBUG] Keys found: {len(keys)}, first key starts with: {keys[0][:10] + '...' if keys else 'NONE'}")
+    
+    if not keys:
+        print("[GROQ ERROR] No GROQ_API_KEY found in environment! Trying Gemini...")
+        return await call_gemini(system_prompt, user_prompt, json_mode)
     
     payload = {
         "model": model,
@@ -78,14 +78,14 @@ async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-in
         payload["messages"][1]["content"] = user_prompt
         payload["response_format"] = {"type": "json_object"}
         
-    models_to_try = [model, "mixtral-8x7b-32768", "llama-3.1-8b-instant"]
+    models_to_try = [model, "llama-3.1-8b-instant"]
+    last_error = None
     
     async with httpx.AsyncClient() as client:
         for attempt in range(max(1, len(keys))):
-            api_key = keys[_current_groq_key_idx] if keys[0] else None
-            if not api_key:
-                break
-                
+            key_idx = _current_groq_key_idx % len(keys)
+            api_key = keys[key_idx]
+            
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
@@ -95,26 +95,43 @@ async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-in
             for m in models_to_try:
                 payload["model"] = m
                 try:
+                    print(f"[GROQ] Trying model={m}, key={key_idx + 1}/{len(keys)}, key_prefix={api_key[:10]}...")
                     response = await client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=30.0)
+                    print(f"[GROQ] Response status: {response.status_code}")
+                    
                     if response.status_code == 429:
-                        print(f"[RATE LIMIT] Groq key {_current_groq_key_idx + 1}/{len(keys)} hit rate limit for model {m}.")
+                        print(f"[RATE LIMIT] Groq key {key_idx + 1}/{len(keys)} hit rate limit for model {m}.")
                         key_failed_due_to_429 = True
-                        break # Give up on this key for all models, move to next key
+                        break
+                    
+                    if response.status_code == 401:
+                        print(f"[AUTH ERROR] Groq key {key_idx + 1} returned 401. Key prefix: {api_key[:12]}... Key length: {len(api_key)}")
+                        last_error = Exception(f"Groq 401 Unauthorized for key {key_idx + 1}")
+                        continue
                         
                     response.raise_for_status()
                     data = response.json()
                     content = data["choices"][0]["message"]["content"]
+                    print(f"[GROQ] Success! Model={m}, tokens used: {data.get('usage', {}).get('total_tokens', '?')}")
                     return json.loads(content) if json_mode else content
                 except Exception as e:
-                    print(f"[FAILOVER] Groq model {m} failed with key {_current_groq_key_idx + 1}: {e}")
+                    last_error = e
+                    print(f"[FAILOVER] Groq model {m} failed with key {key_idx + 1}: {e}")
             
             if not key_failed_due_to_429:
                 break
                 
             _current_groq_key_idx = (_current_groq_key_idx + 1) % len(keys)
-            
-        print(f"[FAILOVER] All Groq models/keys failed. Falling back to Gemini 2.5 Flash...")
+    
+    print(f"[FAILOVER] All Groq models/keys failed. Last error: {last_error}")
+    
+    # Only try Gemini if we have a key
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        print(f"[FALLBACK] Trying Gemini 2.5 Flash...")
         return await call_gemini(system_prompt, user_prompt, json_mode)
+    
+    raise Exception(f"All AI providers failed. Groq error: {last_error}. No GEMINI_API_KEY set for fallback.")
 
 async def get_dynamic_context(focus_product: str, focus_region: str):
     system_prompt = "You are a supply chain routing engine. Output JSON only."
