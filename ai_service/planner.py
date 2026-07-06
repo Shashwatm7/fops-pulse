@@ -3,7 +3,12 @@ import json
 import httpx
 import asyncio
 import re
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+def get_groq_keys():
+    keys_env = os.getenv("GROQ_API_KEY", "")
+    return [k.strip() for k in keys_env.split(",") if k.strip()]
+
+GROQ_API_KEYS = get_groq_keys()
+_current_groq_key_idx = 0
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = True):
@@ -55,10 +60,8 @@ async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = Tr
             raise e
 
 async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500):
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    global _current_groq_key_idx
+    keys = GROQ_API_KEYS or [None]
     
     payload = {
         "model": model,
@@ -78,18 +81,39 @@ async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-in
     models_to_try = [model, "mixtral-8x7b-32768", "llama-3.1-8b-instant"]
     
     async with httpx.AsyncClient() as client:
-        for m in models_to_try:
-            payload["model"] = m
-            try:
-                response = await client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=30.0)
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                return json.loads(content) if json_mode else content
-            except Exception as e:
-                print(f"[FAILOVER] Groq model {m} failed in Python microservice: {e}")
+        for attempt in range(max(1, len(keys))):
+            api_key = keys[_current_groq_key_idx] if keys[0] else None
+            if not api_key:
+                break
                 
-        print(f"[FAILOVER] All Groq models failed. Falling back to Gemini 2.5 Flash...")
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            key_failed_due_to_429 = False
+            for m in models_to_try:
+                payload["model"] = m
+                try:
+                    response = await client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=30.0)
+                    if response.status_code == 429:
+                        print(f"[RATE LIMIT] Groq key {_current_groq_key_idx + 1}/{len(keys)} hit rate limit for model {m}.")
+                        key_failed_due_to_429 = True
+                        break # Give up on this key for all models, move to next key
+                        
+                    response.raise_for_status()
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+                    return json.loads(content) if json_mode else content
+                except Exception as e:
+                    print(f"[FAILOVER] Groq model {m} failed with key {_current_groq_key_idx + 1}: {e}")
+            
+            if not key_failed_due_to_429:
+                break
+                
+            _current_groq_key_idx = (_current_groq_key_idx + 1) % len(keys)
+            
+        print(f"[FAILOVER] All Groq models/keys failed. Falling back to Gemini 2.5 Flash...")
         return await call_gemini(system_prompt, user_prompt, json_mode)
 
 async def get_dynamic_context(focus_product: str, focus_region: str):
