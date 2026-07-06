@@ -1512,7 +1512,8 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
         console.log('[AI PLANNER] Proxying request to Python FastAPI Microservice...');
-        const pythonRes = await axios.post('http://127.0.0.1:8000/api/analyze-planner', payload, { timeout: 45000 });
+        const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
+        const pythonRes = await axios.post(`${aiBaseUrl}/api/analyze-planner`, payload, { timeout: 45000 });
         
         if (pythonRes.data.success) {
             global.aiPlannerCache[cacheKey] = { data: pythonRes.data.recommendations, timestamp: Date.now() };
