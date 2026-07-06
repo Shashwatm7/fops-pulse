@@ -235,9 +235,6 @@ async def generate_planner_recommendations(payload: dict):
     feedback_context = payload.get("feedbackContext", "")
     logistics_data = payload.get("logisticsData", {})
     
-    # 1. Get dynamic context FAST using Gemini
-    dynamic_context = await get_dynamic_context(focus_product, focus_region)
-    
     short_weather = " | ".join([f"{w.get('name')}: {w.get('analytics', {}).get('alert', w.get('alert', 'NORMAL'))}" for w in weather_extended])
     top_news_intelligence = extract_top_news_intelligence(news, focus_product, user_commodities, focus_region, user_regions)
     top_news_intelligence_block = format_news_intelligence(top_news_intelligence)
@@ -254,14 +251,12 @@ Focus Region: {focus_region}
 Tracked Commodities: {', '.join(user_commodities)}
 Tracked Regions: {', '.join(user_regions)}
 
-=== DYNAMIC CONCEPTUAL CONTEXT (ROUTED FOR {focus_product}) ===
-Global Supply Regions Monitored: {', '.join([r.get('name', '') for r in dynamic_context.get('routing_metadata', {}).get('regions', [])])}
+=== WEATHER & LOGISTICS ===
 Dynamic Weather Data: {short_weather}
-Targeted News Keywords: {', '.join(dynamic_context.get('dynamic_news_keywords', []))}
-
-=== REAL-TIME DATA (SECONDARY) ===
-Live Commodity Prices: {short_prices}
 Port Congestion: {', '.join([f"{p.get('port')} ({p.get('status')})" for p in logistics_data.get('portCongestion', [])])}
+
+=== REAL-TIME DATA ===
+Live Commodity Prices: {short_prices}
 
 === MARKET INTELLIGENCE ===
 Locally Extracted Useful Info From Top Relevant News:
