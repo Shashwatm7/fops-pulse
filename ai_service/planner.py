@@ -10,8 +10,8 @@ def get_groq_keys():
 
 _current_groq_key_idx = 0
 
-async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = True):
-    api_key = os.getenv("GEMINI_API_KEY")
+async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = True, api_key_override: str = None):
+    api_key = api_key_override or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise Exception("GEMINI_API_KEY is not set — cannot use Gemini fallback.")
     
@@ -52,16 +52,20 @@ async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = Tr
             print(f"[ERROR] Gemini failed: {e}")
             raise e
 
-async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500):
+async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500, api_keys_override: str = None, gemini_key_override: str = None):
     global _current_groq_key_idx
     
     # Read keys FRESH each call (not at import time)
-    keys = get_groq_keys()
+    if api_keys_override:
+        keys = [k.strip() for k in api_keys_override.split(",") if k.strip()]
+    else:
+        keys = get_groq_keys()
+        
     print(f"[GROQ DEBUG] Keys found: {len(keys)}, first key starts with: {keys[0][:10] + '...' if keys else 'NONE'}")
     
     if not keys:
         print("[GROQ ERROR] No GROQ_API_KEY found in environment! Trying Gemini...")
-        return await call_gemini(system_prompt, user_prompt, json_mode)
+        return await call_gemini(system_prompt, user_prompt, json_mode, gemini_key_override)
     
     payload = {
         "model": model,
@@ -126,10 +130,10 @@ async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-in
     print(f"[FAILOVER] All Groq models/keys failed. Last error: {last_error}")
     
     # Only try Gemini if we have a key
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    gemini_key = gemini_key_override or os.getenv("GEMINI_API_KEY")
     if gemini_key:
         print(f"[FALLBACK] Trying Gemini 2.5 Flash...")
-        return await call_gemini(system_prompt, user_prompt, json_mode)
+        return await call_gemini(system_prompt, user_prompt, json_mode, gemini_key_override)
     
     raise Exception(f"All AI providers failed. Groq error: {last_error}. No GEMINI_API_KEY set for fallback.")
 
@@ -309,4 +313,11 @@ Each object must have these exact keys:
 """
 
     # 2. Generate final recommendations using Groq Llama 3.3 70B for high-quality reasoning
-    return await call_groq(analysis_prompt, context_bundle, model="llama-3.1-8b-instant")
+    return await call_groq(
+        analysis_prompt,
+        context_bundle,
+        model="llama-3.1-8b-instant",
+        json_mode=True,
+        api_keys_override=payload.get("_groq_api_key"),
+        gemini_key_override=payload.get("_gemini_api_key")
+    )

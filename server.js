@@ -1523,6 +1523,11 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
 
         console.log('[AI PLANNER] Proxying request to Python FastAPI Microservice...');
         const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
+        
+        // Pass API keys from Node env to Python (Docker env sharing can be unreliable)
+        payload._groq_api_key = process.env.GROQ_API_KEY;
+        payload._gemini_api_key = process.env.GEMINI_API_KEY;
+        
         const pythonRes = await axios.post(`${aiBaseUrl}/api/analyze-planner`, payload, { timeout: 45000 });
         
         if (pythonRes.data.success) {
