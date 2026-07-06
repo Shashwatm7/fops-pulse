@@ -26,14 +26,26 @@ async function runMigrations() {
       'migrations/008_pipeline_audit_logs.sql',
       'migrations/009_pipeline_audit_features.sql'
     ];
+    let failures = 0;
     for (const file of migrationFiles) {
       if (fs.existsSync(file)) {
         console.log(`Executing ${file}...`);
         const sql = fs.readFileSync(file, 'utf8');
-        await client.query(sql);
+        try {
+          await client.query(sql);
+        } catch (err) {
+          // Continue to the next file: one failing migration must not
+          // silently block every migration after it.
+          failures++;
+          console.error(`MIGRATION FAILED (${file}):`, err.message);
+        }
       }
     }
-    console.log('Migrations completed successfully!');
+    if (failures > 0) {
+      console.error(`Migrations finished with ${failures} failure(s) — see errors above.`);
+    } else {
+      console.log('Migrations completed successfully!');
+    }
   } catch (err) {
     console.error('Migration failed:', err);
   } finally {
