@@ -152,13 +152,19 @@ def _normalize_terms(values):
         if not value:
             continue
         for part in str(value).replace("/", ",").split(","):
-            term = part.strip().lower()
+            # Commodity codes are stored as UPPER_SNAKE (e.g. LIVE_CATTLE,
+            # ORANGE_JUICE). News text uses spaces ("live cattle"), so
+            # normalize underscores to spaces or these never match.
+            term = part.strip().lower().replace("_", " ")
             if term and term not in terms:
                 terms.append(term)
     return terms
 
 def _matches_any(text, terms):
-    return [term for term in terms if term and term in text]
+    # Word-boundary match so "rice" does not match inside "prices" and
+    # "corn" does not match inside "popcorn". escape() handles multi-word
+    # phrases like "live cattle" and any regex-special characters.
+    return [term for term in terms if term and re.search(r"\b" + re.escape(term) + r"\b", text)]
 
 def _extract_values(text):
     patterns = [
