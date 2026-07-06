@@ -2,30 +2,34 @@
 // Predefined configurations for fast customer onboarding.
 // Each template pre-selects commodities, regions, news keywords, and currencies.
 
+// Only commodities with a REAL Yahoo Finance futures contract are offered.
+// yahooSymbol is the single source of truth for price fetching (server.js
+// derives YAHOO_SYMBOLS from this list). No equity proxies, no synthetic data.
+// Every ticker below was verified live against Yahoo (quote + chart).
+// Removed: POULTRY (no liquid broiler futures — only a Tyson stock proxy),
+// COTTON (CT=F fails yahoo-finance2 schema validation, unfetchable).
 export const ALL_COMMODITIES = [
-  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: 'USD/bushel' },
-  { key: 'CORN', label: 'Corn', category: 'Grains', unit: 'USD/bushel' },
-  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: 'USD/bushel' },
-  { key: 'RICE', label: 'Rice', category: 'Grains', unit: 'USD/cwt' },
-  { key: 'OATS', label: 'Oats', category: 'Grains', unit: 'USD/bushel' },
-  { key: 'COTTON', label: 'Cotton', category: 'Grains', unit: 'USD/lb' },
-  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: 'USD/lb' },
-  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: 'USD/lb' },
-  { key: 'COCOA', label: 'Cocoa', category: 'Soft Commodities', unit: 'USD/ton' },
-  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: 'USD/lb' },
-  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: 'USD/lb' },
-  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: 'USD/lb' },
-  { key: 'POULTRY', label: 'Poultry (Broilers)', category: 'Livestock', unit: 'USD/lb' },
-  { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: 'USD/cwt' },
-  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: 'USD/lb' },
-  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: 'USD/lb' },
-  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: 'USD/ton' },
-  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: 'USD/oz' },
-  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: 'USD/oz' },
-  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: 'USD/oz' },
-  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: 'USD/1000bf' },
-  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: 'USD/barrel' },
-  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: 'USD/MMBtu' },
+  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZW=F' },
+  { key: 'CORN', label: 'Corn', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZC=F' },
+  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZS=F' },
+  { key: 'RICE', label: 'Rice', category: 'Grains', unit: 'USD/cwt', yahooSymbol: 'ZR=F' },
+  { key: 'OATS', label: 'Oats', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZO=F' },
+  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'SB=F' },
+  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'KC=F' },
+  { key: 'COCOA', label: 'Cocoa', category: 'Soft Commodities', unit: 'USD/ton', yahooSymbol: 'CC=F' },
+  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'GF=F' },
+  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'HE=F' },
+  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'LE=F' },
+  { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: 'USD/cwt', yahooSymbol: 'DC=F' },
+  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'OJ=F' },
+  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: 'USD/lb', yahooSymbol: 'HG=F' },
+  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: 'USD/ton', yahooSymbol: 'ALI=F' },
+  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'GC=F' },
+  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'SI=F' },
+  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'PL=F' },
+  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: 'USD/1000bf', yahooSymbol: 'LBR=F' },
+  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: 'USD/barrel', yahooSymbol: 'BZ=F' },
+  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: 'USD/MMBtu', yahooSymbol: 'NG=F' },
 ];
 
 export const ALL_REGIONS = [
@@ -45,7 +49,7 @@ export const TEMPLATES = {
     name: 'Frozen Foods – Middle East',
     description: 'Full frozen food supply chain intelligence for the GCC and MENA region.',
     icon: '🧊',
-    commodities: ['MILK', 'LIVE_CATTLE', 'POULTRY', 'ORANGE_JUICE', 'WHEAT', 'CORN', 'RICE', 'SOYBEANS', 'SUGAR', 'BRENT_CRUDE'],
+    commodities: ['MILK', 'LIVE_CATTLE', 'ORANGE_JUICE', 'WHEAT', 'CORN', 'RICE', 'SOYBEANS', 'SUGAR', 'BRENT_CRUDE'],
     regions: ['Saudi Arabia Al-Hasa', 'UAE Sweihan', 'Egypt Nile Delta', 'Jordan Valley', 'Oman Al Batinah', 'Qatar Al Khor', 'Kuwait Wafra', 'Bahrain'],
     focus_region: 'Middle East',
     focus_countries: ['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Egypt', 'Jordan'],
@@ -60,7 +64,7 @@ export const TEMPLATES = {
     name: 'Grains & Agriculture – Global',
     description: 'Track global grain markets, crop yields, and agricultural trade flows.',
     icon: '🌾',
-    commodities: ['WHEAT', 'CORN', 'SOYBEANS', 'RICE', 'OATS', 'COTTON'],
+    commodities: ['WHEAT', 'CORN', 'SOYBEANS', 'RICE', 'OATS'],
     regions: ['Egypt Nile Delta', 'Saudi Arabia Al-Hasa', 'Jordan Valley'],
     focus_region: 'Global',
     focus_countries: ['USA', 'China', 'India', 'Brazil', 'Argentina', 'Australia', 'Ukraine', 'Canada'],

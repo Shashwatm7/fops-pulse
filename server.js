@@ -13,7 +13,7 @@ import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs } from './db.js';
-import { ALL_REGIONS } from './onboarding-templates.js';
+import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
 import { simulateLogistics } from './logistics-engine.js';
@@ -43,15 +43,15 @@ let transporter = {
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
-const YAHOO_SYMBOLS = {
-    BRENT_CRUDE: 'BZ=F',
-    LIVE_CATTLE: 'LE=F',
-    MILK: 'DC=F', // Class III Milk
-    ORANGE_JUICE: 'OJ=F', // Frozen Concentrated Orange Juice
-    POULTRY: 'TSN', // Proxy: Tyson Foods (since broiler futures are illiquid on Yahoo)
-    FEEDER_CATTLE: 'GF=F',
-    LEAN_HOGS: 'HE=F'
-};
+// Derived from ALL_COMMODITIES — the onboarding list and the price fetcher
+// share one source of truth, so users can only select commodities with a
+// real Yahoo Finance futures feed. No proxies.
+const YAHOO_SYMBOLS = Object.fromEntries(
+    ALL_COMMODITIES.filter(c => c.yahooSymbol).map(c => [c.key, c.yahooSymbol])
+);
+const COMMODITY_UNITS = Object.fromEntries(
+    ALL_COMMODITIES.map(c => [c.key, c.unit])
+);
 
 const COMMODITY_DATA = {
     BRENT_CRUDE:  { price: '0', unit: 'USD/bbl', producers: ['Saudi Arabia', 'USA', 'Russia', 'UAE', 'Oman'], regions: [], currencies: ['USD', 'SAR', 'AED', 'OMR'] }
@@ -678,8 +678,11 @@ app.get('/api/history', requireAuth, async (req, res) => {
     try {
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval });
         const hist = chart.quotes || [];
-        
-        // Normalize prices to match UI
+
+        // Normalize to USD using the chart's own currency: "USX" means the
+        // contract quotes in US cents. This keeps history consistent with
+        // the live tick normalization in tickPrices.
+        const centsQuoted = chart.meta?.currency === 'USX';
         let normalized = hist.map(d => {
             let price = d.close;
             let open = d.open;
@@ -687,18 +690,11 @@ app.get('/api/history', requireAuth, async (req, res) => {
             let low = d.low;
             let volume = d.volume;
 
-            // Grains quoted in cents/bushel. Soy/Palm oil in cents/lb. Sugar in cents/lb. Coffee in cents/lb.
-            if (['WHEAT', 'CORN', 'SOYBEANS', 'RICE', 'PALM_OIL', 'SUGAR', 'COFFEE', 'FEEDER_CATTLE', 'MILK', 'OATS', 'LEAN_HOGS', 'COTTON'].includes(symbol.toUpperCase())) {
+            if (centsQuoted) {
                 if (price) price = price / 100;
                 if (open) open = open / 100;
                 if (high) high = high / 100;
                 if (low) low = low / 100;
-            }
-            if (symbol === 'PALM_OIL') {
-                if (price) price = price * 2204.62;
-                if (open) open = open * 2204.62;
-                if (high) high = high * 2204.62;
-                if (low) low = low * 2204.62;
             }
             return {
                 time: d.date.toISOString(),
@@ -1610,7 +1606,7 @@ async function initLivePrices() {
     // Ensure all hardcoded Yahoo symbols are present in COMMODITY_DATA
     for (const symbol of Object.keys(YAHOO_SYMBOLS)) {
         if (!COMMODITY_DATA[symbol]) {
-            COMMODITY_DATA[symbol] = { price: '0', unit: 'USD', producers: ['Global Market'], regions: [], currencies: ['USD'] };
+            COMMODITY_DATA[symbol] = { price: '0', unit: COMMODITY_UNITS[symbol] || 'USD', producers: ['Global Market'], regions: [], currencies: ['USD'] };
         }
     }
 
@@ -1680,14 +1676,14 @@ async function tickPrices() {
             
             let newPrice = q.regularMarketPrice;
             
-            // Normalize units from futures exchange specs to our UI specs
-            if (['WHEAT', 'CORN', 'SOYBEANS', 'OATS'].includes(symbol)) {
+            // Normalize to USD: Yahoo quotes many futures in US cents
+            // (currency "USX") — grains per bushel, softs/livestock per lb.
+            // Driven by the quote's own currency field, not a symbol list.
+            if (q.currency === 'USX') {
                 newPrice = newPrice / 100;
-            } else if (symbol === 'PALM_OIL') {
-                newPrice = (newPrice / 100) * 2204.62;
             }
 
-            const rounded = +newPrice.toFixed(symbol === 'COCOA' || symbol === 'PALM_OIL' ? 2 : (newPrice < 10 ? 4 : 2));
+            const rounded = +newPrice.toFixed(newPrice < 10 ? 4 : 2);
 
             if (!state.initializedFromYahoo) {
                 state.base = rounded;
@@ -2277,7 +2273,8 @@ async function scanSingleUser(user, pipeline) {
     const targets = [...(profile.commodities || []), profile.focus_product].filter(Boolean);
     const regions = [...(profile.regions || []), profile.focus_region].filter(Boolean);
 
-    const commQueries = [...new Set(targets)].map(c => `${c} supply chain OR logistics`);
+    // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries
+    const commQueries = [...new Set(targets)].map(c => `${String(c).replace(/_/g, ' ')} supply chain OR logistics`);
     const regQueries = [...new Set(regions)].map(r => `${r} supply chain OR logistics`);
 
     // Combine all sources into a single search pool
