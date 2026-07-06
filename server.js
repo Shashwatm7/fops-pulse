@@ -1523,8 +1523,9 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         }
 
     } catch (err) {
-        console.error('AI Planner Error:', err.response?.data?.error?.message || err.message);
-        res.status(500).json({ success: false, error: 'AI Planner Engine failed to generate response.' });
+        const errorDetail = err.response?.data?.error || err.message;
+        console.error('AI Planner Error:', errorDetail);
+        res.status(500).json({ success: false, error: errorDetail || 'AI Planner Engine failed to generate response.' });
     }
 });
 

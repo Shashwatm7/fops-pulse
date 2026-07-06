@@ -7,9 +7,16 @@ load_dotenv(dotenv_path="../.env")
 
 app = FastAPI(title="FOPs Pulse AI Service")
 
+# ── Startup diagnostics ──
+groq_key = os.getenv("GROQ_API_KEY", "")
+gemini_key = os.getenv("GEMINI_API_KEY", "")
+print(f"[AI SERVICE BOOT] GROQ_API_KEY loaded: {'YES (' + groq_key[:8] + '...)' if groq_key else 'NO — MISSING!'}")
+print(f"[AI SERVICE BOOT] GEMINI_API_KEY loaded: {'YES' if gemini_key else 'NO (no fallback)'}")
+print(f"[AI SERVICE BOOT] GROQ_API_KEY length: {len(groq_key)}, contains comma: {',' in groq_key}")
+
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "fops-pulse-ai-service"}
+    return {"status": "ok", "service": "fops-pulse-ai-service", "groq_loaded": bool(groq_key), "key_count": len(groq_key.split(',')) if groq_key else 0}
 
 @app.post("/api/scan-articles")
 async def scan_articles(request: Request):
@@ -30,6 +37,8 @@ async def analyze_planner(request: Request):
         recommendations = await generate_planner_recommendations(payload)
         return {"success": True, "recommendations": recommendations.get("recommendations", [])}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error generating recommendations: {e}")
         return {"success": False, "recommendations": [], "error": str(e)}
 
