@@ -1,26 +1,36 @@
-# Use official Node.js Alpine image for a dramatically smaller and faster container
-FROM node:22-alpine
+FROM python:3.10-slim
 
-# Install build tools required for native Node.js addons (e.g. bcrypt, sqlite)
-RUN apk add --no-cache python3 make g++
+# Install system dependencies including curl
+RUN apt-get update && apt-get install -y curl build-essential && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Install Node.js 22
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /usr/src/app
 
-# Copy package.json first for better caching
-COPY package*.json ./
+# Copy AI requirements and install Python dependencies
+COPY ai_service/requirements.txt ./ai_service/
+RUN pip install --no-cache-dir -r ai_service/requirements.txt
 
-# Install Node.js dependencies
+# Copy package.json and install Node dependencies
+COPY package*.json ./
 RUN npm install
 
-# Copy all source files (respects .dockerignore)
+# Copy frontend source and install dependencies
+COPY dashboard/package*.json ./dashboard/
+RUN cd dashboard && npm install
+
+# Copy all other source code
 COPY . .
 
-# Build the Vite React Frontend
+# Build frontend
 RUN npm run build
 
-# Expose the dynamically assigned port (Azure assigns process.env.PORT, usually 8080)
-EXPOSE 3001
+# Ensure startup script is executable
+RUN chmod +x start.sh
 
-# Start the Express server and migrations
-CMD ["npm", "start"]
+# Start both services
+CMD ["./start.sh"]
