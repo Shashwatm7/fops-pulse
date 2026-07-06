@@ -419,6 +419,63 @@ export async function getPipelineAuditLogs(userId, limit = 100) {
   return rows;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PILLAR 7: Unified Alert Store (event × exposure)
+// ═══════════════════════════════════════════════════════════════
+
+export async function insertAlert(userId, alert) {
+  // Returns true only when a NEW alert row was created — the unique
+  // (user_id, dedup_key) index makes re-scans of the same event a no-op,
+  // replacing the old file-based dedup that reset on every restart.
+  try {
+    const { rowCount } = await pool.query(
+      `INSERT INTO alerts (user_id, source, category, severity, title, reason, url, relevance_score, payload, dedup_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (user_id, dedup_key) DO NOTHING`,
+      [
+        userId,
+        alert.source,
+        alert.category || null,
+        alert.severity,
+        alert.title,
+        alert.reason || null,
+        alert.url || null,
+        alert.relevanceScore != null ? alert.relevanceScore : null,
+        alert.payload ? JSON.stringify(alert.payload) : null,
+        alert.dedupKey
+      ]
+    );
+    return rowCount > 0;
+  } catch (err) {
+    console.error('[DB] Failed to insert alert:', err.message);
+    return false;
+  }
+}
+
+export async function getActiveAlerts(userId, limit = 30) {
+  // Lazy lifecycle: expire anything older than 7 days on read.
+  await pool.query(
+    `UPDATE alerts SET status = 'expired' WHERE status = 'active' AND created_at < NOW() - INTERVAL '7 days'`
+  ).catch(() => {});
+  const { rows } = await pool.query(
+    `SELECT id, source, category, severity, title, reason, url, relevance_score, payload, created_at
+     FROM alerts
+     WHERE user_id = $1 AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [userId, limit]
+  );
+  return rows;
+}
+
+export async function acknowledgeAlert(userId, alertId) {
+  const { rowCount } = await pool.query(
+    `UPDATE alerts SET status = 'acknowledged' WHERE id = $1 AND user_id = $2 AND status = 'active'`,
+    [alertId, userId]
+  );
+  return rowCount > 0;
+}
+
 // Export the pool for session store
 export { pool };
 export default pool;

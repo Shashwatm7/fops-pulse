@@ -524,10 +524,11 @@ function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
     }
   }
 
-  // Live User-Specific Profile Alerts
+  // Live User-Specific Alerts (persistent event×exposure store)
   if (signals.userAlerts && signals.userAlerts.length > 0) {
     for (const a of signals.userAlerts) {
       alerts.push({
+        id: a.id, // DB id — enables acknowledge from the UI
         severity: a.severity || 'CRITICAL',
         title: a.title || `🎯 Profile Alert: Match Detected`,
         reason: a.reason || a.headline || 'Match Detected',
