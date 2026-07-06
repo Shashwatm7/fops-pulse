@@ -12,7 +12,8 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert } from './db.js';
+import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
@@ -1260,8 +1261,24 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
         req.body.logistics = logisticsData;
         req.body.usda = usdaData;
         req.body.llmForecast = cachedLLMForecast;
-        req.body.geoAlerts = recentGeoAlerts;
-        req.body.userAlerts = userSpecificAlertsCache[req.session.userId] || [];
+        // Alerts come from the persistent event×exposure store: already
+        // per-user, exposure-filtered, deduped, and restart-proof. Geo events
+        // are fanned out into the same store, so no separate geoAlerts feed.
+        req.body.geoAlerts = [];
+        try {
+            const dbAlerts = await getActiveAlerts(req.session.userId);
+            req.body.userAlerts = dbAlerts.map(a => ({
+                id: a.id,
+                severity: a.severity,
+                title: a.title,
+                reason: a.reason,
+                url: a.url,
+                detectedAt: a.created_at,
+            }));
+        } catch (e) {
+            // Fallback to the in-memory cache if the DB read fails
+            req.body.userAlerts = userSpecificAlertsCache[req.session.userId] || [];
+        }
 
         const analysis = runDeterministicEngine(req.body);
         
@@ -1744,7 +1761,20 @@ async function checkPriceAlerts() {
                 if (triggered) {
                     alert.active = false; // Stop loss behavior, trigger only once
                     alertsModified = true;
-                    
+
+                    // Persist to the unified alert store so it shows on the
+                    // Alerts tab, not just in email.
+                    await insertAlert(user.id, {
+                        source: 'PRICE',
+                        category: 'Price Threshold',
+                        severity: 'HIGH',
+                        title: `💰 Price Alert: ${alert.symbol.replace(/_/g, ' ')} went ${alert.type} ${alert.threshold}`,
+                        reason: `Current price $${currentPrice.toFixed(2)} crossed your "${alert.type} $${alert.threshold}" threshold.`,
+                        relevanceScore: 100,
+                        payload: { symbol: alert.symbol, threshold: alert.threshold, type: alert.type, price: currentPrice },
+                        dedupKey: `price:${alert.symbol}:${alert.type}:${alert.threshold}:${new Date().toISOString().slice(0, 10)}`,
+                    });
+
                     if (transporter) {
                         let aiActionPlan = '';
                         try {
@@ -1820,8 +1850,11 @@ async function checkPriceAlerts() {
 
 initLivePrices();
 
-// Tick prices via real Internet live fetch (Yahoo Finance) for Ags
-setInterval(tickPrices, 24 * 60 * 60 * 1000); // 24h intervals to reduce updates
+// Tick prices via real Internet live fetch (Yahoo Finance).
+// 15-minute cadence: ~5 batched Yahoo requests per tick (21 symbols in
+// chunks of 5) — trivial volume, and it makes user price-threshold alerts
+// actually fire near the crossing instead of up to 24h late.
+setInterval(tickPrices, 15 * 60 * 1000);
 
 // Reset open/high/low every hour
 setInterval(() => {
@@ -2065,6 +2098,10 @@ async function scanGeopoliticalNews() {
     const articleKey = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
     if (alertedArticles.has(articleKey)) continue; // Already alerted
 
+    // Skip clearly non-disruption headlines that happen to name a trigger
+    // location (e.g. "Suez Canal reports record profits").
+    if (/\b(record\s+(profits?|revenue|earnings)|celebrat\w*|anniversary|tourism|documentary|explained|a\s+history\s+of)\b/i.test(article.title)) continue;
+
     for (const trigger of GEOPOLITICAL_TRIGGERS) {
       if (trigger.pattern.test(article.title)) {
         
@@ -2143,33 +2180,58 @@ async function scanGeopoliticalNews() {
     }, null).catch(() => {});
   }
 
-  // ── 3. Send Email Alerts to ALL registered users ──
-  if (transporter) {
-    try {
-      const criticalAlerts = triggeredAlerts.filter(a => a.severity === 'CRITICAL');
-      if (criticalAlerts.length === 0) return;
+  // ── 3. Event × Exposure fan-out: score each event against each user's
+  // profile, persist only relevant alerts (severity derived from exposure),
+  // and email only exposed users on new CRITICAL rows. ──
+  try {
+    const users = await getAllUsers();
+    global.emailThrottleMap = global.emailThrottleMap || new Map();
+    const THROTTLE_MS = 12 * 60 * 60 * 1000; // 1 email per user+category / 12h
 
-      // ── EMAIL THROTTLING: Prevent alert fatigue ──
-      // Only send 1 email per crisis category every 12 hours
-      global.emailThrottleMap = global.emailThrottleMap || new Map();
-      const alertsToEmail = [];
-      const THROTTLE_MS = 12 * 60 * 60 * 1000; // 12 hours
+    for (const user of users) {
+      if (!user.id) continue;
+      let profile = null;
+      try { profile = await getUserProfile(user.id); } catch (e) { continue; }
+      if (!profile) continue;
 
-      for (const a of criticalAlerts) {
-          const lastAlertTime = global.emailThrottleMap.get(a.category) || 0;
-          if (Date.now() - lastAlertTime > THROTTLE_MS) {
-              alertsToEmail.push(a);
-              global.emailThrottleMap.set(a.category, Date.now());
-          } else {
-              console.log(`[GEO-SCANNER] Email suppressed for ${a.category} (Throttled for 12h)`);
+      for (const a of triggeredAlerts) {
+        const exposure = scoreAlertExposure(
+          { text: a.headline, category: a.category, publishedAt: a.publishedAt },
+          profile
+        );
+        const severity = severityFromScore(exposure.score);
+        if (!severity) continue; // event not relevant to this user's supply chain
+
+        const isNew = await insertAlert(user.id, {
+          source: 'GEO',
+          category: a.category,
+          severity,
+          title: `🚨 ${a.category}: ${a.headline.slice(0, 140)}`,
+          reason: `${a.impact} | Your exposure — commodities: ${exposure.matchedCommodities.join(', ') || 'systemic'}; regions: ${exposure.matchedRegions.join(', ') || 'systemic'}`,
+          url: a.url,
+          relevanceScore: exposure.score,
+          payload: { headline: a.headline, source: a.source, breakdown: exposure.breakdown },
+          dedupKey: `geo:${a.headline.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80)}`,
+        });
+
+        if (isNew && severity === 'CRITICAL' && transporter && user.email) {
+          const throttleKey = `${user.id}:${a.category}`;
+          const lastSent = global.emailThrottleMap.get(throttleKey) || 0;
+          if (Date.now() - lastSent > THROTTLE_MS) {
+            global.emailThrottleMap.set(throttleKey, Date.now());
+            sendGeoAlertEmail(user, a, exposure).catch(err =>
+              console.error(`[GEO-SCANNER] Email error (${user.email}):`, err.message));
           }
+        }
       }
+    }
+  } catch (err) {
+    console.error('[GEO-SCANNER] Exposure fan-out error:', err.message);
+  }
+}
 
-      if (alertsToEmail.length === 0) return;
-
-      const { rows: users } = await pool.query('SELECT email, username FROM users');
-      
-      const alertHtml = alertsToEmail.map(a => `
+async function sendGeoAlertEmail(user, a, exposure) {
+      const alertHtml = [a].map(a => `
         <div style="background: ${a.severity === 'CRITICAL' ? '#fef2f2' : '#fffbeb'}; border-left: 4px solid ${a.severity === 'CRITICAL' ? '#dc2626' : '#f59e0b'}; padding: 16px; margin: 12px 0; border-radius: 0 8px 8px 0;">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
             <span style="background: ${a.severity === 'CRITICAL' ? '#dc2626' : '#f59e0b'}; color: white; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px;">${a.severity}</span>
@@ -2182,39 +2244,33 @@ async function scanGeopoliticalNews() {
         </div>
       `).join('');
 
-      for (const user of users) {
-        const mailOptions = {
-          from: `"FOPs Geo-Alert" <${process.env.SENDER_EMAIL || 'alerts@fops.local'}>`,
-          to: user.email,
-          subject: `🚨 ${triggeredAlerts[0].severity} Geopolitical Alert: ${triggeredAlerts[0].headline.slice(0, 80)}`,
-          html: `
-            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #ffffff;">
-              <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 20px 24px; border-radius: 12px 12px 0 0;">
-                <h2 style="color: #ffffff; margin: 0; font-size: 18px;">🌐 FOPs Geopolitical Alert System</h2>
-                <p style="color: #94a3b8; margin: 6px 0 0; font-size: 13px;">${triggeredAlerts.length} new alert(s) detected at ${new Date().toLocaleString()}</p>
-              </div>
-              <div style="border: 1px solid #e2e8f0; border-top: none; padding: 20px 24px; border-radius: 0 0 12px 12px;">
-                <p style="color: #334155; font-size: 14px;">Hello <strong>${user.username}</strong>,</p>
-                <p style="color: #475569; font-size: 14px; line-height: 1.6;">The FOPs Live Geopolitical Scanner has detected the following critical supply chain disruption event(s):</p>
-                ${alertHtml}
-                <div style="margin-top: 24px; text-align: center;">
-                  <a href="http://localhost:5173" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Open Dashboard</a>
-                </div>
-                <p style="color: #94a3b8; font-size: 11px; margin-top: 20px; text-align: center;">This is an automated alert from the FOPs Market Pulse Geopolitical Scanner. Alerts are scanned every ${Math.round(GEO_SCAN_INTERVAL_MS / 60000)} minutes from Google News, NewsData.io, and GDELT.</p>
-              </div>
-            </div>
-          `
-        };
+      const exposureLine = [
+        exposure?.matchedCommodities?.length ? `Commodities: ${exposure.matchedCommodities.join(', ')}` : '',
+        exposure?.matchedRegions?.length ? `Regions: ${exposure.matchedRegions.join(', ')}` : '',
+      ].filter(Boolean).join(' · ') || 'Systemic trade/freight impact';
 
-        transporter.sendMail(mailOptions, (err, info) => {
-          if (err) console.error(`[GEO-SCANNER] Email error (${user.email}):`, err.message);
-          else console.log(`[GEO-SCANNER] ✅ Alert email sent to ${user.email}`);
-        });
-      }
-    } catch (err) {
-      console.error('[GEO-SCANNER] Email broadcast error:', err.message);
-    }
-  }
+      const mailOptions = {
+        from: `"FOPs Geo-Alert" <${process.env.SENDER_EMAIL || 'alerts@fops.local'}>`,
+        to: user.email,
+        subject: `🚨 CRITICAL Geopolitical Alert: ${a.headline.slice(0, 80)}`,
+        html: `
+          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #ffffff;">
+            <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 20px 24px; border-radius: 12px 12px 0 0;">
+              <h2 style="color: #ffffff; margin: 0; font-size: 18px;">🌐 FOPs Geopolitical Alert System</h2>
+              <p style="color: #94a3b8; margin: 6px 0 0; font-size: 13px;">Detected at ${new Date().toLocaleString()}</p>
+            </div>
+            <div style="border: 1px solid #e2e8f0; border-top: none; padding: 20px 24px; border-radius: 0 0 12px 12px;">
+              <p style="color: #334155; font-size: 14px;">Hello <strong>${user.username}</strong>,</p>
+              <p style="color: #475569; font-size: 14px; line-height: 1.6;">This event affects your tracked supply chain (${exposureLine}):</p>
+              ${alertHtml}
+              <p style="color: #94a3b8; font-size: 11px; margin-top: 20px; text-align: center;">This is an automated alert from the FOPs Market Pulse Geopolitical Scanner. You received it because the event scored ${exposure?.score ?? '—'}/100 against your tracked commodities and regions.</p>
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`[GEO-SCANNER] ✅ Exposure-matched alert email sent to ${user.email}`);
 }
 
 // ── API: S&OP Plans ──
@@ -2347,6 +2403,8 @@ async function scanSingleUser(user, pipeline) {
         const titleKey = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
         alertedArticles.add(titleKey);
 
+        const alertReason = a.llmReason || `Score: ${a.relevanceScore}. Commodity Match: ${a.breakdown.commodityScore > 0 ? 'Yes' : 'No'}. Region Match: ${a.matchedRegions.join(', ')}`;
+
         triggeredAlerts.push({
           id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
           severity: a.priority.toUpperCase(),
@@ -2355,10 +2413,23 @@ async function scanSingleUser(user, pipeline) {
           source: a.source,
           url: a.url,
           timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
-          reason: a.llmReason || `Score: ${a.relevanceScore}. Commodity Match: ${a.breakdown.commodityScore > 0 ? 'Yes' : 'No'}. Region Match: ${a.matchedRegions.join(', ')}`,
+          reason: alertReason,
           detectedAt: new Date().toISOString(),
           description: nlpDescription,
           entities: entities
+        });
+
+        // Persist to the unified alert store (survives restarts; deduped by DB)
+        await insertAlert(user.id, {
+          source: 'PROFILE_NEWS',
+          category: 'Profile Match',
+          severity: severityFromPriority(a.priority),
+          title: '🎯 Profile Alert: ' + a.title.slice(0, 160),
+          reason: alertReason,
+          url: a.url,
+          relevanceScore: a.relevanceScore,
+          payload: { source: a.source, entities, description: nlpDescription },
+          dedupKey: `profile:${titleKey}`,
         });
 
       }
@@ -2472,6 +2543,29 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 // ── API: Get recent geopolitical alerts ──
 app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
+});
+
+// ── Unified persistent alerts (event × exposure store) ──
+app.get('/api/alerts', requireAuth, async (req, res) => {
+  try {
+    const alerts = await getActiveAlerts(req.session.userId);
+    res.json({ success: true, alerts });
+  } catch (err) {
+    console.error('Failed to fetch alerts:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to load alerts' });
+  }
+});
+
+app.post('/api/alerts/:id/ack', requireAuth, async (req, res) => {
+  try {
+    const alertId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(alertId)) return res.status(400).json({ success: false, error: 'Invalid alert id' });
+    const ok = await acknowledgeAlert(req.session.userId, alertId);
+    res.json({ success: ok });
+  } catch (err) {
+    console.error('Failed to acknowledge alert:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to acknowledge alert' });
+  }
 });
 
 

@@ -842,6 +842,15 @@ export default function Dashboard() {
   const drivers = analysis?.drivers || [];
   const chains = analysis?.causeEffectChains || [];
   const alerts = (analysis?.alerts || []).sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99));
+
+  const acknowledgeAlert = async (alertId) => {
+    try {
+      await fetch(`${API_BASE}/alerts/${alertId}/ack`, { method: 'POST', credentials: 'include' });
+      setAnalysis(prev => ({ ...prev, alerts: (prev?.alerts || []).filter(x => x.id !== alertId) }));
+    } catch (err) {
+      console.error('Failed to acknowledge alert:', err);
+    }
+  };
   const forecast = analysis?.forecast;
   const scenarios = analysis?.simulatedFutures?.scenarios || [];
   const recommendations = aiRecommendations || [];
@@ -1252,7 +1261,16 @@ export default function Dashboard() {
                     a.title
                   )}
                 </div>
-                <span className="alert-severity-badge" style={{ background: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-bg)`, color: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-text)` }}>{a.severity || 'CRITICAL'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="alert-severity-badge" style={{ background: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-bg)`, color: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-text)` }}>{a.severity || 'CRITICAL'}</span>
+                  {a.id && (
+                    <button
+                      onClick={() => acknowledgeAlert(a.id)}
+                      title="Acknowledge — removes this alert from your active list"
+                      style={{ background: 'transparent', border: '1px solid var(--text-muted)', color: 'var(--text-muted)', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}
+                    >✓ Ack</button>
+                  )}
+                </span>
               </div>
               {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
               <div className="alert-reason">{a.reason || a.description}</div>

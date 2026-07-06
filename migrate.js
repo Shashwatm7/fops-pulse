@@ -24,7 +24,8 @@ async function runMigrations() {
       'migrations/007_recommendations.sql',
       'migrations/008_dynamic_dictionaries.sql',
       'migrations/008_pipeline_audit_logs.sql',
-      'migrations/009_pipeline_audit_features.sql'
+      'migrations/009_pipeline_audit_features.sql',
+      'migrations/010_alerts.sql'
     ];
     let failures = 0;
     for (const file of migrationFiles) {
