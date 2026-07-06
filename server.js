@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
@@ -1515,10 +1515,32 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
             userRegions: [...(req.userProfile?.regions || []), ((req.userProfile?.custom_regions || []).map(r => typeof r === 'string' ? r : (r.name || ''))).join(', ')].filter(Boolean)
         };
 
+        // Pipeline-accepted news insights: articles that survived the full
+        // 9-stage profile scanner, with NLP summaries + entities. These are
+        // the highest-quality news signal we have — feed them to the LLM.
+        let acceptedNewsInsights = [];
+        try {
+            const rows = await getRecentAlertsBySource(req.session.userId, 'PROFILE_NEWS', 72, 8);
+            acceptedNewsInsights = rows.map(r => ({
+                title: (r.title || '').replace(/^🎯 Profile Alert:\s*/, ''),
+                summary: String(r.payload?.description || '').replace(/^NLP Summary:\s*/, '').slice(0, 320),
+                entities: r.payload?.entities || null,
+                newsSource: r.payload?.source || '',
+                severity: r.severity,
+                relevanceScore: r.relevance_score != null ? Number(r.relevance_score) : null,
+                detectedAt: r.created_at,
+            }));
+        } catch (e) {
+            console.error('[AI PLANNER] Failed to load accepted news insights:', e.message);
+        }
+        payload.acceptedNewsInsights = acceptedNewsInsights;
+
         const plannerInputSignature = crypto
             .createHash('sha256')
             .update(JSON.stringify({
-                keywords: payload.keywords || []
+                keywords: payload.keywords || [],
+                // New accepted articles must invalidate the 2h cache
+                insightTitles: acceptedNewsInsights.map(i => i.title)
             }))
             .digest('hex')
             .slice(0, 16);
