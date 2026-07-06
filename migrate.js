@@ -22,6 +22,7 @@ async function runMigrations() {
       'migrations/005_canonical_signals.sql',
       'migrations/006_forecast_outputs.sql',
       'migrations/007_recommendations.sql',
+      'migrations/008_dynamic_dictionaries.sql',
       'migrations/008_pipeline_audit_logs.sql'
     ];
     for (const file of migrationFiles) {
