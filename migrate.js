@@ -21,7 +21,8 @@ async function runMigrations() {
       'migrations/004_raw_signals.sql',
       'migrations/005_canonical_signals.sql',
       'migrations/006_forecast_outputs.sql',
-      'migrations/007_recommendations.sql'
+      'migrations/007_recommendations.sql',
+      'migrations/008_pipeline_audit_logs.sql'
     ];
     for (const file of migrationFiles) {
       if (fs.existsSync(file)) {

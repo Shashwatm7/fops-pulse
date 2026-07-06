@@ -85,8 +85,10 @@ export async function updateUserProfile(userId, profile) {
       currencies = $8,
       template_name = $9,
       custom_regions = $10,
-      price_alerts = $11
-    WHERE user_id = $12`,
+      price_alerts = $11,
+      custom_blocklist = $12,
+      custom_dictionary = $13
+    WHERE user_id = $14`,
     [
       JSON.stringify(profile.commodities || []),
       JSON.stringify(profile.regions || []),
@@ -99,6 +101,8 @@ export async function updateUserProfile(userId, profile) {
       profile.template_name || 'custom',
       JSON.stringify(profile.custom_regions || []),
       JSON.stringify(profile.price_alerts || []),
+      JSON.stringify(profile.custom_blocklist || []),
+      JSON.stringify(profile.custom_dictionary || []),
       userId,
     ]
   );
@@ -362,6 +366,42 @@ export async function getRecentAiFeedback(userId, featureName = null, limit = 5)
   params.push(limit);
 
   const { rows } = await pool.query(query, params);
+  return rows;
+}
+// ═══════════════════════════════════════════════════════════════
+// PILLAR 6: Pipeline Analytics
+// ═══════════════════════════════════════════════════════════════
+
+export async function insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted) {
+  try {
+    await pool.query(
+      `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        userId,
+        article.title || 'Unknown Title',
+        article.url || '',
+        article.source || '',
+        stageDropped,
+        rejectionReason,
+        score != null ? score : null,
+        isAccepted,
+        article.extracted_features ? JSON.stringify(article.extracted_features) : null
+      ]
+    );
+  } catch (err) {
+    console.error('[DB] Failed to insert pipeline audit log:', err.message);
+  }
+}
+
+export async function getPipelineAuditLogs(userId, limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT * FROM pipeline_audit_logs 
+     WHERE user_id = $1 
+     ORDER BY scanned_at DESC 
+     LIMIT $2`,
+    [userId, limit]
+  );
   return rows;
 }
 

@@ -26,7 +26,7 @@ export async function ingestGoogleNews() {
     for (const query of QUERIES) {
         try {
             const encodedQuery = encodeURIComponent(query);
-            const feedUrl = `https://news.google.com/rss/search?q=${encodedQuery}&hl=en-US&gl=US&ceid=US:en`;
+            const feedUrl = `https://news.google.com/rss/search?q=${encodedQuery}&hl=en-US&gl=US&ceid=US:en&when=1d`;
             
             const feed = await parser.parseURL(feedUrl);
             
@@ -36,6 +36,9 @@ export async function ingestGoogleNews() {
                 
                 const publishedAt = new Date(item.pubDate || new Date());
                 
+                const isOlderThan24h = (Date.now() - publishedAt.getTime()) > (24 * 60 * 60 * 1000);
+                if (isOlderThan24h) continue;
+
                 const rawJson = JSON.stringify(item);
                 
                 const insertQuery = `

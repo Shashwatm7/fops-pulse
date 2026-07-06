@@ -53,10 +53,8 @@ const NEWS_KEYWORDS = {
   HIGH_IMPACT: [
     'export ban', 'export restriction', 'port closure', 'shipping disruption',
     'food shortage', 'supply chain', 'cold chain', 'refrigerat', 'frozen food',
-    'strait of hormuz', 'suez canal', 'bab el-mandeb', 'red sea',
     'drought', 'flood', 'crop failure', 'harvest loss', 'disease outbreak',
-    'bird flu', 'avian influenza', 'foot and mouth', 'african swine',
-    'sanctions', 'conflict', 'war', 'blockade',
+    'bird flu', 'avian influenza', 'foot and mouth', 'african swine'
   ],
   MEDIUM_IMPACT: [
     'tariff', 'import duty', 'halal certification', 'food safety',
@@ -175,11 +173,12 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
       signals.weather.score += sev;
       signals.weather.affectedCommodities.push(...affectedComms);
       const precip = w.analytics?.recentPrecipMm ?? w.totalPrecipMm ?? 'N/A';
+      const affectedText = affectedComms.length > 0 ? `Risk to ${affectedComms.join(', ')} — yield loss typically 10-25% if drought persists.` : `Extended dry conditions detected.`;
       signals.weather.drivers.push({
         label: `${alert.replace('_', ' ')} — ${w.name}`,
         severity: alert === 'SEVERE_DROUGHT' ? 'CRITICAL' : 'HIGH',
         impact: 'UP',
-        detail: `${w.name}: ${precip}mm/7d precipitation. Risk to ${affectedComms.join(', ')} — yield loss typically 10-25% if drought persists 30+ days`,
+        detail: `${w.name}: ${precip}mm/7d precipitation. ${affectedText}`,
         region: w.name,
         commodities: affectedComms,
         horizon: 'medium',
@@ -188,11 +187,12 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
       signals.weather.score += 5;
       signals.weather.affectedCommodities.push(...affectedComms);
       const temp = w.analytics?.maxTemp7d ?? w.avgTempC ?? 'N/A';
+      const affectedText = affectedComms.length > 0 ? `${affectedComms.join(', ')} under heat stress — yields and transport may be impacted.` : `Extreme heat detected. Local operations and cold chain may face increased load.`;
       signals.weather.drivers.push({
         label: `HEAT STRESS — ${w.name}`,
         severity: 'HIGH',
         impact: 'UP',
-        detail: `${w.name}: ${temp}°C peak. ${affectedComms.join(', ')} under heat stress — flowering/grain fill disrupted. Cold chain load increases in destination markets`,
+        detail: `${w.name}: ${temp}°C peak. ${affectedText}`,
         region: w.name,
         commodities: affectedComms,
         horizon: 'short',
@@ -201,11 +201,12 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
       signals.weather.score += 5;
       signals.weather.affectedCommodities.push(...affectedComms);
       const precip = w.analytics?.recentPrecipMm ?? w.totalPrecipMm ?? 'N/A';
+      const affectedText = affectedComms.length > 0 ? `harvest disruption and logistics damage risk for ${affectedComms.join(', ')}.` : `heavy rainfall and potential local flooding.`;
       signals.weather.drivers.push({
         label: `FLOOD RISK — ${w.name}`,
         severity: 'HIGH',
         impact: 'UP',
-        detail: `${w.name}: ${precip}mm/7d — harvest disruption and road/logistics damage risk for ${affectedComms.join(', ')}`,
+        detail: `${w.name}: ${precip}mm/7d — ${affectedText}`,
         region: w.name,
         commodities: affectedComms,
         horizon: 'short',
@@ -274,7 +275,7 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
     if (articleScore >= 3) {
       newsHighCount++;
       signals.news.score += 3;
-      triggeredNews.push({ title: article.title, keywords: matchedKeywords.slice(0, 3), score: articleScore });
+      triggeredNews.push({ title: article.title, keywords: matchedKeywords.slice(0, 3), score: articleScore, url: article.url });
     } else if (articleScore >= 1) {
       newsMedCount++;
       signals.news.score += 1;
@@ -282,6 +283,7 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
   }
 
   if (triggeredNews.length > 0) {
+    signals.news.triggeredNews = triggeredNews;
     signals.news.drivers.push({
       label: `${newsHighCount} high-impact news signals`,
       severity: newsHighCount >= 3 ? 'HIGH' : 'MEDIUM',
@@ -289,6 +291,7 @@ function scoreSignals({ prices, news, weather, energy, forex, weatherExtended, l
       detail: `Top signals: ${triggeredNews.slice(0, 2).map(n => `"${n.title.slice(0, 60)}..." [${n.keywords.join(', ')}]`).join(' | ')}`,
     });
   } else {
+    signals.news.triggeredNews = [];
     signals.news.drivers.push({ label: 'News — Quiet', severity: 'LOW', impact: 'NEUTRAL', detail: 'No high-impact supply chain disruption signals in recent news' });
   }
 
@@ -507,6 +510,20 @@ function buildCauseEffectChains(signals, { energy, forex }) {
 function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
   const alerts = [];
 
+  // Add High-Impact News Articles as Alerts
+  if (signals.news && signals.news.triggeredNews && signals.news.triggeredNews.length > 0) {
+    for (const article of signals.news.triggeredNews) {
+      alerts.push({
+        severity: article.score >= 5 ? 'CRITICAL' : 'HIGH',
+        title: `📰 News Alert: ${article.title.slice(0, 50)}...`,
+        reason: `Matched critical supply chain keywords: ${article.keywords.join(', ')}`,
+        timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
+        url: article.url || null,
+        regions: ['Global Market'],
+      });
+    }
+  }
+
   // Live User-Specific Profile Alerts
   if (signals.userAlerts && signals.userAlerts.length > 0) {
     for (const a of signals.userAlerts) {
@@ -533,87 +550,15 @@ function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
         regions: ['Global'],
       });
     }
-  } else if (signals.news.score >= 6) {
-    // Fallback news alert
-    alerts.push({
-      severity: 'MEDIUM',
-      title: 'Elevated News Risk Signals',
-      reason: signals.news.drivers[0]?.detail || 'Multiple high-impact supply chain news signals detected',
-      regions: ['Middle East', 'Global'],
-    });
   }
 
-  // Weather alerts
-  for (const d of signals.weather.drivers) {
-    if (d.severity === 'CRITICAL' || d.severity === 'HIGH') {
-      alerts.push({
-        severity: d.severity,
-        title: d.label,
-        reason: d.detail,
-        regions: [d.region || 'Key growing region'],
-      });
-    }
+  // Ensure unique alerts by title to avoid spam
+  const uniqueAlertsMap = new Map();
+  for (const a of alerts) {
+      uniqueAlertsMap.set(a.title, a);
   }
 
-  // Price volatility alerts
-  for (const d of signals.commodity.drivers) {
-    if (d.severity === 'HIGH') {
-      alerts.push({
-        severity: 'HIGH',
-        title: `Price Move: ${d.label}`,
-        reason: d.detail,
-        regions: ['Global commodity market'],
-      });
-    }
-  }
-
-  // Energy alert
-  if (signals.energy.score >= 5) {
-    alerts.push({
-      severity: 'MEDIUM',
-      title: `Cold Chain Energy Cost Elevated`,
-      reason: signals.energy.drivers[0]?.detail || 'High energy costs impacting cold chain operations',
-      regions: ['Middle East', 'Global shipping lanes'],
-    });
-  }
-
-  // EGP alert
-  if (signals.currency.score >= 5) {
-    const egpDriver = signals.currency.drivers.find(d => d.label?.includes('EGP'));
-    if (egpDriver) {
-      alerts.push({
-        severity: 'HIGH',
-        title: 'EGP Currency Risk: Egypt Import Cost Spike',
-        reason: egpDriver.detail,
-        regions: ['Egypt'],
-      });
-    }
-  }
-
-  // Always emit at least 2 monitoring alerts even if all clear
-  if (alerts.length === 0) {
-    alerts.push({
-      severity: 'LOW',
-      title: 'MONITOR: Brent Crude Trend',
-      reason: 'Energy prices are a leading indicator for cold chain costs. Track weekly Brent trajectory against $85 and $95 trigger levels.',
-      regions: ['Global'],
-    });
-    alerts.push({
-      severity: 'LOW',
-      title: 'MONITOR: GCC Seasonal Demand Build',
-      reason: 'Pre-Ramadan inventory build typically accelerates 6-8 weeks prior. Ensure buffer stock positions are adequate.',
-      regions: ['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait'],
-    });
-  } else if (alerts.length === 1) {
-    alerts.push({
-      severity: 'LOW',
-      title: 'MONITOR: Origin Weather Outlook',
-      reason: 'Continue 7-day weather monitoring in Brazil, Australia, and Ukraine — primary frozen food supply origins for ME market.',
-      regions: ['Brazil', 'Australia', 'Ukraine'],
-    });
-  }
-
-  return alerts.slice(0, 10);
+  return Array.from(uniqueAlertsMap.values()).slice(0, 10);
 }
 
 // ── SCENARIO ENGINE ────────────────────────────────────────────────
@@ -652,7 +597,7 @@ function buildScenarioEngine(signals, totalScore, { energy, weatherExtended }) {
   const stressWatchSignals = [
     `Brent Crude daily close above $${(brent + 12).toFixed(0)}/bbl`,
     signals.weather.affectedCommodities.length > 0 ? `USDA/FAO emergency crop assessment for ${signals.weather.affectedCommodities.slice(0, 2).join(', ')}` : 'FAO Food Price Index monthly release',
-    'Strait of Hormuz and Red Sea shipping incident reports',
+    'Local distribution bottleneck and regional freight delay reports',
     'EGP official rate and CBE policy announcements',
   ];
 
@@ -697,8 +642,8 @@ function buildCounterfactuals(signals, { energy, forex }) {
   }
 
   counterfactuals.push({
-    question: 'What if a major Strait of Hormuz disruption occurred lasting 2-4 weeks?',
-    answer: `~30% of GCC food imports transit through or rely on logistics infrastructure sensitive to Hormuz security. A 2-4 week disruption would trigger immediate 15-25% price spikes in frozen staples. UAE/Qatar strategic reserves (typically 30-90 days) would be activated. Brazil, India, and Pakistan alternative routing via Oman Sea would add 8-12 days transit. Estimated supply chain recovery cost: $200-400M/week across GCC market.`,
+    question: 'What if a major regional port congestion event occurred lasting 2-4 weeks?',
+    answer: `Local food imports rely on smooth logistics infrastructure. A 2-4 week disruption at key regional ports would trigger immediate 15-25% price spikes in frozen staples due to container shortages and demurrage fees. Strategic reserves would be partially activated. Alternative inland routing would add 5-8 days transit time and elevate end-to-end transport costs by $200-400 per TEU.`,
   });
 
   return counterfactuals.slice(0, 3);

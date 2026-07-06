@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -19,6 +22,7 @@
     "better-sqlite3": "^12.10.0",
     "better-sqlite3-session-store": "^0.1.0",
     "cheerio": "^1.2.0",
+    "compromise": "^14.15.1",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "csv-parse": "^6.2.1",
@@ -26,6 +30,7 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "multer": "^2.1.1",
+    "natural": "^8.1.1",
     "nodemailer": "^8.0.10",
     "pg": "^8.21.0",
     "rss-parser": "^3.13.0",

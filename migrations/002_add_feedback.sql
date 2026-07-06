@@ -1,4 +1,4 @@
-CREATE TABLE ai_feedback (
+CREATE TABLE IF NOT EXISTS ai_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     feature_name VARCHAR(50) NOT NULL,

@@ -8,31 +8,29 @@ import fs from 'fs';
 import path from 'path';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
+import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback } from './db.js';
+import { NewsPipeline } from './services/news-pipeline/pipeline.js';
+import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs } from './db.js';
 import { ALL_REGIONS } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
 import { simulateLogistics } from './logistics-engine.js';
 import { simulateUSDA } from './usda-engine.js';
 import nodemailer from 'nodemailer';
-import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
-import { getDynamicContext } from './services/recommendations/context_router.js';
-
+import crypto from 'crypto';
 if (fs.existsSync('/etc/secrets/.env')) { 
     dotenv.config({ path: '/etc/secrets/.env' }); 
-} else if (fs.existsSync('/etc/secrets/env')) { 
-    dotenv.config({ path: '/etc/secrets/env' }); 
+} else if (fs.existsSync('/etc/secrets/.env')) { 
+    dotenv.config({ path: '/etc/secrets/.env', override: true }); 
 } else { 
-    dotenv.config(); 
+    dotenv.config({ override: true }); 
 }
 
 const upload = multer({ storage: multer.memoryStorage() });
-
-const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
-
 
 /// ── Nodemailer Setup ──
 let transporter = {
@@ -46,7 +44,13 @@ let transporter = {
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
 const YAHOO_SYMBOLS = {
-    BRENT_CRUDE: 'BZ=F'
+    BRENT_CRUDE: 'BZ=F',
+    LIVE_CATTLE: 'LE=F',
+    MILK: 'DC=F', // Class III Milk
+    ORANGE_JUICE: 'OJ=F', // Frozen Concentrated Orange Juice
+    POULTRY: 'TSN', // Proxy: Tyson Foods (since broiler futures are illiquid on Yahoo)
+    FEEDER_CATTLE: 'GF=F',
+    LEAN_HOGS: 'HE=F'
 };
 
 const COMMODITY_DATA = {
@@ -117,6 +121,18 @@ app.use(session({
 // ── Auth routes (no auth required) ──────────────────────────
 app.use('/api/auth', authRouter);
 
+app.get('/api/debug-env', (req, res) => {
+    res.json({ fallback: process.env.ALLOW_PLANNER_FALLBACK, groq: process.env.GROQ_API_KEY });
+});
+
+app.get('/api/token-usage', (req, res) => {
+    res.json(tokenUsage);
+});
+
+app.get('/api/rate-limits', (req, res) => {
+    res.json(global.apiRateLimits || { remaining: 'N/A', reset: 'N/A' });
+});
+
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const NEWS_KEY = process.env.NEWSDATA_API_KEY;
@@ -129,17 +145,17 @@ const envInt = (name, fallback) => {
 
 const envMs = (name, fallback) => envInt(name, fallback);
 
-const BACKGROUND_AI_ENABLED = process.env.ENABLE_BACKGROUND_AI !== 'false';
-const GEO_SCANNER_ENABLED = process.env.ENABLE_GEO_SCANNER !== 'false';
-const USER_SCANNER_ENABLED = process.env.ENABLE_USER_SCANNER !== 'false';
-const AI_WORKER_ENABLED = process.env.ENABLE_AI_WORKER !== 'false';
-const AI_FORECASTER_ENABLED = process.env.ENABLE_AI_FORECASTER !== 'false';
+const BACKGROUND_AI_ENABLED = process.env.ENABLE_BACKGROUND_AI === 'true';
+const GEO_SCANNER_ENABLED = process.env.ENABLE_GEO_SCANNER === 'true';
+const USER_SCANNER_ENABLED = process.env.ENABLE_USER_SCANNER === 'true';
+const AI_WORKER_ENABLED = process.env.ENABLE_AI_WORKER === 'true';
+const AI_FORECASTER_ENABLED = process.env.ENABLE_AI_FORECASTER === 'true';
 
 const GEMINI_EMBEDDINGS_ENABLED = process.env.ENABLE_GEMINI_EMBEDDINGS !== 'false';
-const LIVE_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_LIVE_SEMANTIC_FILTER === 'true';
-const GEO_SEMANTIC_FILTER_ENABLED = process.env.ENABLE_GEO_SEMANTIC_FILTER === 'true';
-const USER_SCANNER_EMBEDDINGS_ENABLED = process.env.ENABLE_USER_SCANNER_EMBEDDINGS === 'true';
-const USER_SCANNER_AI_REVIEW_ENABLED = process.env.ENABLE_USER_SCANNER_AI_REVIEW === 'true';
+const LIVE_SEMANTIC_FILTER_ENABLED = false;
+const GEO_SEMANTIC_FILTER_ENABLED = false;
+const USER_SCANNER_EMBEDDINGS_ENABLED = false;
+const USER_SCANNER_AI_REVIEW_ENABLED = false;
 
 const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-2';
 const EMBEDDING_OUTPUT_DIMENSIONS = envInt('GEMINI_EMBEDDING_DIMENSIONS', 768);
@@ -149,16 +165,90 @@ const EMBEDDING_CACHE_LIMIT = envInt('GEMINI_EMBEDDING_CACHE_LIMIT', 500);
 
 const GEO_SCAN_INTERVAL_MS = envMs('GEO_SCAN_INTERVAL_MS', 30 * 60 * 1000);
 const USER_SCAN_INTERVAL_MS = envMs('USER_SCAN_INTERVAL_MS', 30 * 60 * 1000);
-const AI_WORKER_INTERVAL_MS = envMs('AI_WORKER_INTERVAL_MS', 30 * 60 * 1000);
-const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 15 * 60 * 1000);
+const AI_WORKER_INTERVAL_MS = envMs('AI_WORKER_INTERVAL_MS', 2 * 60 * 60 * 1000);
+const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 2 * 60 * 60 * 1000);
 
 const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
-const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 3);
+const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 15);
+
+// ── Token Usage Tracking ─────────────────────────────────────
+let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
+
+
+
+export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1) {
+    if (!process.env.GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
+    
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+        try {
+            let sysInstruction = systemPrompt;
+            let jsonConfig = {};
+            if (jsonMode) {
+                jsonConfig = { responseMimeType: "application/json" };
+                sysInstruction += "\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.";
+            }
+            
+            const { data } = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+                {
+                    systemInstruction: { parts: [{ text: sysInstruction }] },
+                    contents: [{ parts: [{ text: userContent }] }],
+                    generationConfig: {
+                        temperature: temperature,
+                        maxOutputTokens: maxTokens,
+                        ...jsonConfig
+                    }
+                }
+            );
+            
+            const gemUsage = data.usageMetadata;
+            if (gemUsage) { tokenUsage.geminiInput += gemUsage.promptTokenCount || 0; tokenUsage.geminiOutput += gemUsage.candidatesTokenCount || 0; tokenUsage.totalCalls++; }
+            
+            let text = data.candidates[0].content.parts[0].text;
+            if (jsonMode) {
+                text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+            }
+            return text;
+        } catch (err) {
+            console.error('[GEMINI] API Error:', err.response?.data?.error?.message || err.message);
+            throw err;
+        }
+    }
+}
 
 export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
+    // INTERCEPT DISABLED: Let Groq handle its own models to prevent Gemini rate limits crashing the drivers.
+    if (model === 'llama-3.3-70b-versatile' && false) {
+        const hash = crypto.createHash('sha256').update(systemPrompt + userContent).digest('hex');
+        if (!global.llmCache) global.llmCache = {};
+        
+        const cached = global.llmCache[hash];
+        if (cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
+            console.log(`[GEMINI CACHE HIT] Returned cached response for article.`);
+            return cached.data;
+        }
+
+        console.log(`[GEMINI API CALL] Routing scanner evaluation to Gemini 2.5 Flash...`);
+        const result = await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
+        global.llmCache[hash] = { data: result, timestamp: Date.now() };
+        return result;
+    }
+
+    if (global.aiCircuitBreaker && Date.now() < global.aiCircuitBreaker) {
+        console.warn(`[CIRCUIT-BREAKER] Groq API blocked. Falling back to Gemini 2.5 Flash for model ${model}`);
+        if (process.env.GEMINI_API_KEY) {
+            return await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
+        }
+        throw new Error('Circuit Breaker active and no Gemini API Key available');
+    }
+
     try {
         if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
+        const finalUserContent = jsonMode ? userContent + "\n\nOutput ONLY valid JSON." : userContent;
         const response = await axios.post(
             'https://api.groq.com/openai/v1/chat/completions',
             {
@@ -168,7 +258,7 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 ...(jsonMode && { response_format: { type: 'json_object' } }),
                 messages: [
                     { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userContent },
+                    { role: 'user', content: finalUserContent },
                 ],
             },
             {
@@ -178,81 +268,96 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 }
             }
         );
+        const usage = response.data.usage;
+        if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
+        
+        // Track API limits
+        const remaining = response.headers['x-ratelimit-remaining-requests'];
+        const reset = response.headers['x-ratelimit-reset-requests'];
+        if (remaining !== undefined && reset !== undefined) {
+            global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
+        }
+
+        console.log(`[TOKENS] Groq ${model} | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
         return response.data.choices[0].message.content;
     } catch (err) {
-        console.log(`[FAILOVER] Primary Groq failed (${model}). Trying Llama 3 8B...`);
+        if (err.response?.headers) {
+            const remaining = err.response.headers['x-ratelimit-remaining-requests'] || err.response.headers['x-ratelimit-remaining-tokens'];
+            const reset = err.response.headers['x-ratelimit-reset-requests'] || err.response.headers['x-ratelimit-reset-tokens'];
+            if (remaining !== undefined && reset !== undefined) {
+                global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
+            }
+        }
+        const errMsg = err.response?.data?.error?.message || err.message;
+        if (errMsg.includes('Please try again in')) {
+            const match = errMsg.match(/Please try again in (.*?)\./);
+            if (match) {
+                const waitStr = match[1];
+                let waitMs = 0;
+                const minMatch = waitStr.match(/([\d.]+)m/);
+                const secMatch = waitStr.match(/([\d.]+)s/);
+                if (minMatch) waitMs += parseFloat(minMatch[1]) * 60000;
+                if (secMatch) waitMs += parseFloat(secMatch[1]) * 1000;
+                global.apiRateLimits = { remaining: '0', reset: waitStr, lastUpdated: Date.now() };
+                global.aiCircuitBreaker = Date.now() + waitMs + 2000;
+            }
+        }
+        console.log(`[FAILOVER] Primary Groq failed (${model}): ${errMsg}. Falling back to Gemini 2.5 Flash.`);
+        if (process.env.GEMINI_API_KEY) {
+            try {
+                return await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
+            } catch (geminiErr) {
+                console.log(`[FAILOVER] Gemini 2.5 Flash also failed. Trying Groq Llama 3.3 70B...`);
+            }
+        }
         try {
-            if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
-            const groqBackup = await axios.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    model: 'llama-3.1-8b-instant',
-                    max_tokens: maxTokens,
-                    temperature: temperature,
-                    ...(jsonMode && { response_format: { type: 'json_object' } }),
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent },
-                    ],
-                },
-                {
-                    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }
+                if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
+                const groqBackup2 = await axios.post(
+                    'https://api.groq.com/openai/v1/chat/completions',
+                    {
+                        model: 'llama-3.1-8b-instant',
+                        max_tokens: maxTokens,
+                        temperature: temperature,
+                        ...(jsonMode && { response_format: { type: 'json_object' } }),
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userContent },
+                        ],
+                    },
+                    {
+                        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }
+                    }
+                );
+                const usage = groqBackup2.data.usage;
+                if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
+                console.log(`[TOKENS] Groq llama-3.1-8b-instant | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
+                return groqBackup2.data.choices[0].message.content;
+            } catch (fallbackErr2) {
+                if (fallbackErr2.response?.headers) {
+                    const remaining = fallbackErr2.response.headers['x-ratelimit-remaining-requests'];
+                    const reset = fallbackErr2.response.headers['x-ratelimit-reset-requests'];
+                    if (remaining !== undefined && reset !== undefined) {
+                        global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
+                    }
                 }
-            );
-            return groqBackup.data.choices[0].message.content;
-        } catch (fallbackErr) {
-            if (process.env.GEMINI_API_KEY) {
-                console.log(`[FAILOVER] Groq backup failed. Using Gemini 2.5 Flash fallback...`);
-                try {
-                    let sysInstruction = systemPrompt;
-                    let jsonConfig = {};
-                    if (jsonMode) {
-                        jsonConfig = { responseMimeType: "application/json" };
-                        sysInstruction += "\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.";
-                    }
-                    
-                    const { data } = await axios.post(
-                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-                        {
-                            systemInstruction: { parts: [{ text: sysInstruction }] },
-                            contents: [{ parts: [{ text: userContent }] }],
-                            generationConfig: {
-                                temperature: temperature,
-                                maxOutputTokens: maxTokens,
-                                ...jsonConfig
-                            }
-                        }
-                    );
-                    
-                    let text = data.candidates[0].content.parts[0].text;
-                    if (jsonMode) {
-                        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-                    }
-                    return text;
+                if (process.env.GEMINI_API_KEY) {
+                    console.log(`[FAILOVER] Groq Mixtral failed. Using Gemini 2.5 Flash fallback...`);
+                    try {
+                    const result = await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
+                    console.log(`[TOKENS] Gemini 2.5 Flash Fallback executed successfully.`);
+                    return result;
                 } catch (geminiErr) {
                     console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
                 }
             }
 
-            if (!allowDeterministicFallback) {
-                throw new Error('AI providers unavailable. Check GROQ_API_KEY or GEMINI_API_KEY quota/configuration.');
-            }
-            
-            // Ultimate Deterministic Fallback if EVERYTHING fails or API keys are missing
-            const dynamicVariation = Math.floor(Math.random() * 100);
-            if (jsonMode) {
-                return JSON.stringify({
-                    recommendations: [
-                        { timeframe: "7D", action: `Market volatility expected to persist. Internal metrics suggest a ${dynamicVariation}% probability of supply chain realignment based on current data.`, businessImpact: "Mitigates immediate volatility exposure." },
-                        { timeframe: "30D", action: `Sustained pressure on margins. Re-evaluating optimal routes is critical as geopolitical tension remains elevated.`, businessImpact: "Prevents critical inventory stockouts." },
-                        { timeframe: "90D", action: `Long-term restructuring likely. Key players will shift focus to resilient sourcing strategies.`, businessImpact: "Optimizes long-term resilience." }
-                    ]
-                });
-            }
-            return `High relevance to tracked profile keywords (Deterministic Fallback Matcher: ${dynamicVariation}).`;
+            throw new Error('AI providers unavailable. Check GROQ_API_KEY or GEMINI_API_KEY quota/configuration.');
         }
     }
 }
+
+// ── ROUTE: Token Usage Stats ─────────────────────────────────
+export { tokenUsage };
 
 let cachedRealTimeLogistics = {
     portCongestion: [{ port: 'Jebel Ali (Real-Time)', status: 'LOADING...', delayDays: 0, reason: 'Pending fetch' }],
@@ -287,24 +392,21 @@ Return valid JSON exactly matching this format:
   "geopoliticalRiskIndex": 6.5
 }`;
 
-        const llmResponse = await callGroq('llama-3.3-70b-versatile', 'You are a maritime logistics extraction API. Output only raw JSON.', prompt, true);
-        const data = JSON.parse(llmResponse);
-        
         cachedRealTimeLogistics = {
-            portCongestion: data.portCongestion || [{ port: 'Jebel Ali (Real-Time)', status: 'LOADING...', delayDays: 0, reason: 'Pending fetch' }],
-            freightRates: data.freightRates || { reeferIndexFEU: 0, bunkerSurchargeImpact: 'NORMAL', trend: 'LOADING...' },
-            airFreightRates: data.airFreightRates || { ratePerKg: 0, trend: 'LOADING...' },
-            geopoliticalRiskIndex: data.geopoliticalRiskIndex || 5
+            portCongestion: [{ port: 'Jebel Ali (Real-Time)', status: 'NORMAL', delayDays: 1.5, reason: 'Deterministic baseline; LLM extraction disabled' }],
+            freightRates: { reeferIndexFEU: 0, bunkerSurchargeImpact: 'NORMAL', trend: 'BASELINE' },
+            airFreightRates: { ratePerKg: 0, trend: 'BASELINE' },
+            geopoliticalRiskIndex: newsData.length > 0 ? 5 : 3
         };
-        console.log('[LOGISTICS] Real-Time Logistics Data Fetched and Cached successfully.');
+        console.log('[LOGISTICS] Deterministic logistics baseline refreshed; LLM extraction disabled.');
     } catch (e) {
         console.error('[LOGISTICS] Failed to fetch real-time logistics via LLM:', e.message);
     }
 }
 
-setInterval(fetchRealTimeLogistics, 60 * 60 * 1000);
-fetchRealTimeLogistics();
-function cosineSimilarity(vecA, vecB) {
+setInterval(fetchRealTimeLogistics, 6 * 60 * 60 * 1000);
+// fetchRealTimeLogistics(); // Disabled on boot
+export function cosineSimilarity(vecA, vecB) {
   if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
   let dotProduct = 0;
   let normA = 0;
@@ -393,7 +495,7 @@ function pauseEmbeddingsAfterFailure(err) {
     }
 }
 
-async function generateEmbedding(text) {
+export async function generateEmbedding(text) {
     const normalizedText = normalizeEmbeddingText(text);
     if (!normalizedText) return null;
 
@@ -833,31 +935,20 @@ app.post('/api/weather/ai-forecast', requireAuth, async (req, res) => {
         const { name, crop, analytics } = req.body;
         if (!name || !crop || !analytics) return res.status(400).json({ error: 'Missing required data' });
 
-        const prompt = `You are a Senior Agricultural Supply Chain Analyst.
-Analyze the weather data for ${name} where the primary crop is ${crop}.
-Weather Stats:
-- Average Temp (Last 7d): ${analytics.avgTemp7d}°C
-- Max Temp (Last 7d): ${analytics.maxTemp7d}°C
-- Recent Rain (Last 7d): ${analytics.recentPrecipMm}mm
-- Total Rain (Last 30d): ${analytics.totalPrecip30d}mm
-- Growing Degree Days (GDD): ${analytics.totalGDD}
-- Drought Score: ${analytics.droughtScore}/100
-- Logistics Risk: ${analytics.logisticsRisk ? 'HIGH' : 'LOW'}
-- Alert Status: ${analytics.alert}
-
-Write a natural, strategic 2-sentence market intelligence briefing on the potential yield impact or supply chain risk for this crop. 
-CRITICAL RULES:
-1. Sound like a human expert analyst, not a robot.
-2. Weave 1-2 of the most critical data points (e.g., specific temperatures, rainfall amounts, or drought scores) naturally into your narrative to ground your analysis in hard numbers.
-3. Format the response as a JSON object with a single string field: {"forecast": "..."}`;
-
-        const rawResult = await callGroq('llama-3.3-70b-versatile', prompt, "Analyze the crop yield risk.", true, 500);
-        const jsonResult = JSON.parse(rawResult);
-        if (typeof jsonResult.forecast !== 'string' || !jsonResult.forecast.trim()) {
-            throw new Error('AI forecast response missing forecast text');
+        let forecast = `Current metrics indicate a stable environment for ${crop} yields.`;
+        if (analytics.alert === 'SEVERE_DROUGHT' || analytics.droughtScore > 80) {
+            forecast = `Severe drought conditions (${analytics.droughtScore}/100) are critically threatening ${crop} yields. Expect significant volume reduction and logistical constraints.`;
+        } else if (analytics.alert === 'DROUGHT_RISK' || analytics.droughtScore > 50) {
+            forecast = `Elevated drought risk detected due to low precipitation (${analytics.totalPrecip30d}mm/30d). ${crop} yields may face moderate pressure if dry patterns persist.`;
+        } else if (analytics.alert === 'HEAT_STRESS') {
+            forecast = `Extreme temperatures reaching ${analytics.maxTemp7d}°C are placing severe heat stress on ${crop} development. Potential for reduced harvest quality.`;
+        } else if (analytics.alert === 'FLOOD_RISK') {
+            forecast = `Excessive recent rainfall (${analytics.recentPrecipMm}mm/7d) poses a high flood risk to ${crop} fields. Localized washouts and logistical delays are probable.`;
+        } else if (analytics.logisticsRisk) {
+            forecast = `While crop development is stable, high winds or low visibility present significant logistical risks for transporting ${crop} from the region.`;
         }
 
-        res.json({ success: true, forecast: jsonResult.forecast });
+        res.json({ success: true, forecast, provider: 'deterministic' });
     } catch (err) {
         console.error('AI Forecast error:', err.message);
         console.log('Falling back to deterministic crop yield forecast.');
@@ -934,16 +1025,23 @@ app.post('/api/regions/add', requireAuth, async (req, res) => {
         const { name, crop } = req.body;
         if (!name) return res.status(400).json({ error: 'Region name is required' });
 
-        // Geocode using open-meteo
+        // Geocode using open-meteo (handle comma separated like 'Punjab, India')
+        const queryName = name.split(',')[0].trim();
         const { data } = await axios.get('https://geocoding-api.open-meteo.com/v1/search', {
-            params: { name, count: 1, language: 'en', format: 'json' }
+            params: { name: queryName, count: 10, language: 'en', format: 'json' }
         });
 
         if (!data.results || data.results.length === 0) {
             return res.status(404).json({ error: 'Location not found' });
         }
 
-        const location = data.results[0];
+        let location = data.results[0];
+        const parts = name.split(',').map(s => s.trim().toLowerCase());
+        if (parts.length > 1) {
+            const countryQuery = parts[1];
+            const exact = data.results.find(r => r.country?.toLowerCase().includes(countryQuery));
+            if (exact) location = exact;
+        }
         const newRegion = {
             name: location.name,
             country: location.country,
@@ -971,9 +1069,30 @@ app.post('/api/regions/add', requireAuth, async (req, res) => {
 
 
 // ── ROUTE: supply chain news (profile-aware keywords, filtered by AI) ──
+app.get('/api/pipeline-audit', requireAuth, async (req, res) => {
+    try {
+        const logs = await getPipelineAuditLogs(req.session.userId, 150);
+        res.json({ success: true, logs });
+    } catch (err) {
+        console.error('Failed to fetch pipeline audit logs:', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+app.post('/api/trigger-scan', requireAuth, async (req, res) => {
+    try {
+        scanUserSpecificNews(); // Run async without blocking
+        res.json({ success: true, message: 'Scanner triggered successfully' });
+    } catch (err) {
+        console.error('Failed to trigger scanner:', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 app.get('/api/news', requireAuth, async (req, res) => {
     try {
         const userKeywords = req.userProfile?.news_keywords || ['frozen food', 'cold chain', 'frozen goods'];
+        const trackedCommodities = req.userProfile?.commodities || [];
         const focusRegion = req.userProfile?.focus_region || 'Middle East';
         const focusProduct = req.userProfile?.focus_product || 'Commodities';
         
@@ -981,6 +1100,7 @@ app.get('/api/news', requireAuth, async (req, res) => {
         const querySuffix = ' AND (market OR "supply chain" OR trade OR agriculture OR prices OR export)';
         const googleQueries = [
             ...userKeywords.map(kw => `"${kw}"${querySuffix}`),
+            ...trackedCommodities.map(c => `"${c.replace(/_/g, ' ')}"${querySuffix}`),
             `"${focusProduct}" "${focusRegion}"${querySuffix}`
         ];
         const allArticles = [];
@@ -989,7 +1109,7 @@ app.get('/api/news', requireAuth, async (req, res) => {
 
         const rssResults = await Promise.allSettled(
             googleQueries.map(async (q) => {
-                const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+                const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en&when=1d`;
                 const { data: rssXml } = await axios.get(rssUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FOPsMarketPulse/1.0)' },
                     timeout: 8000,
@@ -1010,7 +1130,12 @@ app.get('/api/news', requireAuth, async (req, res) => {
                         .replace(/<[^>]*>/g, '').trim().slice(0, 250);
                     const source = (xml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || 'Google News').trim();
 
-                    if (title) items.push({ title, url: link, publishedAt: pubDate, description: desc, source, via: 'google-news' });
+                    if (!pubDate) continue;
+                    const isOlderThan24h = (Date.now() - new Date(pubDate).getTime()) > (24 * 60 * 60 * 1000);
+
+                    if (title && !isOlderThan24h) {
+                        items.push({ title, url: link, publishedAt: pubDate, description: desc, source, via: 'google-news' });
+                    }
                 }
                 return items;
             })
@@ -1128,6 +1253,62 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
 
         const analysis = runDeterministicEngine(req.body);
         
+        if (!global.marketDriversCache) global.marketDriversCache = {};
+        const mdCacheKey = `${req.userProfile?.focus_product || 'Commodities'}_${(req.userProfile?.commodities || []).join(',')}_${(req.userProfile?.regions || []).join(',')}`;
+        const mdNow = Date.now();
+        const mdCacheEntry = global.marketDriversCache[mdCacheKey];
+
+        if (mdCacheEntry && (mdNow - mdCacheEntry.timestamp < 60 * 60 * 1000)) {
+            // Serve cached market drivers (1 hour cache)
+            analysis.drivers = mdCacheEntry.data;
+        } else {
+            // Use LLM for Market Drivers Generation as requested (llama-3.1-8b-instant)
+            try {
+                const shortPrices = (req.body.prices || []).map(p => `${p.symbol}: $${p.price}`).slice(0, 10).join(', ');
+            const shortWeather = (req.body.weatherExtended || []).map(w => `${w.name}: ${w.analytics?.alert || w.alert || 'NORMAL'}`).join(', ');
+            const shortNews = (req.body.news || []).slice(0, 5).map(n => `- ${n.title}`).join('\\n');
+
+            const driversPrompt = `You are an expert commodities analyst. 
+Based on the following data:
+Prices: ${shortPrices}
+News:
+${shortNews}
+Weather: ${shortWeather}
+
+Identify the 3 most critical market drivers affecting the supply chain.
+Return ONLY a JSON object with a single key "drivers", which is an array of exactly 3 objects.
+Each object MUST have:
+"factor": string (e.g. "WEATHER: Drought in Brazil"),
+"direction": string (must be strictly one of: "UP", "DOWN", "NEUTRAL"),
+"strength": number (1 to 10),
+"explanation": string (short 1-sentence rationale),
+"evidence": array of 1 or 2 strings (e.g. ["News: <title>", "Price dropped 2%"])`;
+
+            const driverRes = await callGroq('llama-3.1-8b-instant', driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 800, 0.3, false);
+            const driverParsed = JSON.parse(driverRes);
+            
+            if (driverParsed && driverParsed.drivers && Array.isArray(driverParsed.drivers) && driverParsed.drivers.length > 0) {
+                console.log("[MARKET DRIVERS] Generated by Llama-3.1-8b-instant:", driverParsed.drivers.length);
+                analysis.drivers = driverParsed.drivers;
+                global.marketDriversCache[mdCacheKey] = { data: driverParsed.drivers, timestamp: mdNow };
+            } else {
+                throw new Error("LLM returned empty or invalid drivers format");
+            }
+        } catch (e) {
+            console.error('Failed to generate Market Drivers via LLM:', e.message);
+            // Ensure we don't accidentally show the legacy deterministic drivers
+            analysis.drivers = [{
+                factor: 'SYSTEM: AI Generation Failed',
+                direction: 'NEUTRAL',
+                strength: 1,
+                explanation: `The Llama-3.1-8b-instant API encountered an error: ${e.message}`,
+                evidence: ['Please refresh the page to try again.']
+            }];
+        }
+        }
+        
+        // AI scenario generation disabled. API tokens are reserved for planner recommendations and deep dives only.
+
         // --- INJECT CUSTOM CSV INTELLIGENCE IF AVAILABLE ---
         try {
             if (fs.existsSync('custom_csv_intelligence.json')) {
@@ -1161,29 +1342,7 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
     }
 });
 
-function buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData }) {
-    const actionText = Array.isArray(deterministicAction)
-        ? deterministicAction.join(' | ')
-        : (deterministicAction || 'hold the current plan and prioritize exception monitoring');
-    const topNews = (news || []).slice(0, 3).map(n => n.title).filter(Boolean);
-    const weatherAlerts = (weatherExtended || [])
-        .filter(w => w.analytics?.alert && w.analytics.alert !== 'NORMAL')
-        .map(w => `${w.name}: ${w.analytics.alert}`);
-    const brent = energy?.brent?.current?.value ? `$${energy.brent.current.value}/barrel` : 'not available';
-    const portStatus = (logisticsData?.portCongestion || [])
-        .map(p => `${p.port} ${p.status}`)
-        .filter(Boolean)
-        .join(', ') || 'no major live port exception';
 
-    const newsText = topNews.length
-        ? `The live feed is currently led by: ${topNews.join('; ')}.`
-        : 'The live feed does not show a dominant breaking-news driver right now.';
-    const weatherText = weatherAlerts.length
-        ? `Weather exceptions to watch: ${weatherAlerts.join(', ')}.`
-        : 'Weather telemetry is not flagging a major exception in the selected regions.';
-
-    return `For the ${timeframe || 'selected'} window, the practical move is: ${actionText}. ${newsText} Brent crude is ${brent}, port conditions show ${portStatus}, and the geopolitical risk index is ${logisticsData?.geopoliticalRiskIndex ?? 'not available'}/10. These signals point to protecting service levels first, then adjusting procurement or routing only where the data shows a material cost or disruption risk for ${focusProduct || 'the tracked portfolio'} in ${focusRegion || 'the selected region'}.\n\n${weatherText} Use this as a conservative fallback read: prioritize open purchase orders, lanes with long lead times, and SKUs closest to reorder-point pressure; avoid broad changes until the next live news and forecast refresh confirms the same direction.`;
-}
 
 // ── ROUTE: AI Deep Dive (On-Demand) ────────────────────────────────
 app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
@@ -1204,24 +1363,23 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
 
-        const dynamicContext = await getDynamicContext(focusProduct, focusRegion, callGroq);
-
+        const topNews = (news || []).slice(0, 5).map(n => `- ${n.title} (${n.source})`).join('\n');
+        const shortPrices = (prices || []).map(p => `${p.symbol}: $${p.price}`).slice(0, 15).join(', ');
         const contextBundle = `
 === TARGET ACTION PLAN (${timeframe}) ===
 ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (deterministicAction || 'No action provided.')}
 
+=== USER PROFILE ===
+Targeted Commodities: ${req.userProfile?.commodities?.join(', ') || focusProduct}
+Targeted Regions: ${[...(req.userProfile?.regions || []), focusRegion].join(', ')}
 
-
-=== DYNAMIC CONCEPTUAL CONTEXT (ROUTED FOR ${focusProduct}) ===
-Global Supply Regions Monitored: ${dynamicContext.routing_metadata.regions.map(r => r.name).join(', ')}
-Conceptual Reasoning: ${dynamicContext.routing_metadata.regions.map(r => r.reason).join(' | ')}
-Dynamic Weather Data: ${JSON.stringify(dynamicContext.dynamic_weather)}
-Targeted News Keywords: ${dynamicContext.dynamic_news_keywords.join(', ')}
+=== LIVE NEWS FEED ===
+${topNews || 'No recent news available.'}
 
 === MARKET DATA (SECONDARY) ===
+Live Commodity Prices: ${shortPrices || 'N/A'}
 Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
 Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
-Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
 ${feedbackContext}
 `.trim();
 
@@ -1237,44 +1395,47 @@ CRITICAL INSTRUCTIONS:
 - Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
 - Never mention or recommend actions based on commodities that the user did not select.
 ===================================
-1. You MUST heavily analyze the "DYNAMIC CONCEPTUAL CONTEXT" to provide real-world, logical backing for the action plan. Connect specific regional weather disruptions or targeted news keywords directly to the supply chain actions.
-2. DO NOT use generic phrases like "variance index" or "macroeconomic indicators" unless it is explicitly tied to the news provided.
-3. Be highly detailed, specific, and actionable. Provide 2-3 paragraphs of deep analysis.
-4. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
+1. You MUST heavily analyze the provided "LIVE NEWS FEED" to back up the action plan. Do NOT hallucinate news.
+2. DO NOT use generic filler phrases like "variance index" or "macroeconomic indicators".
+3. Provide a highly structured, concise, and deeply informative analysis (around 100-150 words). Dive into the nuances and strategic implications of the data. Format the output as plain text with line breaks (\\n). Use dashes (-) for bullet points. DO NOT output any HTML tags.
+4. SYNTHESIZE the data into actionable insights. Tell the user WHY the data matters at a strategic executive level.
+5. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
+6. Provide 2 to 3 specific, highly actionable strategic bullet points directly relating to the selected commodity.
 
-
-Return a JSON object: {"deepDive": "your highly detailed 2-3 paragraph analysis text"}`;
+Return a JSON object: {"deepDive": "your concise, structured, and informative plain text analysis"}`;
 
         const analysisRaw = await callGroq(
             'llama-3.1-8b-instant',
             analysisPrompt,
             contextBundle,
             true,
-            1200,
+            1000,
             0.5,
             false
         );
         
         let deepDive = '';
         try {
+            console.log('AI Deep Dive Raw Output:', analysisRaw);
             const analysis = JSON.parse(analysisRaw);
-            deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : '';
+            deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : String(analysis.deepDive || '');
+            if (deepDive.length < 50) throw new Error('Response too short or hallucinated number');
         } catch (parseErr) {
-            console.warn('Deep Dive JSON parse failed, using deterministic fallback:', parseErr.message);
+            console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text for Ollama...');
+            const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
+            deepDive = await callGeminiFlash(fallbackPrompt, contextBundle, false, 1500, 0.5);
         }
 
         if (!deepDive) {
-            console.warn('Deep Dive response missing deepDive text, using deterministic fallback.');
-            deepDive = buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData });
+            deepDive = `[DETERMINISTIC FALLBACK] Our AI engine analyzed the latest market indicators, but was unable to format the highly detailed deep-dive response due to local model constraints. However, based on the ${commodity} metrics provided, we recommend monitoring the current support/resistance levels closely as geopolitical and weather factors continue to exert pressure.`;
         }
 
         res.json({ success: true, deepDive });
     } catch (err) {
         console.error('Deep Dive LLM Analysis failed:', err.response?.data || err.message);
-        res.json({
-            success: true,
-            fallback: true,
-            deepDive: buildDeepDiveFallback({ timeframe, focusProduct, focusRegion, deterministicAction, news, energy, weatherExtended, logisticsData })
+        res.status(503).json({
+            success: false,
+            error: `AI Deep-Dive Error: ${err.message}`
         });
     }
 });
@@ -1285,61 +1446,17 @@ app.post('/api/upload-csv-intelligence', requireAuth, upload.single('file'), asy
     try {
         if (!req.file) throw new Error('No file uploaded');
 
-        // 1. Parse CSV (up to first 100 rows for LLM context limit)
-        const csvContent = req.file.buffer.toString('utf-8');
-        const records = parse(csvContent, { columns: true, skip_empty_lines: true });
-        const sampleData = JSON.stringify(records.slice(0, 100));
-
-        // 2. Extract Keywords via LLM
-        const extractionPrompt = `You are a Supply Chain Intelligence expert. 
-Extract exactly 3 concise tracking keywords (e.g. "Semiconductors", "Wheat", "Maersk", "Taiwan") from the following raw CSV data. 
-Focus on specific commodities, regions, or major suppliers that are most critical. 
-Return ONLY a JSON array of strings under the key "keywords".`;
-
-        const extractionRaw = await callGroq('llama-3.3-70b-versatile', extractionPrompt, sampleData, true, 500, 0.3);
-        const keywordsParsed = JSON.parse(extractionRaw);
-        const keywords = keywordsParsed.keywords || [];
-
-        if (keywords.length === 0) throw new Error('No keywords extracted from CSV');
-
-        // 3. Scrape Live News based on extracted keywords
-        const qParam = encodeURIComponent(keywords.join(' OR '));
-        const newsRes = await axios.get(`https://newsdata.io/api/1/news?apikey=${NEWS_KEY}&q=${qParam}&language=en&category=business,politics`);
-        const newsData = newsRes.data.results || [];
-        const topNews = newsData.slice(0, 5).map(n => n.title).join(' | ');
-
-        // 4. Generate custom Alerts & Recommendations
-        const analysisPrompt = `You are FOPs Market Pulse.
-Based on the following extracted CSV Keywords: ${keywords.join(', ')}
-And the following Live Scraped News: ${topNews || 'No recent news found for these keywords.'}
-
-Generate:
-1. "alerts": An array of exactly 2 critical geopolitical or supply chain alerts based on the news. Each alert must have a "title" and a "description".
-2. "recommendations": An array of exactly 3 strategic planner recommendations representing "7D", "30D", and "90D" timeframes. Each must have "timeframe", "action", and "businessImpact".
-
-Return ONLY a JSON object with "alerts" and "recommendations" arrays.`;
-
-        const analysisRaw = await callGroq('llama-3.3-70b-versatile', analysisPrompt, "Analyze and return JSON.", true, 1500, 0.4);
-        const analysis = JSON.parse(analysisRaw);
-
-        const recs = (analysis.recommendations || []).map(r => {
-            const normalized = {};
-            for (const key in r) {
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes('time')) normalized.timeframe = r[key];
-                else if (lowerKey.includes('action')) normalized.action = r[key];
-                else if (lowerKey.includes('impact') || lowerKey.includes('business')) normalized.businessImpact = r[key];
-            }
-            return normalized;
+        res.status(403).json({
+            success: false,
+            error: 'CSV AI intelligence is disabled. API tokens are reserved for planner recommendations and deep dives only.'
         });
-
-        res.json({ success: true, alerts: analysis.alerts || [], recommendations: recs, extractedKeywords: keywords });
 
     } catch (err) {
         console.error('CSV Upload Intelligence failed:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
+
 // ── ROUTE: ML Forecast Analytics Data ────────────────────────────────
 app.get('/api/ml-forecasts', requireAuth, (req, res) => {
     try {
@@ -1360,182 +1477,53 @@ app.get('/api/ml-forecasts', requireAuth, (req, res) => {
 
 // ── ROUTE: AI Planner Recommendations ────────────────────────────────
 app.post('/api/analyze-planner', requireAuth, async (req, res) => {
-    const { prices, news, weather, energy, forex, weatherExtended } = req.body;
-    
     try {
-        const focusProduct = req.userProfile?.focus_product || 'Commodities';
-        const focusRegion = req.userProfile?.focus_region || 'Global';
-        // FORCE BRENT CRUDE ONLY (Override user profile)
-        const userCommodities = ['BRENT_CRUDE'];
-        const userKeywords = req.body.keywords || [];
+        const payload = {
+            ...req.body,
+            userProfile: req.userProfile,
+            logisticsData: cachedRealTimeLogistics,
+            userRegions: [...(req.userProfile?.regions || []), ((req.userProfile?.custom_regions || []).map(r => typeof r === 'string' ? r : (r.name || ''))).join(', ')].filter(Boolean)
+        };
 
+        const plannerInputSignature = crypto
+            .createHash('sha256')
+            .update(JSON.stringify({
+                keywords: payload.keywords || []
+            }))
+            .digest('hex')
+            .slice(0, 16);
+        const cacheKey = `${payload.userProfile?.focus_product || 'Commodities'}_${payload.userProfile?.focus_region || 'Global'}_${(payload.userProfile?.commodities || []).join(',')}_${payload.userRegions.join(',')}_${plannerInputSignature}`;
+        if (!global.aiPlannerCache) global.aiPlannerCache = {};
+        
+        // Cache for 2 hours to aggressively prevent Groq API rate limits
+        const now = Date.now();
+        const cacheEntry = global.aiPlannerCache[cacheKey];
+        if (!payload.forceRefresh && cacheEntry && (now - cacheEntry.timestamp < 120 * 60 * 1000)) {
+            return res.json({ success: true, recommendations: cacheEntry.data });
+        }
 
-
-        let feedbackContext = '';
         try {
             const pastFeedback = await getRecentAiFeedback(req.session.userId, 'RECOMMENDATION', 5);
             const negativeFeedback = pastFeedback.filter(f => f.is_helpful === false);
             if (negativeFeedback.length > 0) {
-                feedbackContext = '\n=== USER FEEDBACK HISTORY (DO NOT REPEAT PAST MISTAKES) ===\n' + 
+                payload.feedbackContext = '\n=== USER FEEDBACK HISTORY (DO NOT REPEAT PAST MISTAKES) ===\n' + 
                     negativeFeedback.map(f => `- You previously suggested: "${f.ai_response}". The user REJECTED this because: "${f.user_notes}". DO NOT make similar suggestions.`).join('\n');
             }
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
-        const logisticsData = cachedRealTimeLogistics;
-
-        const dynamicContext = await getDynamicContext(focusProduct, focusRegion, callGroq);
-
-        const contextBundle = `
-=== USER PROFILE ===
-Focus Product: ${focusProduct}
-Focus Region: ${focusRegion}
-Tracked Commodities: ${userCommodities.join(', ')}
-Custom Keywords: ${userKeywords.join(', ')}
-
-
-
-=== DYNAMIC CONCEPTUAL CONTEXT (ROUTED FOR ${focusProduct}) ===
-Global Supply Regions Monitored: ${dynamicContext.routing_metadata.regions.map(r => r.name).join(', ')}
-Conceptual Reasoning: ${dynamicContext.routing_metadata.regions.map(r => r.reason).join(' | ')}
-Dynamic Weather Data: ${JSON.stringify(dynamicContext.dynamic_weather)}
-Targeted News Keywords: ${dynamicContext.dynamic_news_keywords.join(', ')}
-
-=== REAL-TIME DATA (SECONDARY) ===
-Brent Crude: $${energy?.brent?.current?.value ?? 'N/A'}/barrel
-Key Currencies: ${Object.values(forex || {}).map(f => `${f.name}: ${f.rate}`).join(', ')}
-Port Congestion: ${(logisticsData.portCongestion || []).map(p => `${p.port} (${p.status})`).join(', ')}
-Geopolitical Risk Index: ${logisticsData.geopoliticalRiskIndex ?? 'N/A'}/10
-${feedbackContext}
-`.trim();
-
-        const analysisPrompt = `You are FOPs Market Pulse — an executive-grade supply chain intelligence engine.
-Based on the DYNAMIC CONCEPTUAL CONTEXT (which identifies the global supply regions crucial to the user's specific commodity), generate exactly 3 strategic, highly personalized planner recommendations.
-
-CRITICAL INSTRUCTIONS:
-=== FILTERING RULES (MANDATORY) ===
-- Treat the user-selected commodities as the only valid scope for analysis.
-- Before any reasoning, filter every API response to retain only records directly related to the selected commodities.
-- Discard: News about any non-selected commodity, weather impacts for regions growing non-selected commodities, supply chain events unrelated to selected commodities, price discussions of unrelated commodities, recommendations generated from indirect or irrelevant commodity trends.
-- If an article discusses multiple commodities, extract and retain only the portions relevant to the selected commodities. Ignore the rest.
-- Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
-- Never mention or recommend actions based on commodities that the user did not select.
-===================================
-1. The 3 recommendations MUST form a cohesive, phased strategy addressing the most critical risk/opportunity found in the Dynamic Conceptual Context (e.g. weather disruptions in a crucial supply region). Do NOT just pick 3 random SKUs.
-2. You MUST provide the conceptual backing for your recommendation (e.g. "Because of expected heavy rain in the US Midwest, grain feed costs will rise, impacting your dairy costs").
-2. The "7D" action must be an IMMEDIATE TACTICAL response (e.g., spot buys, rerouting shipments, emergency safety stock releases).
-3. The "30D" action must be a MID-TERM OPERATIONAL adjustment (e.g., updating Reorder Points, renegotiating short-term contracts, shifting allocations).
-4. The "90D" action must be a LONG-TERM STRATEGIC shift (e.g., onboarding new alternative suppliers, network redesign, product reformulation, hedging).
-
-7. Focus ONLY on the Middle East region. Do NOT mention India, China, or other non-Middle Eastern regions.
-8. DO NOT mention specific technical data science model names (e.g., "HoltWinters"). Use user-friendly terms like "our forecasting engine".
-9. You MUST explicitly reference the specific events from the "Top 5 News" to justify your strategic actions. Do NOT invent or hallucinate news events.
-
-Return a JSON object containing an array of exactly 3 objects under the key "recommendations". 
-Each object must represent a different timeframe and have these exact keys:
-- "timeframe" (string: exactly "7D", "30D", or "90D")
-- "action" (string: clear, easy-to-understand actionable plan utilizing the specific SKU numbers AND product names)
-- "businessImpact" (string: the simple business reason or impact)
-`;
-
-        const analysisRaw = await callGroq(
-            'llama-3.3-70b-versatile',
-            analysisPrompt,
-            contextBundle,
-            true,
-            1000,
-            0.1,
-            true
-        );
+        console.log('[AI PLANNER] Proxying request to Python FastAPI Microservice...');
+        const pythonRes = await axios.post('http://127.0.0.1:8000/api/analyze-planner', payload, { timeout: 45000 });
         
-        let recs = [];
-        try {
-            const parsed = JSON.parse(analysisRaw);
-            let rawRecs = [];
-            if (parsed.recommendations && Array.isArray(parsed.recommendations)) {
-                rawRecs = parsed.recommendations.slice(0, 3);
-            } else {
-                rawRecs = Object.values(parsed).slice(0, 3);
-            }
-            
-            // Normalize keys (LLMs often hallucinate exact casing like 'Timeframe' or 'Action')
-            recs = rawRecs.map(r => {
-                const normalized = {};
-                for (const key in r) {
-                    const lowerKey = key.toLowerCase();
-                    if (lowerKey.includes('time')) normalized.timeframe = r[key];
-                    else if (lowerKey.includes('action')) normalized.action = r[key];
-                    else if (lowerKey.includes('impact') || lowerKey.includes('business')) normalized.businessImpact = r[key];
-                }
-                return normalized;
-            }).filter(r => r.timeframe && r.action);
-            
-        } catch (e) {
-            console.error('Failed to parse AI planner recommendations', e);
+        if (pythonRes.data.success) {
+            global.aiPlannerCache[cacheKey] = { data: pythonRes.data.recommendations, timestamp: Date.now() };
+            return res.json({ success: true, recommendations: pythonRes.data.recommendations });
+        } else {
+            throw new Error(pythonRes.data.error || 'Python microservice returned an error');
         }
 
-        if (recs.length < 3) throw new Error('No recommendations generated');
-        res.json({ success: true, recommendations: recs });
     } catch (err) {
-        console.error('AI Planner Recommendations failed:', err.message);
-        if (process.env.ALLOW_PLANNER_FALLBACK !== 'true') {
-            return res.status(503).json({
-                success: false,
-                error: 'AI planner is unavailable. Set a valid GROQ_API_KEY or restore Gemini generation quota to get AI recommendations.'
-            });
-        }
-        
-        const focusProduct = req.userProfile?.focus_product || 'Commodities';
-        const focusRegion = req.userProfile?.focus_region || 'Global';
-        
-                let fallbackRecs = [
-            { timeframe: "7D", action: `Accelerate hedging and secure spot contracts for ${focusProduct} based on recent news trends.`, businessImpact: `Mitigates immediate volatility exposure in ${focusRegion} markets` },
-            { timeframe: "30D", action: `Diversify ${focusProduct} routing away from primary chokepoints indicated by current alerts.`, businessImpact: `Prevents critical inventory stockouts during unexpected disruptions` },
-            { timeframe: "90D", action: `Review and renegotiate logistics terms for ${focusRegion} suppliers to build long-term resilience.`, businessImpact: `Optimizes long-term supply chain resilience` }
-        ];
-
-        try {
-            if (fs.existsSync('outputs/forecast_recommendations.csv')) {
-                const mlcsv = fs.readFileSync('outputs/forecast_recommendations.csv', 'utf8');
-                const rows = mlcsv.split('\n').slice(1).filter(r => r.trim() !== '');
-                
-                const recsByHorizon = { '7': [], '30': [], '90': [] };
-                for (const row of rows) {
-                    const cols = row.split(',');
-                    if (cols.length >= 9) {
-                        const [sku, name, horizon, model, total, avg, ss, rop, qty] = cols;
-                        if (recsByHorizon[horizon]) recsByHorizon[horizon].push({ name, sku, total: parseFloat(total), qty });
-                    }
-                }
-                
-                if (recsByHorizon['7'].length > 0) {
-                    const top7 = recsByHorizon['7'].sort((a,b) => b.total - a.total)[0];
-                    fallbackRecs[0].action = `(ML Recommended) Increase immediate orders for ${top7.name} (${top7.sku}) to cover the forecasted short-term demand spike. Target order qty: ${top7.qty}.`;
-                }
-                if (recsByHorizon['30'].length > 0) {
-                    const top30 = recsByHorizon['30'].sort((a,b) => b.total - a.total)[0];
-                    fallbackRecs[1].action = `(ML Recommended) Adjust Reorder Points (ROP) mid-term for ${top30.name} (${top30.sku}). Forecasted total 30-day demand is ${top30.total}.`;
-                }
-                if (recsByHorizon['90'].length > 0) {
-                    const top90 = recsByHorizon['90'].sort((a,b) => b.total - a.total)[0];
-                    fallbackRecs[2].action = `(ML Recommended) Build strategic buffer stock for ${top90.name} (${top90.sku}) to offset long-term supply friction. Projected 90-day demand volume: ${top90.total}.`;
-                }
-            }
-        } catch (csvErr) {
-            console.error('Failed to parse CSV for fallback', csvErr);
-        }
-
-        // --- OVERRIDE WITH CUSTOM CSV INTELLIGENCE IF AVAILABLE ---
-        try {
-            if (fs.existsSync('custom_csv_intelligence.json')) {
-                const csvData = JSON.parse(fs.readFileSync('custom_csv_intelligence.json', 'utf8'));
-                if (csvData && csvData.recommendations && csvData.recommendations.length > 0) {
-                    fallbackRecs = csvData.recommendations;
-                }
-            }
-        } catch(e) { console.error('Failed to inject CSV recommendations:', e.message); }
-        // ---------------------------------------------------
-        
-        res.json({ success: true, recommendations: fallbackRecs });
+        console.error('AI Planner Error:', err.response?.data?.error?.message || err.message);
+        res.status(500).json({ success: false, error: 'AI Planner Engine failed to generate response.' });
     }
 });
 
@@ -1550,38 +1538,25 @@ app.post('/api/analyze-commodity', requireAuth, async (req, res) => {
 
     try {
         const weatherRegions = (weather || []).filter(w => commodityInfo.regions.includes(w.name));
-        const context = `
-COMMODITY: ${commodity}
-Current Price: $${commodityInfo.price} ${commodityInfo.unit}
-Top Producers: ${commodityInfo.producers.join(', ')}
-Key Regions: ${commodityInfo.regions.join(', ')}
-Linked Currencies: ${commodityInfo.currencies.join(', ')}
-
-WEATHER IN COMMODITY REGIONS:
-${weatherRegions.map(w => `${w.name}: ${w.analytics?.avgTemp7d}°C avg, ${w.analytics?.recentPrecipMm}mm rain/7d, soil: ${w.analytics?.currentSoilMoisture ?? 'N/A'}, alert: ${w.analytics?.alert}`).join('\n')}
-
-CURRENCY RATES (vs USD):
-${commodityInfo.currencies.filter(c => c !== 'USD' && forex?.[c]).map(c => `${c}: ${forex[c].rate}`).join(' | ')}
-
-ENERGY:
-Brent: $${energy?.brent?.current?.value ?? 'N/A'}/bbl
-`.trim();
-
-        const prompt = `You are a commodity analyst specializing in ${commodity}. Analyze the provided data and return JSON:
-{
-  "commodity": "${commodity}",
-  "outlook": { "short": "7-day outlook", "medium": "30-day outlook", "long": "90-day outlook" },
-  "riskLevel": "LOW|MEDIUM|HIGH|CRITICAL",
-  "priceDrivers": [{ "factor": "", "direction": "UP|DOWN", "impact": "1-10", "explanation": "" }],
-  "weatherImpact": { "severity": "LOW|MEDIUM|HIGH", "detail": "" },
-  "currencyImpact": { "severity": "LOW|MEDIUM|HIGH", "detail": "" },
-  "supplyChainRisks": ["list of specific risks"],
-  "actionItems": [{ "priority": "P0|P1|P2", "action": "", "deadline": "" }]
-}
-Be specific. Use data points. Do not generalize.`;
-
-        const raw = await callGroq('llama-3.1-8b-instant', prompt, context, true, 2000);
-        res.json({ success: true, analysis: JSON.parse(raw), commodity });
+        res.json({
+            success: true,
+            commodity,
+            provider: 'deterministic',
+            analysis: {
+                commodity,
+                outlook: {
+                    short: 'Use planner recommendations or deep dives for AI-backed commodity outlooks.',
+                    medium: 'Per-commodity AI analysis is disabled to conserve API tokens.',
+                    long: 'Per-commodity AI analysis is disabled to conserve API tokens.'
+                },
+                riskLevel: weatherRegions.some(w => w.analytics?.alert && w.analytics.alert !== 'NORMAL') ? 'MEDIUM' : 'LOW',
+                priceDrivers: [],
+                weatherImpact: { severity: 'LOW', detail: 'Deterministic endpoint; AI disabled.' },
+                currencyImpact: { severity: 'LOW', detail: 'Deterministic endpoint; AI disabled.' },
+                supplyChainRisks: [],
+                actionItems: []
+            }
+        });
     } catch (err) {
         console.error(`Commodity analysis error for ${commodity}:`, err.message);
         res.status(500).json({ error: err.message });
@@ -1591,21 +1566,10 @@ Be specific. Use data points. Do not generalize.`;
 
 // ── ROUTE: fallback to Gemini ───────────────────────────────────────
 app.post('/api/analyze-fallback', requireAuth, async (req, res) => {
-    const GEMINI_KEY = process.env.GEMINI_API_KEY;
-    const { contextBundle, systemPrompt } = req.body;
-    try {
-        const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-            {
-                contents: [{ parts: [{ text: `${systemPrompt}\n\n${contextBundle}` }] }],
-                generationConfig: { responseMimeType: 'application/json' },
-            }
-        );
-        const raw = response.data.candidates[0].content.parts[0].text;
-        res.json({ success: true, analysis: JSON.parse(raw), provider: 'gemini-flash' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.status(403).json({
+        success: false,
+        error: 'Gemini fallback is disabled. API tokens are reserved for planner recommendations and deep dives only.'
+    });
 });
 
 
@@ -1620,6 +1584,13 @@ const MAX_HISTORY = 200; // keep last ~16 minutes at 5s intervals
 
 // Initialize live prices with 0, then immediately fetch real data from Yahoo
 async function initLivePrices() {
+    // Ensure all hardcoded Yahoo symbols are present in COMMODITY_DATA
+    for (const symbol of Object.keys(YAHOO_SYMBOLS)) {
+        if (!COMMODITY_DATA[symbol]) {
+            COMMODITY_DATA[symbol] = { price: '0', unit: 'USD', producers: ['Global Market'], regions: [], currencies: ['USD'] };
+        }
+    }
+
     for (const [symbol, data] of Object.entries(COMMODITY_DATA)) {
         livePrices[symbol] = {
             base: 0,
@@ -1761,8 +1732,17 @@ async function checkPriceAlerts() {
                             const systemPrompt = `You are a tactical agricultural supply chain expert.`;
                             const prompt = `The commodity ${alert.symbol} just went ${alert.type} ${alert.threshold} (Current Price: $${currentPrice}). Write a short, tactical 3-sentence action plan for a supply chain manager on how to respond to this price movement. Do not use formatting like markdown.`;
                             
-                            // callGroq(model, systemPrompt, userContent, jsonMode, maxTokens)
-                            aiActionPlan = await callGroq('llama-3.3-70b-versatile', systemPrompt, prompt, false, 300);
+                            global.priceAlertCooldowns = global.priceAlertCooldowns || {};
+                            const alertKey = `${user.id}-${alert.symbol}`;
+                            const lastTrigger = global.priceAlertCooldowns[alertKey] || 0;
+                            const isCooldown = (Date.now() - lastTrigger) < 24 * 60 * 60 * 1000;
+
+                            if (!isCooldown) {
+                                aiActionPlan = 'AI action plans for price alerts are disabled to conserve API tokens.';
+                                global.priceAlertCooldowns[alertKey] = Date.now();
+                            } else {
+                                aiActionPlan = 'AI Analysis is on cooldown for this commodity to conserve API limits.';
+                            }
                         } catch (err) {
                             console.error('Failed to generate AI action plan for alert:', err.message);
                             aiActionPlan = 'AI Analysis unavailable at this moment due to high demand.';
@@ -1822,7 +1802,7 @@ async function checkPriceAlerts() {
 initLivePrices();
 
 // Tick prices via real Internet live fetch (Yahoo Finance) for Ags
-setInterval(tickPrices, 30000); // 30s intervals to avoid cloud rate-limiting
+setInterval(tickPrices, 24 * 60 * 60 * 1000); // 24h intervals to reduce updates
 
 // Reset open/high/low every hour
 setInterval(() => {
@@ -1898,7 +1878,7 @@ setInterval(() => {
             sseClients.delete(client);
         }
     }
-}, 5000);
+}, 24 * 60 * 60 * 1000); // Reduced to 24 hours
 
 // ── ROUTE: price history (REST fallback) ──
 app.get('/api/live-prices', (req, res) => {
@@ -1967,6 +1947,10 @@ function saveAlertedArticles() {
 const recentGeoAlerts = [];
 const userSpecificAlertsCache = {};
 
+global.clearUserAlertCache = (userId) => {
+    userSpecificAlertsCache[userId] = [];
+};
+
 async function scanGeopoliticalNews() {
   console.log('[GEO-SCANNER] Running geopolitical scan...');
   
@@ -1997,13 +1981,18 @@ async function scanGeopoliticalNews() {
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
       let match;
       while ((match = itemRegex.exec(rssXml)) !== null) {
+        if (items.length >= 10) break; // clamp to top 10
         const xml = match[1];
         const title = (xml.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '')
           .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
         const link = (xml.match(/<link>([\s\S]*?)<\/link>/)?.[1] || '').trim();
         const pubDate = (xml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '').trim();
         const source = (xml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || 'Google News').trim();
-        if (title) items.push({ title, url: link, publishedAt: pubDate, source });
+        
+        if (!pubDate) continue;
+        const isOlderThan24h = (Date.now() - new Date(pubDate).getTime()) > (24 * 60 * 60 * 1000);
+
+        if (title && !isOlderThan24h) items.push({ title, url: link, publishedAt: pubDate, source });
       }
       return items;
     })
@@ -2230,6 +2219,214 @@ app.post('/api/sop', requireAuth, async (req, res) => {
   }
 });
 
+let userScannerPipeline = null;
+
+async function initScannerPipeline() {
+  if (userScannerPipeline) return userScannerPipeline;
+    userScannerPipeline = new NewsPipeline({
+    auditLogFn: async (userId, article, stageDropped, rejectionReason, score, isAccepted) => {
+        await insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted);
+    },
+    llmFn: async (messages, expectJson) => {
+      return { relevant: false, reason: 'LLM review disabled; API tokens reserved for planner recommendations and deep dives only.' };
+    },
+    scoreThreshold: 75,
+    llmThresholdLow: 25,
+    llmThresholdHigh: 85
+  });
+  return userScannerPipeline;
+}
+
+async function scanSingleUser(user, pipeline) {
+  try {
+    if (!user.id) return;
+    const profile = await getUserProfile(user.id);
+    if (!profile) return;
+
+    // 1. Fetch News
+    let customKeywords = profile.news_keywords && profile.news_keywords.length > 0 ? profile.news_keywords : [];
+    const regionTarget = profile.focus_region ? ` ${profile.focus_region}` : '';
+
+    // Apply region target to custom keywords
+    customKeywords = customKeywords.map(k => `${k}${regionTarget}`);
+
+    // Gather selected commodities and regions
+    const targets = [...(profile.commodities || []), profile.focus_product].filter(Boolean);
+    const regions = [...(profile.regions || []), profile.focus_region].filter(Boolean);
+
+    const commQueries = [...new Set(targets)].map(c => `${c} supply chain OR logistics`);
+    const regQueries = [...new Set(regions)].map(r => `${r} supply chain OR logistics`);
+
+    // Combine all sources into a single search pool
+    const combinedPool = [...new Set([...customKeywords, ...commQueries, ...regQueries])];
+    
+    // Shuffle array and take top 20 to ensure fair distribution across commodities/regions
+    let keywords = combinedPool.sort(() => 0.5 - Math.random()).slice(0, 20);
+
+    if (keywords.length === 0) {
+        keywords = ['supply chain', 'logistics'];
+    }
+    const rssResults = await Promise.allSettled(
+      keywords.map(async (q) => {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en&when=1d`;
+        const { data: rssXml } = await axios.get(rssUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FOPsUserScanner/1.0)' },
+          timeout: 8000,
+        });
+        const items = [];
+        const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+        let match;
+        while ((match = itemRegex.exec(rssXml)) !== null) {
+          if (items.length >= 10) break; // clamp to top 10
+          const xml = match[1];
+          const title = (xml.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+          const link = (xml.match(/<link>([\s\S]*?)<\/link>/)?.[1] || '').trim();
+          const pubDate = (xml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '').trim();
+          const desc = (xml.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim();
+          const source = (xml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || 'Google News').trim();
+          
+          if (!pubDate) continue;
+
+          if (title) {
+              items.push({ title, description: desc, content: '', url: link, publishedAt: pubDate, source });
+          }
+        }
+        return items;
+      })
+    );
+
+    const allArticles = [];
+    for (const result of rssResults) {
+      if (result.status === 'fulfilled') allArticles.push(...result.value);
+    }
+
+    console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles from RSS for user ${user.id}`);
+
+    const triggeredAlerts = [];
+    
+    // 2. Process through Pipeline
+    for (const rawArticle of allArticles) {
+      if (triggeredAlerts.length >= MAX_USER_SCANNER_ALERTS) break;
+
+      const result = await pipeline.processArticle(rawArticle, profile, alertedArticles);
+
+      if (result.accepted) {
+        const a = result.article;
+        
+        // Extract insights locally to save LLM tokens
+        const extractedData = await fetchAndExtractArticle(a.url);
+        let nlpDescription = a.description;
+        let entities = null;
+        
+        if (extractedData) {
+            nlpDescription = `NLP Summary: ${extractedData.summary}`;
+            entities = extractedData.entities;
+        }
+
+        // Save the alert globally so we don't alert again
+        const titleKey = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
+        alertedArticles.add(titleKey);
+
+        triggeredAlerts.push({
+          id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          severity: a.priority.toUpperCase(),
+          category: 'Profile Match',
+          title: '🎯 Profile Alert: ' + a.title,
+          source: a.source,
+          url: a.url,
+          timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
+          reason: a.llmReason || `Score: ${a.relevanceScore}. Commodity Match: ${a.breakdown.commodityScore > 0 ? 'Yes' : 'No'}. Region Match: ${a.matchedRegions.join(', ')}`,
+          detectedAt: new Date().toISOString(),
+          description: nlpDescription,
+          entities: entities
+        });
+
+      }
+    }
+
+    // Save the Set to disk so both accepted and rejected duplicate keys are persisted
+    saveAlertedArticles();
+
+    // 3. Dispatch Alerts
+    if (triggeredAlerts.length > 0) {
+      userSpecificAlertsCache[user.id] = userSpecificAlertsCache[user.id] || [];
+      userSpecificAlertsCache[user.id].unshift(...triggeredAlerts);
+      if (userSpecificAlertsCache[user.id].length > 20) userSpecificAlertsCache[user.id].length = 20;
+
+      // Email the user
+      if (transporter && user.email) {
+        const alertHtml = triggeredAlerts.map(a => `
+          <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 12px 0; border-radius: 0 8px 8px 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <span style="background: #3b82f6; color: white; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px;">PROFILE ALERT</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 8px;">${a.title}</div>
+            <div style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 8px;">${a.reason}</div>
+            <div style="font-size: 11px; color: #94a3b8;">Source: ${a.source} · Detected: ${new Date(a.detectedAt).toLocaleString()}</div>
+            ${a.url ? `<a href="${a.url}" style="display: inline-block; margin-top: 8px; font-size: 12px; color: #2563eb; text-decoration: none;">Read Full Article →</a>` : ''}
+          </div>
+        `).join('');
+
+        try {
+          await transporter.sendMail({
+            from: `"FOPs Profile Alerts" <${process.env.SENDER_EMAIL || 'alerts@fops.local'}>`,
+            to: user.email,
+            subject: `🎯 Personalized Alert: ${triggeredAlerts[0].title.slice(0, 80)}`,
+            html: `
+              <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #ffffff;">
+                <h2 style="color: #0f172a; margin: 0; font-size: 18px;">🎯 Personalized Profile Match</h2>
+                <p style="color: #475569; font-size: 14px; margin-top: 8px;">We detected news specifically affecting your tracked commodities and regions.</p>
+                ${alertHtml}
+                <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">FOPs Pulse Intelligence Engine • Automatically generated based on your profile.</p>
+              </div>
+            `
+          });
+          console.log(`[USER-SCANNER] ✅ Sent profile alert to ${user.email}`);
+        } catch (err) {
+          console.error(`[USER-SCANNER] Email error (${user.email}):`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[USER-SCANNER] Failure for user ${user.id}:`, err);
+  }
+}
+
+async function scanUserSpecificNews() {
+  console.log('[USER-SCANNER] Running user-specific profile scan with new NewsPipeline...');
+  try {
+    const users = await getAllUsers();
+    const pipeline = await initScannerPipeline();
+
+    for (const user of users) {
+      await scanSingleUser(user, pipeline);
+    }
+  } catch (err) {
+    console.error('[USER-SCANNER] Global failure:', err);
+  }
+}
+
+global.triggerUserScan = async (userId) => {
+    try {
+        const user = await findUserById(userId);
+        if (user) {
+            console.log(`[USER-SCANNER] Manual scan triggered for user ${userId}`);
+            const pipeline = await initScannerPipeline();
+            await scanSingleUser(user, pipeline);
+        }
+    } catch (err) {
+        console.error('Trigger scan error:', err);
+    }
+};
+
+global.clearUserAlertsCache = (userId) => {
+    if (userId) {
+        delete userSpecificAlertsCache[userId];
+    } else {
+        Object.keys(userSpecificAlertsCache).forEach(k => delete userSpecificAlertsCache[k]);
+    }
+};
+
 app.put('/api/sop/:id', requireAuth, async (req, res) => {
   try {
     await updateSopPlan(req.params.id, req.body);
@@ -2257,251 +2454,7 @@ app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
 });
 
-function getMatchingKeywords(text, keywords) {
-  const lowerText = String(text || '').toLowerCase();
-  return (keywords || [])
-    .map(k => String(k || '').trim())
-    .filter(k => k && lowerText.includes(k.toLowerCase()));
-}
 
-function buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords) {
-  const keywordText = matchedKeywords.length > 0 ? ` (${matchedKeywords.join(', ')})` : '';
-  return `Matched your tracked keyword${matchedKeywords.length === 1 ? '' : 's'}${keywordText} for ${focusProduct} in ${focusRegion}. Review the article for possible supply, pricing, logistics, or demand impact.`;
-}
-
-async function scanUserSpecificNews() {
-  console.log('[USER-SCANNER] Running user-specific profile scan...');
-  try {
-    const users = await getAllUsers();
-    for (const user of users) {
-      if (!user.id) continue;
-      const profile = await getUserProfile(user.id);
-      if (!profile) continue;
-
-      // Restore personalized profile scanning
-      const keywords = profile.news_keywords && profile.news_keywords.length > 0 ? profile.news_keywords : ['supply chain', 'logistics'];
-      const focusProduct = profile.focus_product || 'Commodities';
-      const focusRegion = profile.focus_region || 'Global';
-      
-      const rssResults = await Promise.allSettled(
-        keywords.map(async (q) => {
-          const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en&when=1d`;
-          const { data: rssXml } = await axios.get(rssUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FOPsUserScanner/1.0)' },
-            timeout: 8000,
-          });
-          const items = [];
-          const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-          let match;
-          while ((match = itemRegex.exec(rssXml)) !== null) {
-            const xml = match[1];
-            const title = (xml.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-            const link = (xml.match(/<link>([\s\S]*?)<\/link>/)?.[1] || '').trim();
-            const pubDate = (xml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '').trim();
-            const source = (xml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || 'Google News').trim();
-            if (title) items.push({ title, url: link, publishedAt: pubDate, source });
-          }
-          return items;
-        })
-      );
-
-      const allArticles = [];
-      for (const result of rssResults) {
-        if (result.status === 'fulfilled') allArticles.push(...result.value);
-      }
-
-      // Deduplicate
-      const seen = new Set();
-      const unique = allArticles.filter(a => {
-        const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-
-      const triggeredAlerts = [];
-      const now = Date.now();
-      const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-      
-      const scKeywords = ['supply', 'shortage', 'price', 'freight', 'export', 'import', 'market', 'forecast', 'disruption', 'delay', 'logistics', 'tariff', 'trade', 'ban', 'demand', 'inflation', 'cost', 'strike', 'port', 'shipping', 'index'];
-
-      const candidateArticles = [];
-      for (const article of unique) {
-        if (article.publishedAt) {
-          const pubTime = new Date(article.publishedAt).getTime();
-          if (!isNaN(pubTime) && (now - pubTime) > MAX_AGE_MS) continue;
-        }
-
-        const lowerTitle = article.title.toLowerCase();
-        const articleKey = lowerTitle.replace(/[^a-z0-9]/g, '').slice(0, 80);
-        const userArticleKey = `user:${user.id}:${articleKey}`;
-        if (alertedArticles.has(userArticleKey)) continue;
-
-        const matchedKeywords = getMatchingKeywords(article.title, keywords);
-        const hasKeywordMatch = matchedKeywords.length > 0;
-        const hasContextMatch = scKeywords.some(c => lowerTitle.includes(c));
-        
-        // 1. Deterministic filter: keep user keyword matches and supply-chain context.
-        if (!hasKeywordMatch && !hasContextMatch) continue;
-
-        candidateArticles.push({ ...article, matchedKeywords });
-      }
-
-      if (candidateArticles.length === 0) continue;
-      
-      // Cap the articles to protect API quota
-      const cappedArticles = candidateArticles.slice(0, MAX_USER_SCANNER_CANDIDATES);
-
-      let criteriaEmb = null;
-      if (USER_SCANNER_EMBEDDINGS_ENABLED) {
-        try {
-          criteriaEmb = await generateEmbedding(`A critical supply chain risk or opportunity impacting ${focusProduct} in ${focusRegion}`);
-        } catch (e) {
-          console.warn(`[USER-SCANNER] Failed to generate criteria embedding for ${user.username}`, e.message);
-        }
-      }
-
-      // 2. Batch embed the candidate articles to prevent rate limit spikes (Max 50 per batch)
-      let articleEmbeddings = [];
-      if (criteriaEmb) {
-          const textsToEmbed = cappedArticles.map(a => a.title);
-          for (let i = 0; i < textsToEmbed.length; i += 50) {
-              const batch = textsToEmbed.slice(i, i + 50);
-              try {
-                  const batchEmbs = await generateBatchEmbeddings(batch);
-                  if (batchEmbs && batchEmbs.length === batch.length) {
-                      articleEmbeddings.push(...batchEmbs);
-                  } else {
-                      articleEmbeddings.push(...new Array(batch.length).fill(null));
-                  }
-              } catch (err) {
-                  console.warn(`[USER-SCANNER] Batch embedding failed for ${user.username}. Using fallback.`, err.message);
-                  articleEmbeddings.push(...new Array(batch.length).fill(null));
-              }
-              await new Promise(r => setTimeout(r, 3000)); // 3s cooldown to protect Gemini quota
-          }
-      }
-
-
-
-      for (let i = 0; i < cappedArticles.length; i++) {
-        const article = cappedArticles[i];
-        const articleKey = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
-        const userArticleKey = `user:${user.id}:${articleKey}`;
-
-        let accepted = false;
-        let simScore = 0;
-
-        const lowerTitle = article.title.toLowerCase();
-        const matchedKeywords = article.matchedKeywords || getMatchingKeywords(article.title, keywords);
-        const hasKeywordMatch = matchedKeywords.length > 0;
-
-        if (criteriaEmb && articleEmbeddings[i]) {
-            simScore = cosineSimilarity(articleEmbeddings[i], criteriaEmb);
-            if (simScore > 0.60) {
-                accepted = true;
-            }
-        }
-
-        // 3. Fallback: If AI failed OR AI score was low, but we have a STRONG direct keyword match + context
-        if (!accepted && hasKeywordMatch) {
-            accepted = true;
-            console.log(`[USER-SCANNER] Fallback dual-match accepted for: ${article.title}`);
-        }
-
-        if (accepted) {
-          console.log(`[USER-SCANNER] Initial Match for ${user.username} (sim: ${simScore.toFixed(2)}): ${article.title}`);
-          
-          let aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
-          let finalAccept = true;
-
-          if (USER_SCANNER_AI_REVIEW_ENABLED) {
-            try {
-              const systemPrompt = `You are an elite Supply Chain Intelligence AI. Determine if this news headline represents a genuine, actionable supply chain risk, disruption, or price volatility event for a user tracking ${focusProduct} in ${focusRegion}.`;
-              const userPrompt = `Headline: "${article.title}"\n\nTask:\n1. If this is a real supply chain risk/opportunity, generate a concise 1-sentence reason explaining the exact business impact.\n2. If this is generic news, local crime, or unrelated to supply chain, output exactly the word "DISCARD".\n\nOutput only the 1-sentence reason, or "DISCARD".`;
-
-              // Call LLM in text mode (jsonMode=false)
-              const llmRes = await callGroq('llama-3.1-8b-instant', systemPrompt, userPrompt, false, 150, 0.1, false);
-
-              const cleanRes = llmRes.trim();
-              if (cleanRes.toUpperCase() === 'DISCARD' || cleanRes.toUpperCase().includes('DISCARD')) {
-                console.log(`[USER-SCANNER] AI discarded: ${article.title}`);
-                alertedArticles.add(userArticleKey);
-                saveAlertedArticles();
-                finalAccept = false;
-              } else if (cleanRes.length > 5) {
-                aiReason = cleanRes.replace(/^["']|["']$/g, ''); // remove surrounding quotes if any
-              }
-            } catch (e) {
-              console.warn(`[USER-SCANNER] AI evaluation unavailable, sending deterministic keyword alert: ${article.title}`);
-              aiReason = buildKeywordAlertReason(article, focusProduct, focusRegion, matchedKeywords);
-              finalAccept = true;
-            }
-          }
-
-          if (finalAccept) {
-            alertedArticles.add(userArticleKey);
-            saveAlertedArticles();
-            triggeredAlerts.push({
-              id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-              severity: 'HIGH',
-              category: 'Profile Match',
-              title: '🎯 Profile Alert: ' + article.title,
-              source: article.source,
-              url: article.url,
-              timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
-              reason: aiReason,
-              detectedAt: new Date().toISOString(),
-            });
-            if (triggeredAlerts.length >= MAX_USER_SCANNER_ALERTS) break;
-          }
-        }
-      }
-
-      if (triggeredAlerts.length > 0) {
-        userSpecificAlertsCache[user.id] = userSpecificAlertsCache[user.id] || [];
-        userSpecificAlertsCache[user.id].unshift(...triggeredAlerts);
-        if (userSpecificAlertsCache[user.id].length > 20) userSpecificAlertsCache[user.id].length = 20;
-
-        // Email the user
-        if (transporter && user.email) {
-          const alertHtml = triggeredAlerts.map(a => `
-            <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 12px 0; border-radius: 0 8px 8px 0;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <span style="background: #3b82f6; color: white; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 1px;">PROFILE ALERT</span>
-              </div>
-              <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 8px;">${a.title}</div>
-              <div style="font-size: 13px; color: #475569; line-height: 1.5; margin-bottom: 8px;">${a.reason}</div>
-              <div style="font-size: 11px; color: #94a3b8;">Source: ${a.source} · Detected: ${new Date(a.detectedAt).toLocaleString()}</div>
-              ${a.url ? `<a href="${a.url}" style="display: inline-block; margin-top: 8px; font-size: 12px; color: #2563eb; text-decoration: none;">Read Full Article →</a>` : ''}
-            </div>
-          `).join('');
-
-          try {
-            await transporter.sendMail({
-              from: `"FOPs Profile Alerts" <${process.env.SENDER_EMAIL || 'alerts@fops.local'}>`,
-              to: user.email,
-              subject: `🎯 Personalized Alert: ${triggeredAlerts[0].title.slice(0, 80)}`,
-              html: `
-                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #ffffff;">
-                  <h2 style="color: #0f172a; margin: 0; font-size: 18px;">🎯 Personalized Profile Match</h2>
-                  <p style="color: #475569; font-size: 14px; margin-top: 8px;">We detected news specifically affecting your tracked commodities and regions.</p>
-                  ${alertHtml}
-                  <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">FOPs Pulse Intelligence Engine • Automatically generated based on your profile.</p>
-                </div>
-              `
-            });
-            console.log(`[USER-SCANNER] ✅ Sent profile alert to ${user.email}`);
-          } catch (err) {
-            console.error(`[USER-SCANNER] Email error (${user.email}):`, err.message);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[USER-SCANNER] Global failure:', err);
-  }
-}
 
 function scheduleScannerJobs() {
     if (!BACKGROUND_AI_ENABLED) {
@@ -2510,7 +2463,6 @@ function scheduleScannerJobs() {
     }
 
     if (GEO_SCANNER_ENABLED) {
-        setTimeout(scanGeopoliticalNews, 60000);
         setInterval(scanGeopoliticalNews, GEO_SCAN_INTERVAL_MS);
         console.log(`[GEO-SCANNER] Live Geopolitical Alert Scanner initialized (polling every ${Math.round(GEO_SCAN_INTERVAL_MS / 60000)} min)`);
     } else {
@@ -2518,7 +2470,7 @@ function scheduleScannerJobs() {
     }
 
     if (USER_SCANNER_ENABLED) {
-        setTimeout(scanUserSpecificNews, 120000);
+        setTimeout(scanUserSpecificNews, 10000);
         setInterval(scanUserSpecificNews, USER_SCAN_INTERVAL_MS);
         console.log(`[USER-SCANNER] User-Specific Profile Scanner initialized (polling every ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min)`);
     } else {
@@ -2533,7 +2485,7 @@ async function startAIWorker() {
     if (!BACKGROUND_AI_ENABLED || !AI_WORKER_ENABLED) {
         return console.log('[AI-WORKER] Disabled by configuration.');
     }
-    if (!ai || !GEMINI_EMBEDDINGS_ENABLED) {
+    if (!process.env.GEMINI_API_KEY || !GEMINI_EMBEDDINGS_ENABLED) {
         return console.warn('[AI-WORKER] Missing Gemini API key or embeddings disabled. Worker disabled.');
     }
     
@@ -2567,23 +2519,8 @@ async function startAIWorker() {
                 return;
             }
             
-            // 2. Batch Classify using Groq (1 API Call)
-            const systemPrompt = `You are an expert at extracting JSON from text. Output ONLY a valid JSON array of objects. Format: [{"region": "Middle East", "commodity": "Oil"}]. Use "Global" and "General" as fallbacks. Ensure the output array length matches the number of input articles exactly.`;
-            
-            const articlesList = unprocessed.map((a, i) => `[${i}] Title: ${a.title}\nSummary: ${a.summary}`).join('\n\n');
-            const userPrompt = `Analyze these ${unprocessed.length} news articles and extract the primary agricultural/geopolitical region and the primary commodity for each.\n\nArticles:\n${articlesList}`;
-            
-            const classResText = await callGroq('llama-3.3-70b-versatile', systemPrompt, userPrompt, true, 800);
-            
-            let classifications = [];
-            try {
-                const cleanJson = classResText.replace(/```json/g, '').replace(/```/g, '').trim();
-                classifications = JSON.parse(cleanJson);
-                if (!Array.isArray(classifications)) classifications = [classifications];
-            } catch (e) {
-                console.error('[AI-WORKER] JSON parse error for batch classification:', e.message);
-                classifications = unprocessed.map(() => ({ region: 'Global', commodity: 'General' }));
-            }
+            // 2. Use deterministic classification. API tokens are reserved for planner recommendations and deep dives only.
+            const classifications = unprocessed.map(() => ({ region: 'Global', commodity: 'General' }));
             
             // 3. Update Database
             for (let i = 0; i < unprocessed.length; i++) {
@@ -2626,36 +2563,23 @@ async function runLLMForecastLoop() {
 
     const generate = async () => {
         try {
-            console.log('[AI-FORECASTER] Generating live market forecast via Llama 3...');
+            console.log('[AI-FORECASTER] Using deterministic forecast; LLM generation disabled.');
             const brent = livePrices['BRENT_CRUDE']?.current || 75;
             const recentAlerts = recentGeoAlerts.map(a => `[${a.severity}] ${a.title}`).join(' | ');
-            
-            const prompt = `You are FOPs Market Pulse, a Senior Supply Chain Risk Analyst.
-Analyze the current state and provide a strategic market forecast for food supply chains and logistics.
-Current Brent Crude: $${brent}
-Recent Geopolitical Alerts: ${recentAlerts || 'None active'}
 
-Provide a JSON output ONLY with exactly these keys: "next7d" (string), "next30d" (string), "next90d" (string), "confidence" (string: HIGH, MEDIUM, LOW).
-Keep each forecast concise, professional, and action-oriented (1-2 sentences). Do not use markdown wrappers.`;
-
-            const raw = await callGroq('llama-3.3-70b-versatile', prompt, "{}", true, 800);
-            const data = JSON.parse(raw);
-            
-            if (data.next7d && data.next30d && data.next90d) {
-                cachedLLMForecast = {
-                    next7d: data.next7d,
-                    next30d: data.next30d,
-                    next90d: data.next90d,
-                    confidence: data.confidence || "MEDIUM"
-                };
-                console.log('[AI-FORECASTER] Successfully updated cached forecast.');
-            }
+            cachedLLMForecast = {
+                next7d: `Brent is tracking near $${brent}; monitor short-term freight and energy pass-through risk.`,
+                next30d: recentAlerts ? `Recent alerts remain active: ${recentAlerts.slice(0, 180)}.` : 'No major alert group is active; maintain baseline procurement monitoring.',
+                next90d: 'Use planner recommendations or deep dives for AI-backed long-horizon interpretation.',
+                confidence: 'LOW'
+            };
+            console.log('[AI-FORECASTER] Deterministic cached forecast updated.');
         } catch (err) {
             console.error('[AI-FORECASTER] Error generating forecast:', err.message);
         }
     };
 
-    setTimeout(generate, Math.min(150000, AI_FORECAST_INTERVAL_MS)); // Stagger from other tasks
+    // setTimeout(generate, Math.min(150000, AI_FORECAST_INTERVAL_MS)); // Stagger from other tasks
     setInterval(generate, AI_FORECAST_INTERVAL_MS);
 }
 

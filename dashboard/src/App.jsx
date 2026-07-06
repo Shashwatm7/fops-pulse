@@ -6,12 +6,13 @@ import {
 import { 
   Activity, BarChart2, Globe2, Zap, Target, PlaySquare, 
   Settings, Shield, RefreshCw, LogOut, Search, Sparkles, Plus,
-  LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown
+  LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown, Bell
 } from 'lucide-react';
 import './App.css';
 import LoginPage from './LoginPage.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import SettingsPage from './SettingsPage.jsx';
+import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
@@ -79,6 +80,63 @@ function AnimatedValue({ value, prefix = '', suffix = '', decimals = 2, duration
     <span className="price-animated">
       {prefix}{display.toLocaleString(undefined, { minimumFractionDigits: value < 0.01 ? 6 : value < 1 ? 4 : value < 10 ? 3 : decimals, maximumFractionDigits: value < 0.01 ? 6 : value < 1 ? 4 : value < 10 ? 3 : decimals })}{suffix}
     </span>
+  );
+}
+
+function ApiLimitTracker() {
+  const [limits, setLimits] = useState({ remaining: '...', reset: '...' });
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    const fetchLimits = () => {
+      fetch(`${API_BASE}/rate-limits`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+          setLimits(data);
+          if (data.reset && data.reset !== 'N/A') {
+            let ms = 0;
+            const h = data.reset.match(/([\d.]+)h/);
+            const m = data.reset.match(/([\d.]+)m/);
+            const s = data.reset.match(/([\d.]+)s/);
+            if (h) ms += parseFloat(h[1]) * 3600000;
+            if (m) ms += parseFloat(m[1]) * 60000;
+            if (s) ms += parseFloat(s[1]) * 1000;
+            setCountdown(Math.floor(ms / 1000));
+          }
+        })
+        .catch(console.error);
+    };
+    fetchLimits();
+    const interval = setInterval(fetchLimits, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const tick = setInterval(() => {
+      setCountdown(c => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [countdown]);
+
+  const formatTime = (secs) => {
+    if (secs <= 0) return '00:00';
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const isLow = parseInt(limits.remaining) < 50;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(30, 41, 59, 0.7)', padding: '6px 12px', borderRadius: '16px', border: '1px solid #334155', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+      <Zap size={14} color={isLow ? '#ef4444' : '#3b82f6'} style={{ flexShrink: 0 }} />
+      <span style={{ color: '#94a3b8' }}>API Calls Left:</span>
+      <strong style={{ color: isLow ? '#ef4444' : 'white' }}>{limits.remaining}</strong>
+      <span style={{ color: '#334155', margin: '0 4px' }}>|</span>
+      <span style={{ color: '#94a3b8' }}>Refresh in:</span>
+      <strong style={{ color: '#10b981', fontVariantNumeric: 'tabular-nums', minWidth: '40px' }}>{formatTime(countdown)}</strong>
+    </div>
   );
 }
 
@@ -204,6 +262,7 @@ export default function Dashboard() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showPipelineAnalytics, setShowPipelineAnalytics] = useState(false);
 
   const [tab, setTab] = useState('pulse');
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,6 +273,9 @@ export default function Dashboard() {
   const [prices, setPrices] = useState([]);
   const [energy, setEnergy] = useState(null);
   const [news, setNews] = useState([]);
+  const [newsFilter, setNewsFilter] = useState('');
+  const [pipelineKeywords, setPipelineKeywords] = useState('');
+  const [pipelineBlocklist, setPipelineBlocklist] = useState('');
   const [weather, setWeather] = useState([]);
   const [weatherExt, setWeatherExt] = useState([]);
   const [forex, setForex] = useState(null);
@@ -245,6 +307,118 @@ export default function Dashboard() {
   const [liveSelectedSymbol, setLiveSelectedSymbol] = useState('BRENT_CRUDE');
   const [timeframe, setTimeframe] = useState('LIVE');
 
+  const [allCommodities, setAllCommodities] = useState([]);
+  const [allRegions, setAllRegions] = useState([]);
+  const [quickRegionName, setQuickRegionName] = useState('');
+  const [quickAdding, setQuickAdding] = useState(false);
+  const [quickCommodity, setQuickCommodity] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/templates')
+      .then(res => res.json())
+      .then(data => {
+        setAllCommodities(data.commodities || []);
+        setAllRegions(data.regions || []);
+      })
+      .catch(err => console.error("Failed to load templates:", err));
+  }, []);
+
+  const updateProfileField = async (updatedFields) => {
+    try {
+      const payload = {
+        commodities: profile.commodities,
+        regions: profile.regions,
+        focus_region: profile.focus_region,
+        focus_product: profile.focus_product,
+        news_keywords: profile.news_keywords,
+        custom_regions: profile.custom_regions || [],
+        ...updatedFields
+      };
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProfile(data.profile);
+        refresh(); // Refresh dashboard data immediately
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddQuickRegion = async () => {
+    if (!quickRegionName) return;
+    setQuickAdding(true);
+    // Check if it's a predefined region
+    if (allRegions.find(r => r.name === quickRegionName)) {
+      if (!profile.regions.includes(quickRegionName)) {
+        await updateProfileField({ regions: [...profile.regions, quickRegionName] });
+      }
+      setQuickRegionName('');
+      setQuickAdding(false);
+      return;
+    }
+    
+    // Otherwise add as custom region
+    try {
+      const res = await fetch('/api/regions/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: quickRegionName, crop: '' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await updateProfileField({ custom_regions: data.custom_regions });
+        setQuickRegionName('');
+      } else {
+        alert(data.error || 'Failed to add region');
+      }
+    } catch(e) {
+      console.error(e);
+      console.error(e);
+    }
+    setQuickAdding(false);
+  };
+
+  useEffect(() => {
+    if (profile) {
+      setPipelineKeywords((profile.news_keywords || []).join(', '));
+      setPipelineBlocklist((profile.custom_blocklist || []).join(', '));
+    }
+  }, [profile]);
+
+  const handleSavePipelineConfig = async () => {
+    const news_keywords = pipelineKeywords.split(',').map(k => k.trim()).filter(Boolean);
+    const custom_blocklist = pipelineBlocklist.split(',').map(k => k.trim()).filter(Boolean);
+    await updateProfileField({ news_keywords, custom_blocklist });
+    refresh();
+  };
+
+  const handleAddQuickCommodity = async () => {
+    if (!quickCommodity) return;
+    if (!profile.commodities.includes(quickCommodity)) {
+      await updateProfileField({ commodities: [...profile.commodities, quickCommodity] });
+    }
+    setQuickCommodity('');
+  };
+
+  const handleRemoveCommodity = async (key) => {
+    await updateProfileField({ commodities: profile.commodities.filter(c => c !== key) });
+  };
+
+  const handleRemoveRegion = async (name, isCustom) => {
+    if (isCustom) {
+      await updateProfileField({ custom_regions: (profile.custom_regions || []).filter(r => r.name !== name) });
+    } else {
+      await updateProfileField({ regions: profile.regions.filter(r => r !== name) });
+    }
+  };
+
   const regeneratePlanner = () => {
     setAiRecsLoading(true);
     setAiRecommendationsError('');
@@ -253,7 +427,7 @@ export default function Dashboard() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ prices, energy, news, weather, forex, weatherExtended: weatherExt, keywords: profile?.news_keywords || [] }),
+      body: JSON.stringify({ prices, energy, news, weather, forex, weatherExtended: weatherExt, keywords: profile?.news_keywords || [], forceRefresh: true }),
     }).then(async r => {
       const data = await r.json();
       if (!r.ok || !data.success) throw new Error(data.error || 'AI recommendations unavailable.');
@@ -271,16 +445,15 @@ export default function Dashboard() {
     });
   };
   
-  const handleDeepDive = async (r) => {
-    const timeframeStr = r.timeframe;
-    setDeepDiveLoading(prev => ({...prev, [timeframeStr]: true}));
+  const handleDeepDive = async (r, id) => {
+    setDeepDiveLoading(prev => ({...prev, [id]: true}));
     try {
       const res = await fetch(`${API_BASE}/analyze-deep-dive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
-          timeframe: timeframeStr, 
+          timeframe: r.timeframe, 
           prices, news, weather, energy, forex, weatherExtended: weatherExt, 
           deterministicAction: r.action 
         })
@@ -290,13 +463,13 @@ export default function Dashboard() {
         throw new Error(data.error || 'AI Deep-Dive failed.');
       }
       if (data.success) {
-        setDeepDiveText(prev => ({...prev, [timeframeStr]: data.deepDive}));
+        setDeepDiveText(prev => ({...prev, [id]: data.deepDive}));
       }
     } catch (err) {
       console.error(err);
-      setDeepDiveText(prev => ({...prev, [timeframeStr]: err.message || 'AI Deep-Dive failed.'}));
+      setDeepDiveText(prev => ({...prev, [id]: err.message || 'AI Deep-Dive failed.'}));
     } finally {
-      setDeepDiveLoading(prev => ({...prev, [timeframeStr]: false}));
+      setDeepDiveLoading(prev => ({...prev, [id]: false}));
     }
   };
 
@@ -353,9 +526,21 @@ export default function Dashboard() {
   const tabBtnsRef = useRef({});
   const tabNavRef = useRef(null);
 
+  const highCriticalAlertsCount = (analysis?.alerts || []).filter(a => a.severity === 'CRITICAL' || a.severity === 'HIGH').length;
+
   const tabs = [
     { id: 'pulse', label: 'Command Center', icon: <Activity size={14} /> },
-    { id: 'alerts', label: 'Alerts', icon: <Zap size={14} /> },
+    { id: 'alerts', label: (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          Alerts
+          {highCriticalAlertsCount > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--accent-rose)', color: 'white', padding: '2px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' }}>
+              <Bell size={10} />
+              {highCriticalAlertsCount}
+            </div>
+          )}
+        </div>
+      ), icon: <Zap size={14} /> },
     { id: 'actions', label: 'Recommendations', icon: <PlaySquare size={14} /> }
   ];
 
@@ -557,8 +742,7 @@ export default function Dashboard() {
         const data = JSON.parse(e.data);
         if (data.type === 'snapshot') {
           const cleanPrices = { ...data.prices };
-          ['WHEAT', 'CORN', 'SOYBEANS', 'RICE', 'SUGAR', 'COFFEE', 'COCOA', 'MILK', 'PALM_OIL', 'FEEDER_CATTLE', 'LEAN_HOGS', 'OATS'].forEach(sym => delete cleanPrices[sym]);
-          
+
           setLivePrices(cleanPrices);
           setLiveSelectedSymbol(prev => {
             if (!cleanPrices[prev]) {
@@ -572,7 +756,6 @@ export default function Dashboard() {
           setLivePrices(prev => {
             const next = { ...prev };
             for (const [sym, update] of Object.entries(data.prices)) {
-              if (['WHEAT', 'CORN', 'SOYBEANS', 'RICE', 'SUGAR', 'COFFEE', 'COCOA', 'MILK', 'PALM_OIL', 'FEEDER_CATTLE', 'LEAN_HOGS', 'OATS'].includes(sym)) continue;
               if (next[sym]) {
                 const updatedHist = [...(next[sym].history || []), { time: update.time, price: update.price }];
                 if (updatedHist.length > 200) updatedHist.shift();
@@ -677,6 +860,7 @@ export default function Dashboard() {
   if (authLoading) return <div style={{padding:'40px', color:'white'}}>Loading Authentication...</div>;
   if (!user) return <LoginPage onLogin={({ user: u, profile: p }) => { setUser(u); setProfile(p); }} />;
   if (!user.is_onboarded) return <OnboardingWizard user={user} onComplete={(p) => { setProfile(p); setUser({...user, is_onboarded: true}); }} />;
+  if (showPipelineAnalytics) return <PipelineAnalyticsPage onBack={() => setShowPipelineAnalytics(false)} />;
   if (showSettings) return <SettingsPage user={user} profile={profile} onSave={(p) => { setProfile(p); setShowSettings(false); refresh(); }} onCancel={() => setShowSettings(false)} />;
   if (showAdmin && user.is_admin) return <AdminPage onBack={() => setShowAdmin(false)} />;
 
@@ -740,6 +924,57 @@ export default function Dashboard() {
       console.error('Failed to update SOP:', err);
     }
   };
+  const renderRecCard = (r, i) => (
+    <div key={r.timeframe + '-' + i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
+      <div className="rec-action" style={{ marginTop: '0px' }}>
+        {Array.isArray(r.action) ? (
+          <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
+            {(r.action || []).map((act, actIdx) => <li key={actIdx} style={{ marginBottom: '4px' }}>{act}</li>)}
+          </ul>
+        ) : (
+          r.action
+        )}
+      </div>
+      <div className="rec-impact" style={{ marginBottom: '12px' }}>{r.businessImpact}</div>
+      
+      <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={Array.isArray(r.action) ? r.action.join(' ') : r.action} />
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+        {deepDiveText[i] ? (
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)', whiteSpace: 'pre-wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <strong style={{ color: '#fff' }}>✨ AI Deep-Dive Analysis:</strong>
+              <button 
+                onClick={() => handleDeepDive(r, i)}
+                disabled={deepDiveLoading[i]}
+                style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', opacity: deepDiveLoading[i] ? 0.5 : 1, transition: 'all 0.2s ease' }}
+                onMouseOver={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)'; }}
+                onMouseOut={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; }}
+              >
+                {deepDiveLoading[i] ? 'Generating...' : 'Regenerate ✨'}
+              </button>
+            </div>
+            {deepDiveText[i]}
+            <div style={{ marginTop: '8px' }}>
+              <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[i]} />
+            </div>
+          </div>
+        ) : (
+          <button 
+            className="action-btn" 
+            onClick={() => handleDeepDive(r, i)}
+            disabled={deepDiveLoading[i]}
+            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', fontSize: '12px', borderRadius: '6px', background: 'rgba(139, 92, 246, 0.1)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.2)', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', transition: 'all 0.2s ease', opacity: deepDiveLoading[i] ? 0.7 : 1 }}
+          >
+            {deepDiveLoading[i] ? (
+              <><span style={{ animation: 'spin 1s linear infinite' }}>⏳</span> Generating Analysis...</>
+            ) : (
+              <>✨ Request AI Deep-Dive</>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -753,7 +988,8 @@ export default function Dashboard() {
         </div>
         
         <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
-          <div style={{color:'var(--text-secondary)', fontSize:'13px', marginRight: '8px'}}>
+          {/* <ApiLimitTracker /> */}
+          <div style={{color:'var(--text-secondary)', fontSize:'13px', marginRight: '8px', marginLeft: '12px'}}>
             Welcome, <strong style={{color:'white'}}>{user.username}</strong>
           </div>
           {user.is_admin ? (
@@ -761,6 +997,9 @@ export default function Dashboard() {
               <Shield size={14} /> Admin
             </button>
           ) : null}
+          <button className="btn-secondary" onClick={() => setShowPipelineAnalytics(true)}>
+            📊 Pipeline Analytics
+          </button>
           <button className="btn-secondary" onClick={() => setShowSettings(true)}>
             <Settings size={14} /> Settings
           </button>
@@ -825,33 +1064,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ══════════ SUMMARY BANNER ══════════ */}
-      {summary && (
-        <div className="summary-banner">
-          <div className="summary-headline">{summary.headline}</div>
-          {summary.why_now && <div className="summary-why">{summary.why_now}</div>}
-          {previousAnalysis && (
-            <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-dim)' }}>
-              Previous: {previousAnalysis.headline} ({previousAnalysis.market_state}) — {previousAnalysis.timestamp}
-            </div>
-          )}
-        </div>
-      )}
+      {/* ══════════ SUMMARY BANNER REMOVED ══════════ */}
 
-      {/* ══════════ FOREX TICKER ══════════ */}
-      {forex && (
-        <div className="forex-ticker">
-          <div className="forex-ticker-track">
-            {forexChips}
-            {/* Duplicate for seamless scroll */}
-            {forexChips?.map((chip, i) => (
-              <div key={`dup-${Object.keys(forex)[i]}`} className="forex-chip">
-                {chip.props.children}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ══════════ FOREX TICKER REMOVED ══════════ */}
 
       {/* ══════════ TABS ══════════ */}
       <nav className="tab-navigation" ref={tabNavRef}>
@@ -872,193 +1087,6 @@ export default function Dashboard() {
       {/* ═══════════ COMMAND CENTER ═══════════ */}
       {tab === 'pulse' && (
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
-          {/* ═══════════ LIVE MARKET CHART ═══════════ */}
-          {Object.keys(livePrices).length > 0 && (
-            <div className="live-market-panel">
-              <div className="live-market-header">
-                <div className="live-market-title">
-                  <span className="live-pulse" />
-                  Live Market Feed
-                </div>
-                <div className="live-market-meta">
-                  <span>Update: 5s</span>
-                  <span>Source: FOps Live</span>
-                </div>
-              </div>
-
-              <div className="live-commodity-selector">
-                {Object.keys(livePrices)
-                  .filter(sym => sym.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .filter(sym => sym === 'BRENT_CRUDE')
-                  .map(sym => {
-                  const lp = livePrices[sym];
-                  const isUp = lp.change >= 0;
-                  return (
-                    <button 
-                      key={sym} 
-                      className={`live-commodity-pill ${liveSelectedSymbol === sym ? 'active' : ''}`}
-                      onClick={() => setLiveSelectedSymbol(sym)}
-                    >
-                      <span>{sym.replace(/_/g, ' ')}</span>
-                      <span className="pill-price">{formatPrice(lp.current, sym)}</span>
-                      <span className={`pill-change ${isUp ? 'up' : 'down'}`}>
-                        {isUp ? '+' : ''}{lp.changePct}%
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="live-chart-container">
-                {livePrices[liveSelectedSymbol] && (
-                  <>
-                    <div className="live-price-hud">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '4px' }}>
-                        <div className="hud-symbol">{liveSelectedSymbol.replace(/_/g, ' ')}</div>
-                        <div className="timeframe-selector" style={{ display: 'flex', gap: '2px', background: 'rgba(15, 23, 42, 0.4)', padding: '4px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', pointerEvents: 'auto' }}>
-                          {['LIVE', '1D', '7D', '1M', '1Y'].map(tf => (
-                            <button 
-                              key={tf}
-                              onClick={() => setTimeframe(tf)}
-                              style={{
-                                background: timeframe === tf ? 'var(--accent-cyan)' : 'transparent',
-                                color: timeframe === tf ? '#000' : 'var(--text-muted)',
-                                border: 'none',
-                                borderRadius: '6px',
-                                padding: '4px 10px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >{tf}</button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {(() => {
-                        let dPrice = livePrices[liveSelectedSymbol].current;
-                        let dChange = livePrices[liveSelectedSymbol].change;
-                        let dPct = livePrices[liveSelectedSymbol].changePct;
-                        let dHigh = livePrices[liveSelectedSymbol].high;
-                        let dLow = livePrices[liveSelectedSymbol].low;
-                        
-                        if (timeframe !== 'LIVE' && histData.length > 0) {
-                            const startPrice = histData[0].price;
-                            dChange = dPrice - startPrice;
-                            dPct = ((dChange / startPrice) * 100).toFixed(2);
-                            const allPrices = histData.map(d => d.price).concat(dPrice);
-                            dHigh = Math.max(...allPrices);
-                            dLow = Math.min(...allPrices);
-                        }
-                        return (
-                          <>
-                            <div className="hud-price">
-                              {formatPrice(dPrice, liveSelectedSymbol)}
-                            </div>
-                            <div className={`hud-change ${dChange >= 0 ? 'up' : 'down'}`}>
-                              {dChange >= 0 ? '▲' : '▼'} 
-                              {formatPrice(Math.abs(dChange), liveSelectedSymbol)} ({dPct}%)
-                            </div>
-                            <div className="hud-meta">
-                              H: {formatPrice(dHigh, liveSelectedSymbol)} L: {formatPrice(dLow, liveSelectedSymbol)}
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <ResponsiveContainer width="100%" height="100%" style={{ opacity: histLoading ? 0.5 : 1, transition: 'opacity 0.3s' }}>
-                      <ComposedChart data={timeframe === 'LIVE' ? livePrices[liveSelectedSymbol].history : histData}>
-                        <defs>
-                          <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={livePrices[liveSelectedSymbol].change >= 0 ? "#00c805" : "#ff333a"} stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor={livePrices[liveSelectedSymbol].change >= 0 ? "#00c805" : "#ff333a"} stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis 
-                          dataKey="time" 
-                          tickFormatter={(time) => {
-                            const d = new Date(time);
-                            if (timeframe === 'LIVE' || timeframe === '1D') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            if (timeframe === '7D') return d.toLocaleDateString([], { weekday: 'short', hour: '2-digit' });
-                            if (timeframe === '1M') return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                            return d.toLocaleDateString([], { month: 'short', year: '2-digit' });
-                          }} 
-                          minTickGap={30}
-                          tick={{ fontSize: 10, fill: 'var(--text-dim)' }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis 
-                          yAxisId="price"
-                          domain={['auto', 'auto']} 
-                          orientation="right"
-                          tick={{ fontSize: 10, fill: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(val) => formatPrice(val, liveSelectedSymbol)}
-                        />
-                        <YAxis 
-                          yAxisId="volume" 
-                          orientation="left" 
-                          domain={[0, dataMax => dataMax * 5]} 
-                          hide 
-                        />
-                        <Tooltip 
-                          cursor={{ stroke: 'rgba(148, 163, 184, 0.4)', strokeWidth: 1, strokeDasharray: '4 4' }}
-                          content={<CustomTooltip symbol={liveSelectedSymbol} />}
-                        />
-                        {timeframe !== 'LIVE' && histData.length > 0 && (
-                          <ReferenceLine 
-                            y={histData[0].price} 
-                            yAxisId="price"
-                            stroke="rgba(148, 163, 184, 0.4)" 
-                            strokeDasharray="3 3" 
-                          />
-                        )}
-                        <Bar 
-                          yAxisId="volume"
-                          dataKey="volume" 
-                          fill="#334155" 
-                          isAnimationActive={false} 
-                        />
-                        <Area 
-                          yAxisId="price"
-                          type="linear" 
-                          dataKey="price" 
-                          stroke={livePrices[liveSelectedSymbol].change >= 0 ? "#00c805" : "#ff333a"} 
-                          strokeWidth={2} 
-                          fill="url(#liveGrad)" 
-                          isAnimationActive={false}
-                          activeDot={{ r: 4, fill: livePrices[liveSelectedSymbol].change >= 0 ? "#00c805" : "#ff333a", stroke: '#0f172a', strokeWidth: 2 }}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </>
-                )}
-              </div>
-
-              <div className="live-ticker-bar">
-                {Object.keys(livePrices)
-                  .filter(sym => sym.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .filter(sym => sym === 'BRENT_CRUDE')
-                  .map(sym => {
-                  const lp = livePrices[sym];
-                  const isUp = lp.change >= 0;
-                  return (
-                    <div key={sym} className="live-ticker-item" onClick={() => setLiveSelectedSymbol(sym)}>
-                      <span className="ticker-symbol">{sym.replace(/_/g, ' ')}</span>
-                      <span className="ticker-price">{formatPrice(lp.current, sym)}</span>
-                      <span className={`ticker-change ${isUp ? 'up' : 'down'}`}>
-                        {isUp ? '▲' : '▼'}{Math.abs(lp.changePct)}%
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {drivers.length > 0 && (
             <div className="mb-xl">
@@ -1087,6 +1115,100 @@ export default function Dashboard() {
             </div>
           )}
 
+          <div className="mb-xl">
+            <div className="section-label">Tracked Commodities</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {(profile?.commodities || []).map((c, i) => {
+                const label = allCommodities.find(x => x.key === c)?.label || c;
+                return (
+                  <div key={`c-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                    {label}
+                    <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveCommodity(c)}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <select style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', padding: '8px', borderRadius: '6px' }} value={quickCommodity} onChange={e => setQuickCommodity(e.target.value)}>
+                <option value="">Add Commodity...</option>
+                {allCommodities.filter(c => !(profile?.commodities || []).includes(c.key)).map(c => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
+              </select>
+              <button style={{ background: 'var(--accent)', color: 'black', border: 'none', padding: '0 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }} onClick={handleAddQuickCommodity}>Add</button>
+            </div>
+          </div>
+
+          <div className="mb-xl">
+            <div className="section-label">Tracked Regions</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {(profile?.regions || []).map((r, i) => (
+                <div key={`r-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                  {r}
+                  <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveRegion(r, false)}>✕</button>
+                </div>
+              ))}
+              {(profile?.custom_regions || []).map((r, i) => (
+                <div key={`cr-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                  ★ {r.name}
+                  <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveRegion(r.name, true)}>✕</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input list="quick-region-suggestions" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', padding: '8px', borderRadius: '6px', width: '250px' }} value={quickRegionName} onChange={e => setQuickRegionName(e.target.value)} placeholder="New City/Region Name (e.g. Omaha, NE)" />
+              <datalist id="quick-region-suggestions">
+                <option value="Omaha, NE" />
+                <option value="Des Moines, IA" />
+                <option value="Fresno, CA" />
+                <option value="Mato Grosso, Brazil" />
+                <option value="Rosario, Argentina" />
+                <option value="Perth, Australia" />
+                <option value="Saskatchewan, Canada" />
+                <option value="Kyiv, Ukraine" />
+                <option value="Krasnodar, Russia" />
+                <option value="Shandong, China" />
+                <option value="Punjab, India" />
+                <option value="Paris Basin, France" />
+              </datalist>
+              <button style={{ background: 'var(--accent)', color: 'black', border: 'none', padding: '0 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }} onClick={handleAddQuickRegion} disabled={quickAdding}>{quickAdding ? '...' : 'Add'}</button>
+            </div>
+          </div>
+
+          <div className="mb-xl">
+            <div className="section-label">News Pipeline Configuration</div>
+            <div className="intel-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>Extra Tracked Keywords (Comma Separated)</label>
+                <input 
+                  type="text" 
+                  value={pipelineKeywords}
+                  onChange={e => setPipelineKeywords(e.target.value)}
+                  placeholder="e.g. frozen food, port congestion..."
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '6px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>Blocklisted Sources/Keywords (Comma Separated)</label>
+                <input 
+                  type="text" 
+                  value={pipelineBlocklist}
+                  onChange={e => setPipelineBlocklist(e.target.value)}
+                  placeholder="e.g. recipe, movie, celebrity, health tip..."
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '6px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button 
+                  onClick={handleSavePipelineConfig}
+                  style={{ background: 'var(--accent-emerald)', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Save & Re-scan
+                </button>
+              </div>
+            </div>
+          </div>
+
           {chains.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Cause → Effect Chains</div>
@@ -1106,35 +1228,7 @@ export default function Dashboard() {
           )}
 
 
-          {analysis?.logistics && (
-            <div className="mb-xl">
-              <div className="section-label">Real-Time Logistics Intelligence</div>
-              <div className="grid-2">
-                <div className="intel-card" style={{ borderLeftColor: 'var(--accent-violet)' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                  <div className="label" style={{ color: 'var(--accent-violet)' }}>Real-Time Freight Costs (Index)</div>
-                  <div className="price"><AnimatedValue value={analysis.logistics.freightRates.reeferIndexFEU} prefix="$" /><span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>/FEU</span></div>
-                  <div className="context">
-                    Surcharge Impact: <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{analysis.logistics.freightRates.bunkerSurchargeImpact}</span> | 
-                    Trend: <span style={{ color: analysis.logistics.freightRates.trend === 'SPIKING' ? 'var(--danger)' : 'var(--text-secondary)' }}>{analysis.logistics.freightRates.trend}</span>
-                  </div>
-                </div>
-                <div className="intel-card" style={{ borderLeftColor: 'var(--accent-pink)' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                  <div className="label" style={{ color: 'var(--accent-pink)' }}>Live Port Buffers & Congestion</div>
-                  {(analysis.logistics?.portCongestion || []).map((port, i) => (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: i < analysis.logistics.portCongestion.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', padding: '8px 0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '14px', color: '#fff', fontWeight: 'bold' }}>{port.port}</span>
-                        <span style={{ fontSize: '14px', color: port.status === 'CRITICAL' ? 'var(--danger)' : port.status === 'CONGESTED' ? 'var(--warning)' : 'var(--accent-green)', fontWeight: 'bold' }}>
-                          Buffer: {port.delayDays} Days
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '12px', color: 'var(--text-dim)', fontStyle: 'italic' }}>{port.reason}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
       )}
 
@@ -1162,21 +1256,65 @@ export default function Dashboard() {
               </div>
               {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
               <div className="alert-reason">{a.reason || a.description}</div>
+              {a.url && (
+                <div style={{ marginTop: '8px' }}>
+                  <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    Read Full Article <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                  </a>
+                </div>
+              )}
+              {a.entities && (
+                <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {a.entities.organizations?.map((org, idx) => <span key={`org-${idx}`} style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🏢 {org}</span>)}
+                  {a.entities.places?.map((place, idx) => <span key={`place-${idx}`} style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>📍 {place}</span>)}
+                  {a.entities.values?.map((val, idx) => <span key={`val-${idx}`} style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>💲 {val}</span>)}
+                </div>
+              )}
               {a.regions?.length > 0 && <div className="alert-regions">{(a.regions || []).map((r, j) => <span key={j} className="region-tag">{r}</span>)}</div>}
             </div>
           ))}
 
           <div className="mt-lg">
-            <div className="section-label">News Feed — {profile?.focus_product || 'Commodities'} / {profile?.focus_region || 'Global'} ({news.length})</div>
-            {(news || []).map((a, i) => (
-              <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
-                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
-                  {a.source} · {a.publishedAt} {a.via && <span style={{ color: 'var(--accent-violet)' }}>via {a.via}</span>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div className="section-label" style={{ margin: 0 }}>News Feed — {profile?.focus_product || 'Commodities'} / {profile?.focus_region || 'Global'}</div>
+              <input 
+                type="text" 
+                placeholder="Filter news by keyword or source..." 
+                value={newsFilter} 
+                onChange={(e) => setNewsFilter(e.target.value)}
+                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', borderRadius: '6px', width: '300px', fontSize: '13px' }}
+              />
+            </div>
+            {(() => {
+              const filteredNews = (news || []).filter(a => {
+                if (!newsFilter.trim()) return true;
+                const q = newsFilter.toLowerCase();
+                return (a.title?.toLowerCase().includes(q)) || 
+                       (a.description?.toLowerCase().includes(q)) || 
+                       (a.source?.toLowerCase().includes(q));
+              });
+              
+              if (filteredNews.length === 0) {
+                 return <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No news articles match your filter.</div>;
+              }
+
+              return filteredNews.map((a, i) => (
+                <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
+                  <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                    {a.source} · {a.publishedAt} {a.via && <span style={{ color: 'var(--accent-violet)' }}>via {a.via}</span>}
+                  </div>
+                  {a.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{a.description}</div>}
+                  {a.entities && (
+                    <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {a.entities.organizations?.map((org, idx) => <span key={`org-${idx}`} style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🏢 {org}</span>)}
+                      {a.entities.places?.map((place, idx) => <span key={`place-${idx}`} style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>📍 {place}</span>)}
+                      {a.entities.values?.map((val, idx) => <span key={`val-${idx}`} style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>💲 {val}</span>)}
+                    </div>
+                  )}
                 </div>
-                {a.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{a.description}</div>}
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -1199,65 +1337,54 @@ export default function Dashboard() {
               {aiRecommendationsError}
             </div>
           ) : recommendations.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Planner Recommendations</div>
-              <div className="grid-auto">
-                {(recommendations || []).map((r, i) => (
-                  <div key={i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                    <span className="rec-priority" style={{ background: 'var(--accent-violet)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>{r.timeframe}</span>
-                    <div className="rec-action" style={{ marginTop: '12px' }}>
-                      {Array.isArray(r.action) ? (
-                        <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
-                          {(r.action || []).map((act, actIdx) => <li key={actIdx} style={{ marginBottom: '4px' }}>{act}</li>)}
-                        </ul>
-                      ) : (
-                        r.action
-                      )}
+            (() => {
+              const allRecs = recommendations || [];
+              let st = allRecs.filter(r => 
+                String(r.timeframe).includes('90') || 
+                String(r.timeframe).toLowerCase().includes('short')
+              );
+              let lt = allRecs.filter(r => 
+                String(r.timeframe).includes('365') || 
+                String(r.timeframe).includes('1Y') ||
+                String(r.timeframe).toLowerCase().includes('year') ||
+                String(r.timeframe).toLowerCase().includes('long')
+              );
+              
+              // Fallback split if LLM labeled them all the same or forgot labels
+              if (st.length === allRecs.length || lt.length === allRecs.length || (st.length === 0 && lt.length === 0)) {
+                const half = Math.ceil(allRecs.length / 2);
+                st = allRecs.slice(0, half);
+                lt = allRecs.slice(half);
+              }
+
+              return (
+                <div className="mb-xl">
+                  <div className="section-label">Planner Recommendations</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                    <div>
+                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Short Term (90 Days)</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {st.map((r, i) => renderRecCard(r, 'st-' + i))}
+                        {st.length === 0 && (
+                          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>No short-term recommendations available.</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="rec-impact" style={{ marginBottom: '12px' }}>{r.businessImpact}</div>
-                    
-                    <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={Array.isArray(r.action) ? r.action.join(' ') : r.action} />
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
-                      {deepDiveText[r.timeframe] ? (
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <strong style={{ color: '#fff' }}>✨ AI Deep-Dive Analysis:</strong>
-                            <button 
-                              onClick={() => handleDeepDive(r)}
-                              disabled={deepDiveLoading[r.timeframe]}
-                              style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[r.timeframe] ? 'wait' : 'pointer', opacity: deepDiveLoading[r.timeframe] ? 0.5 : 1, transition: 'all 0.2s ease' }}
-                              onMouseOver={(e) => { if (!deepDiveLoading[r.timeframe]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)'; }}
-                              onMouseOut={(e) => { if (!deepDiveLoading[r.timeframe]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; }}
-                            >
-                              {deepDiveLoading[r.timeframe] ? 'Generating...' : 'Regenerate ✨'}
-                            </button>
-                          </div>
-                          {deepDiveLoading[r.timeframe] ? (
-                            <div style={{ color: 'var(--accent-emerald)', animation: 'pulse 1.5s infinite', margin: '10px 0' }}>Generating deep dive...</div>
-                          ) : (
-                            <>
-                              {deepDiveText[r.timeframe]}
-                              <div style={{ marginTop: '8px' }}>
-                                <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[r.timeframe]} />
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => handleDeepDive(r)}
-                          disabled={deepDiveLoading[r.timeframe]}
-                          style={{ background: 'var(--accent-violet)', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', opacity: deepDiveLoading[r.timeframe] ? 0.7 : 1 }}
-                        >
-                          {deepDiveLoading[r.timeframe] ? '✨ Generating Deep-Dive...' : '✨ Request AI Deep-Dive'}
-                        </button>
-                      )}
+                    <div>
+                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Long Term (365 Days)</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {lt.map((r, i) => renderRecCard(r, 'lt-' + i))}
+                        {lt.length === 0 && (
+                          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>No long-term recommendations available.</div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              );
+            })()
           )}
+
           {counterfactuals.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Counterfactual Analysis</div>
