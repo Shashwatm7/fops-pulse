@@ -373,23 +373,37 @@ export async function getRecentAiFeedback(userId, featureName = null, limit = 5)
 // ═══════════════════════════════════════════════════════════════
 
 export async function insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted) {
+  const sql =
+    `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
+  const params = [
+    userId,
+    article.title || 'Unknown Title',
+    article.url || '',
+    article.source || '',
+    stageDropped,
+    rejectionReason,
+    score != null ? score : null,
+    isAccepted,
+    article.extracted_features ? JSON.stringify(article.extracted_features) : null
+  ];
   try {
-    await pool.query(
-      `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        userId,
-        article.title || 'Unknown Title',
-        article.url || '',
-        article.source || '',
-        stageDropped,
-        rejectionReason,
-        score != null ? score : null,
-        isAccepted,
-        article.extracted_features ? JSON.stringify(article.extracted_features) : null
-      ]
-    );
+    await pool.query(sql, params);
   } catch (err) {
+    // 42703 = undefined column. Older deployments are missing
+    // extracted_features (migration ordering bug) — self-heal and retry
+    // so audit logging never silently dies on schema drift.
+    if (err.code === '42703') {
+      try {
+        await pool.query('ALTER TABLE pipeline_audit_logs ADD COLUMN IF NOT EXISTS extracted_features JSONB');
+        await pool.query(sql, params);
+        console.log('[DB] Self-healed missing extracted_features column on pipeline_audit_logs.');
+        return;
+      } catch (retryErr) {
+        console.error('[DB] Failed to insert pipeline audit log after self-heal:', retryErr.message);
+        return;
+      }
+    }
     console.error('[DB] Failed to insert pipeline audit log:', err.message);
   }
 }
