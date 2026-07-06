@@ -230,6 +230,30 @@ def extract_top_news_intelligence(news, focus_product, user_commodities, focus_r
     extracted.sort(key=lambda item: item["score"], reverse=True)
     return extracted[:limit]
 
+def format_accepted_news_insights(insights):
+    """Pipeline-accepted articles (9-stage profile scanner) with NLP summaries
+    and entities — the highest-confidence news signal available to the planner."""
+    if not insights:
+        return "None available from the latest scans."
+
+    lines = []
+    for idx, item in enumerate(insights, start=1):
+        entities = item.get("entities") or {}
+        entity_bits = []
+        if entities.get("places"):
+            entity_bits.append("Places: " + ", ".join(entities["places"][:4]))
+        if entities.get("organizations"):
+            entity_bits.append("Orgs: " + ", ".join(entities["organizations"][:4]))
+        if entities.get("values"):
+            entity_bits.append("Figures: " + ", ".join(entities["values"][:4]))
+        lines.append(
+            f"{idx}. [{item.get('severity', '?')}, relevance {item.get('relevanceScore', '?')}/100] {item.get('title', '')}\n"
+            f"   Source: {item.get('newsSource') or 'Unknown'}\n"
+            f"   NLP summary: {item.get('summary') or 'n/a'}\n"
+            f"   {' | '.join(entity_bits) if entity_bits else 'No entities extracted'}"
+        )
+    return "\n".join(lines)
+
 def format_news_intelligence(extracted_articles):
     if not extracted_articles:
         return "No locally extracted relevant news facts available."
@@ -265,6 +289,7 @@ async def generate_planner_recommendations(payload: dict):
     short_weather = " | ".join([f"{w.get('name')}: {w.get('analytics', {}).get('alert', w.get('alert', 'NORMAL'))}" for w in weather_extended])
     top_news_intelligence = extract_top_news_intelligence(news, focus_product, user_commodities, focus_region, user_regions)
     top_news_intelligence_block = format_news_intelligence(top_news_intelligence)
+    accepted_insights_block = format_accepted_news_insights(payload.get("acceptedNewsInsights", []))
     
     if isinstance(prices, list):
         short_prices = ", ".join([f"{p.get('symbol', '')}: ${p.get('price', '')}" for p in prices])
@@ -286,7 +311,13 @@ Port Congestion: {', '.join([f"{p.get('port')} ({p.get('status')})" for p in log
 Live Commodity Prices: {short_prices}
 
 === MARKET INTELLIGENCE ===
-Locally Extracted Useful Info From Top Relevant News:
+TIER 1 — Pipeline-Verified News Insights (each passed a 9-stage relevance
+pipeline matched to this user's supply chain; NLP summaries and entities
+are machine-extracted from the full article text):
+{accepted_insights_block}
+
+TIER 2 — Locally Extracted Useful Info From Top Relevant News (lighter
+keyword extraction from raw headlines/descriptions):
 {top_news_intelligence_block}
 {feedback_context}
     """.strip()
@@ -309,7 +340,7 @@ CRITICAL INSTRUCTIONS:
 5. The "365D" action must be a LONG-TERM STRATEGIC shift.
 6. Focus ONLY on the user's specifically tracked commodities ({tracked_commodity_scope}).
 7. Focus ONLY on the user's specifically tracked regions ({', '.join([focus_region] + user_regions)}).
-8. You MUST explicitly reference the specific events from "Locally Extracted Useful Info From Top Relevant News" to justify your strategic actions. Do NOT invent news events.
+8. Ground every recommendation in the MARKET INTELLIGENCE sections. Prefer TIER 1 (pipeline-verified insights with NLP summaries/entities) as primary evidence; use TIER 2 as supporting context. Reference the specific events, figures, and places from those sections. Do NOT invent news events.
 
 Return a JSON object containing an array of exactly 4 objects under the key "recommendations". 
 Each object must have these exact keys:

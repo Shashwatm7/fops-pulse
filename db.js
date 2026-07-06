@@ -468,6 +468,20 @@ export async function getActiveAlerts(userId, limit = 30) {
   return rows;
 }
 
+export async function getRecentAlertsBySource(userId, source, hours = 72, limit = 8) {
+  // Any status: acknowledging an alert should not remove its intelligence
+  // from AI planner context — only age does.
+  const { rows } = await pool.query(
+    `SELECT id, title, reason, url, severity, relevance_score, payload, created_at
+     FROM alerts
+     WHERE user_id = $1 AND source = $2 AND created_at > NOW() - ($3 || ' hours')::interval
+     ORDER BY relevance_score DESC NULLS LAST, created_at DESC
+     LIMIT $4`,
+    [userId, source, String(hours), limit]
+  );
+  return rows;
+}
+
 export async function acknowledgeAlert(userId, alertId) {
   const { rowCount } = await pool.query(
     `UPDATE alerts SET status = 'acknowledged' WHERE id = $1 AND user_id = $2 AND status = 'active'`,
