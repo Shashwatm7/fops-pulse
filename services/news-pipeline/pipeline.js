@@ -27,8 +27,17 @@ export class NewsPipeline {
         const titleKey = rawArticle.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
         const userArticleKey = `user:${profileId}:${titleKey}`;
         
+        const doReturn = async (res) => {
+            if (this.auditLogFn) {
+                const uid = userProfile.user_id || userProfile.id || userProfile.userId;
+                const stageToLog = res.accepted ? null : res.stage;
+                await this.auditLogFn(uid, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
+            }
+            return res;
+        };
+
         if (userAlertedSet.has(userArticleKey)) {
-             return { accepted: false, reason: 'Duplicate article', stage: 9, score: 0 };
+             return await doReturn({ accepted: false, reason: 'Duplicate article', stage: 9, score: 0 });
         }
         userAlertedSet.add(userArticleKey);
 
@@ -53,14 +62,7 @@ export class NewsPipeline {
             rawArticle.extracted_features = { supply_signals, values };
         }
 
-        const doReturn = async (res) => {
-            if (this.auditLogFn) {
-                const userId = userProfile.user_id || userProfile.id || userProfile.userId;
-                const stageToLog = res.accepted ? null : res.stage;
-                await this.auditLogFn(userId, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
-            }
-            return res;
-        };
+        // doReturn was moved to the top of processArticle
 
         // Stage 1
         const article = normalizeArticle(rawArticle);
