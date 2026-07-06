@@ -363,6 +363,10 @@ h1, h2, h3, h4, h5, h6 {
 .driver-direction.DOWN { background: rgba(16, 185, 129, 0.1); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.2); }
 .driver-direction.NEUTRAL { background: rgba(161, 161, 170, 0.1); color: var(--text-secondary); border: 1px solid rgba(161, 161, 170, 0.2); }
 
+.driver-info {
+  flex: 1;
+  min-width: 0;
+}
 .driver-info .factor { font-weight: 600; margin-bottom: 4px; font-size: 14px; }
 .driver-info .explanation { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
 
@@ -376,6 +380,11 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
   margin-right: 6px;
   margin-bottom: 6px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 /* Chain Nodes */

@@ -139,49 +139,30 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           ))}
         </div>
         <div style={{display:'flex', gap:'10px', marginTop: '10px'}}>
-          <input style={styles.input} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="New City/Region Name (e.g. Omaha, NE)" />
+          <input list="region-suggestions" style={styles.input} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="New City/Region Name (e.g. Omaha, NE)" />
+          <datalist id="region-suggestions">
+            <option value="Omaha, NE" />
+            <option value="Des Moines, IA" />
+            <option value="Fresno, CA" />
+            <option value="Mato Grosso, Brazil" />
+            <option value="Rosario, Argentina" />
+            <option value="Perth, Australia" />
+            <option value="Saskatchewan, Canada" />
+            <option value="Kyiv, Ukraine" />
+            <option value="Krasnodar, Russia" />
+            <option value="Shandong, China" />
+            <option value="Punjab, India" />
+            <option value="Paris Basin, France" />
+          </datalist>
           <input style={styles.input} value={customRegionCrop} onChange={e=>setCustomRegionCrop(e.target.value)} placeholder="Crop (Optional)" />
           <button style={styles.btnSecondary} onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding...' : 'Add Region'}</button>
         </div>
-        <h3 style={styles.sectionTitle}>Email Price Alerts (Stop Loss)</h3>
-        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '15px' }}>
-            <select style={styles.input} value={alertSymbol} onChange={e=>setAlertSymbol(e.target.value)}>
-              {allCommodities.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </select>
-            <select style={{...styles.input, width: '150px'}} value={alertType} onChange={e=>setAlertType(e.target.value)}>
-              <option value="above">Goes Above</option>
-              <option value="below">Goes Below</option>
-            </select>
-            <input style={{...styles.input, width: '120px'}} type="number" placeholder="Price" value={alertThreshold} onChange={e=>setAlertThreshold(e.target.value)} />
-            <button style={{...styles.btnPrimary, whiteSpace: 'nowrap'}} onClick={handleAddAlert}>Add Alert</button>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {priceAlerts.length === 0 && <div style={{color:'var(--text-dim)', fontSize:'13px'}}>No active price alerts.</div>}
-            {priceAlerts.map((a, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.8)', padding: '10px 15px', borderRadius: '6px', borderLeft: `3px solid ${a.active ? 'var(--accent)' : 'var(--danger)'}` }}>
-                <span style={{fontSize: '14px'}}>
-                  <strong>{(a.symbol || '').replace(/_/g, ' ')}</strong> {a.type} <strong>{a.threshold}</strong>
-                </span>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', color: a.active ? 'var(--accent)' : 'var(--danger)' }}>{a.active ? 'ACTIVE' : 'TRIGGERED'}</span>
-                  <button style={{background:'none', border:'1px solid var(--border-color)', color:'white', borderRadius:'4px', padding:'4px 8px', cursor:'pointer', fontSize:'11px'}} onClick={() => handleToggleAlert(i)}>{a.active ? 'Disable' : 'Re-enable'}</button>
-                  <button style={{background:'none', border:'none', color:'var(--danger)', cursor:'pointer', fontSize:'16px'}} onClick={() => handleRemoveAlert(i)}>✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <h3 style={styles.sectionTitle}>Market Focus</h3>
         <div style={{display:'flex', gap:'15px', marginBottom:'15px'}}>
           <input style={styles.input} value={focusRegion} onChange={e=>setFocusRegion(e.target.value)} placeholder="Focus Region" />
           <input style={styles.input} value={focusProduct} onChange={e=>setFocusProduct(e.target.value)} placeholder="Focus Product" />
         </div>
         
-        <h3 style={styles.sectionTitle}>Extra News Keywords</h3>
-        <input style={styles.input} value={newsKeywords} onChange={e=>setNewsKeywords(e.target.value)} placeholder="Extra keywords to track (comma separated, merges with auto-generated keywords)" />
 
         <div style={styles.btnRow}>
           <button style={styles.btnSecondary} onClick={onCancel}>Cancel</button>

@@ -172,7 +172,7 @@ router.post('/onboard', requireAuth, async (req, res) => {
 // ── PUT /api/auth/profile ───────────────────────────────────
 router.put('/profile', requireAuth, async (req, res) => {
   try {
-    const { commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies, template_name, custom_regions, price_alerts } = req.body;
+    const { commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies, template_name, custom_regions, price_alerts, custom_blocklist: req_blocklist } = req.body;
     const current = await getUserProfile(req.user.id);
     
     // Automatically generate smart news keywords based on the focus product
@@ -192,9 +192,40 @@ router.put('/profile', requireAuth, async (req, res) => {
         autoKeywords = [product, `${product} logistics`, `${product} supply chain`, 'freight costs', 'port buffer'];
     }
     
-    // Merge automated keywords with user's manual extra keywords
-    const manualKeywords = news_keywords || current.news_keywords || [];
-    const finalKeywords = [...new Set([...autoKeywords, ...manualKeywords])];
+    // If the user explicitly provides keywords, use them (allowing them to fix/override). Otherwise merge auto with current.
+    let finalKeywords;
+    if (news_keywords !== undefined) {
+        finalKeywords = news_keywords;
+    } else {
+        const manualKeywords = current.news_keywords || [];
+        finalKeywords = [...new Set([...autoKeywords, ...manualKeywords])];
+    }
+
+    let custom_dictionary = current.custom_dictionary || [];
+    let custom_blocklist;
+    if (req_blocklist !== undefined) {
+        custom_blocklist = req_blocklist;
+    } else {
+        custom_blocklist = current.custom_blocklist || [];
+        // Generate static lists if the product changed or lists are empty. LLM generation is disabled
+        if (product !== current.focus_product || custom_blocklist.length === 0 || custom_dictionary.length === 0) {
+           custom_blocklist = [
+             'recipe', 'cooking', 'diet', 'health tip', 'nutrition advice', 'weight loss',
+             'celebrity', 'movie', 'tv show', 'award', 'cannes', 'oreo', 'birthday',
+             'celebration', 'holiday', 'festival', 'baby shower', 'breastfeeding',
+             'lactose intolerant', 'therapy', 'dunkin', 'dairy queen', 'starbucks',
+             'mcdonald', 'burger king', 'baskin robbins', 'ben & jerry', 'haagen-dazs',
+             'cold stone', 'kitten', 'puppy', 'pet food', 'rescue animal'
+           ];
+           custom_dictionary = [
+             'production', 'export', 'import', 'tariff', 'shortage', 'processing',
+             'wholesale', 'procurement', 'futures', 'tonnage', 'inventory', 'shipment',
+             'supplier', 'logistics', 'freight', 'port', 'harvest', 'yield', 'capacity',
+             'demand', 'supply', 'price', 'contract', 'warehouse', 'coldchain'
+           ];
+           console.log(`[AUTH] Applied static blocklist & dictionary for ${product}`);
+        }
+    }
 
     await updateUserProfile(req.user.id, {
       commodities: commodities || current.commodities,
@@ -208,9 +239,20 @@ router.put('/profile', requireAuth, async (req, res) => {
       template_name: template_name || current.template_name,
       custom_regions: custom_regions || current.custom_regions || [],
       price_alerts: price_alerts || current.price_alerts || [],
+      custom_blocklist,
+      custom_dictionary
     });
 
     const updatedProfile = await getUserProfile(req.user.id);
+
+    // Clear old alerts and trigger an immediate scan for the newly updated profile!
+    if (global.clearUserAlertsCache) {
+        global.clearUserAlertsCache(req.user.id);
+    }
+    if (global.triggerUserScan) {
+        global.triggerUserScan(req.user.id);
+    }
+
     res.json({ success: true, profile: updatedProfile });
   } catch (err) {
     console.error('Profile update error:', err);
