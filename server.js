@@ -122,7 +122,17 @@ app.use(session({
 app.use('/api/auth', authRouter);
 
 app.get('/api/debug-env', (req, res) => {
-    res.json({ fallback: process.env.ALLOW_PLANNER_FALLBACK, groq: process.env.GROQ_API_KEY });
+    res.json({ fallback: process.env.ALLOW_PLANNER_FALLBACK, groq: process.env.GROQ_API_KEY, gemini: process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET' });
+});
+
+app.get('/api/debug-python', async (req, res) => {
+    try {
+        const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
+        const pythonHealth = await axios.get(`${aiBaseUrl}/health`, { timeout: 5000 });
+        res.json({ python_service: 'RUNNING', python_url: aiBaseUrl, health: pythonHealth.data });
+    } catch (err) {
+        res.json({ python_service: 'DOWN', error: err.message });
+    }
 });
 
 app.get('/api/token-usage', (req, res) => {
