@@ -14,6 +14,7 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
+import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
@@ -1737,9 +1738,106 @@ async function tickPrices() {
         
         // --- EMAIL PRICE ALERTS MONITOR ---
         await checkPriceAlerts();
-        
+
+        // --- STATISTICAL PRICE ANOMALY DETECTION ---
+        await checkPriceAnomalies();
+
     } catch (err) {
         console.error('Yahoo Finance tick logic error:', err.message);
+    }
+}
+
+// ── Statistical price anomalies (event = the price series itself) ──
+// Daily closes per symbol from Yahoo chart, cached 24h. Anomalies fan out
+// only to users tracking that commodity, into the unified alert store.
+const dailyCloseCache = {}; // { symbol: { closes: number[]|null, todayOpen: number|null, fetchedAt } }
+
+async function getDailyCloses(symbol) {
+    // Cache is valid within one UTC day: "today's open" and the completed-day
+    // boundary both shift at midnight UTC.
+    const cached = dailyCloseCache[symbol];
+    if (cached && cached.fetchedDate === new Date().toISOString().slice(0, 10)) return cached;
+
+    const yTicker = YAHOO_SYMBOLS[symbol];
+    if (!yTicker) return { closes: null, todayOpen: null };
+    try {
+        const period1 = new Date();
+        period1.setDate(period1.getDate() - 140);
+        const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
+        const cents = chart.meta?.currency === 'USX';
+        const norm = v => (v == null ? null : (cents ? v / 100 : v));
+        const todayUtc = new Date().toISOString().slice(0, 10);
+        const closes = [];
+        let todayOpen = null;
+        for (const q of chart.quotes || []) {
+            if (!q.date) continue;
+            if (q.date.toISOString().slice(0, 10) === todayUtc) {
+                todayOpen = norm(q.open); // today's session open feeds the contract-roll guard
+            } else if (q.close != null) {
+                closes.push(norm(q.close)); // completed days only
+            }
+        }
+        dailyCloseCache[symbol] = { closes, todayOpen, fetchedDate: todayUtc };
+        return dailyCloseCache[symbol];
+    } catch (e) {
+        console.error(`[PRICE-ANOMALY] History fetch failed for ${symbol}:`, e.message);
+        dailyCloseCache[symbol] = { closes: null, todayOpen: null, fetchedDate: new Date().toISOString().slice(0, 10) }; // back off until tomorrow
+        return dailyCloseCache[symbol];
+    }
+}
+
+async function checkPriceAnomalies() {
+    try {
+        // 1. Detect anomalies per symbol (pure math over daily closes)
+        const findingsBySymbol = {};
+        for (const [symbol, state] of Object.entries(livePrices)) {
+            if (!YAHOO_SYMBOLS[symbol] || !(state.current > 0)) continue;
+            const { closes, todayOpen } = await getDailyCloses(symbol);
+            if (!closes || closes.length === 0) continue;
+            const findings = analyzePriceSeries(closes, state.current, todayOpen);
+            if (findings.length > 0) findingsBySymbol[symbol] = findings;
+        }
+        const anomalousSymbols = Object.keys(findingsBySymbol);
+        if (anomalousSymbols.length === 0) return;
+        console.log(`[PRICE-ANOMALY] Findings: ${anomalousSymbols.map(s => `${s}(${findingsBySymbol[s].map(f => f.type).join(',')})`).join(' ')}`);
+
+        // 2. Fan out to users tracking those commodities
+        const dayKey = new Date().toISOString().slice(0, 10);
+        const weekKey = `W${Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000))}`;
+        const users = await getAllUsers();
+        for (const user of users) {
+            if (!user.id) continue;
+            let profile = null;
+            try { profile = await getUserProfile(user.id); } catch (e) { continue; }
+            if (!profile) continue;
+            const tracked = new Set(profile.commodities || []);
+
+            for (const symbol of anomalousSymbols) {
+                if (!tracked.has(symbol)) continue;
+                const label = symbol.replace(/_/g, ' ');
+                const unit = COMMODITY_UNITS[symbol] || 'USD';
+                const price = livePrices[symbol].current;
+
+                for (const finding of findingsBySymbol[symbol]) {
+                    const { title, reason } = describeAnomaly(finding, label, price, unit);
+                    // Sigma moves are daily events; range breaks / vol regimes
+                    // persist, so dedup weekly to avoid re-alerting a trend.
+                    const bucket = finding.type.startsWith('sigma-move') ? dayKey : weekKey;
+                    await insertAlert(user.id, {
+                        source: 'PRICE',
+                        category: 'Price Anomaly',
+                        severity: finding.severity,
+                        title,
+                        reason,
+                        relevanceScore: anomalyRelevanceScore(finding),
+                        payload: { symbol, price, ...finding },
+                        dedupKey: `anomaly:${symbol}:${finding.type}:${bucket}`,
+                    });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[PRICE-ANOMALY] Check failed:', err.message);
     }
 }
 
