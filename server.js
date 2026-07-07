@@ -123,25 +123,23 @@ app.use(session({
 // ── Auth routes (no auth required) ──────────────────────────
 app.use('/api/auth', authRouter);
 
-app.get('/api/debug-env', (req, res) => {
-    res.json({ fallback: process.env.ALLOW_PLANNER_FALLBACK, groq: process.env.GROQ_API_KEY, gemini: process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET' });
-});
-
-app.get('/api/debug-python', async (req, res) => {
+// NOTE: never add endpoints that echo process.env values — a debug route
+// here once returned the raw GROQ_API_KEY unauthenticated.
+app.get('/api/debug-python', requireAuth, async (req, res) => {
     try {
         const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
         const pythonHealth = await axios.get(`${aiBaseUrl}/health`, { timeout: 5000 });
-        res.json({ python_service: 'RUNNING', python_url: aiBaseUrl, health: pythonHealth.data });
+        res.json({ python_service: 'RUNNING', health: { status: pythonHealth.data?.status, service: pythonHealth.data?.service } });
     } catch (err) {
         res.json({ python_service: 'DOWN', error: err.message });
     }
 });
 
-app.get('/api/token-usage', (req, res) => {
+app.get('/api/token-usage', requireAuth, (req, res) => {
     res.json(tokenUsage);
 });
 
-app.get('/api/rate-limits', (req, res) => {
+app.get('/api/rate-limits', requireAuth, (req, res) => {
     res.json(global.apiRateLimits || { remaining: 'N/A', reset: 'N/A' });
 });
 
@@ -2092,7 +2090,7 @@ setInterval(() => {
 }, 24 * 60 * 60 * 1000); // Reduced to 24 hours
 
 // ── ROUTE: price history (REST fallback) ──
-app.get('/api/live-prices', (req, res) => {
+app.get('/api/live-prices', requireAuth, (req, res) => {
     const result = {};
     const userCommodities = req.userProfile?.commodities || [];
     for (const [symbol, state] of Object.entries(livePrices)) {
