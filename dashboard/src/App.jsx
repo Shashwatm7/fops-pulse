@@ -1126,46 +1126,48 @@ export default function Dashboard() {
 
           <div className="mb-xl">
             <div className="section-label">Tracked Commodities</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
               {(profile?.commodities || []).map((c, i) => {
-                const label = allCommodities.find(x => x.key === c)?.label || c;
+                // Fallback prettifies stale keys no longer in the catalog (COTTON -> Cotton)
+                const label = allCommodities.find(x => x.key === c)?.label
+                  || String(c).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
                 return (
-                  <div key={`c-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                  <div key={`c-${i}`} className="chip">
                     {label}
-                    <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveCommodity(c)}>✕</button>
+                    <button className="chip-remove" title="Stop tracking" onClick={() => handleRemoveCommodity(c)}>✕</button>
                   </div>
                 );
               })}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <select style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', padding: '8px', borderRadius: '6px' }} value={quickCommodity} onChange={e => setQuickCommodity(e.target.value)}>
-                <option value="">Add Commodity...</option>
+              <select className="form-select" style={{ minWidth: '200px' }} value={quickCommodity} onChange={e => setQuickCommodity(e.target.value)}>
+                <option value="">Add commodity…</option>
                 {allCommodities.filter(c => !(profile?.commodities || []).includes(c.key)).map(c => (
                   <option key={c.key} value={c.key}>{c.label}</option>
                 ))}
               </select>
-              <button style={{ background: 'var(--accent)', color: 'black', border: 'none', padding: '0 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }} onClick={handleAddQuickCommodity}>Add</button>
+              <button className="btn-accent" onClick={handleAddQuickCommodity}>Add</button>
             </div>
           </div>
 
           <div className="mb-xl">
             <div className="section-label">Tracked Regions</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
               {(profile?.regions || []).map((r, i) => (
-                <div key={`r-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                <div key={`r-${i}`} className="chip">
                   {r}
-                  <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveRegion(r, false)}>✕</button>
+                  <button className="chip-remove" title="Stop tracking" onClick={() => handleRemoveRegion(r, false)}>✕</button>
                 </div>
               ))}
               {(profile?.custom_regions || []).map((r, i) => (
-                <div key={`cr-${i}`} style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: 'var(--accent)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px' }}>
+                <div key={`cr-${i}`} className="chip" title="Custom region">
                   ★ {r.name}
-                  <button style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '6px', cursor: 'pointer', padding: 0 }} onClick={() => handleRemoveRegion(r.name, true)}>✕</button>
+                  <button className="chip-remove" title="Stop tracking" onClick={() => handleRemoveRegion(r.name, true)}>✕</button>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <input list="quick-region-suggestions" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', padding: '8px', borderRadius: '6px', width: '250px' }} value={quickRegionName} onChange={e => setQuickRegionName(e.target.value)} placeholder="New City/Region Name (e.g. Omaha, NE)" />
+              <input list="quick-region-suggestions" className="form-input" style={{ width: '280px' }} value={quickRegionName} onChange={e => setQuickRegionName(e.target.value)} placeholder="New city/region (e.g. Omaha, NE)" />
               <datalist id="quick-region-suggestions">
                 <option value="Omaha, NE" />
                 <option value="Des Moines, IA" />
@@ -1180,7 +1182,7 @@ export default function Dashboard() {
                 <option value="Punjab, India" />
                 <option value="Paris Basin, France" />
               </datalist>
-              <button style={{ background: 'var(--accent)', color: 'black', border: 'none', padding: '0 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }} onClick={handleAddQuickRegion} disabled={quickAdding}>{quickAdding ? '...' : 'Add'}</button>
+              <button className="btn-accent" onClick={handleAddQuickRegion} disabled={quickAdding}>{quickAdding ? 'Adding…' : 'Add'}</button>
             </div>
           </div>
 
@@ -1188,30 +1190,31 @@ export default function Dashboard() {
             <div className="section-label">News Pipeline Configuration</div>
             <div className="intel-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>Extra Tracked Keywords (Comma Separated)</label>
-                <input 
-                  type="text" 
+                <label className="form-label">Extra Tracked Keywords <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}>(comma separated)</span></label>
+                <input
+                  type="text"
+                  className="form-input"
                   value={pipelineKeywords}
                   onChange={e => setPipelineKeywords(e.target.value)}
-                  placeholder="e.g. frozen food, port congestion..."
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '6px' }}
+                  placeholder="e.g. frozen food, port congestion…"
+                  style={{ width: '100%' }}
                 />
+                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Each keyword becomes an extra news search query for your pipeline.</div>
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>Blocklisted Sources/Keywords (Comma Separated)</label>
-                <input 
-                  type="text" 
+                <label className="form-label">Blocklisted Sources/Keywords <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}>(comma separated)</span></label>
+                <input
+                  type="text"
+                  className="form-input"
                   value={pipelineBlocklist}
                   onChange={e => setPipelineBlocklist(e.target.value)}
-                  placeholder="e.g. recipe, movie, celebrity, health tip..."
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '6px' }}
+                  placeholder="e.g. recipe, movie, celebrity, health tip…"
+                  style={{ width: '100%' }}
                 />
+                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Articles containing these terms are rejected at the rules stage.</div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button 
-                  onClick={handleSavePipelineConfig}
-                  style={{ background: 'var(--accent-emerald)', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
+                <button className="btn-accent" onClick={handleSavePipelineConfig}>
                   Save & Re-scan
                 </button>
               </div>
