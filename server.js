@@ -15,6 +15,7 @@ import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extra
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
+import { matchPrecedents, computeAftermath, summarizePrecedent } from './services/precedent-engine.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
@@ -1269,6 +1270,7 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
             req.body.userAlerts = dbAlerts.map(a => ({
                 id: a.id,
                 severity: a.severity,
+                category: a.category,
                 title: a.title,
                 reason: a.reason,
                 url: a.url,
@@ -2754,6 +2756,74 @@ app.get('/api/morning-brief', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Morning brief error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to build morning brief' });
+    }
+});
+
+// ── Precedent Engine: "last time this happened" ──
+// Matches a live alert against a curated library of documented supply
+// events, then computes what prices ACTUALLY did afterward from Yahoo's
+// historical daily bars. All numbers are real fetched history; the
+// library holds only factual event metadata. Aftermath windows are
+// immutable, so they cache permanently per process.
+const precedentAftermathCache = {}; // { `${eventId}:${symbol}`: aftermath|null }
+
+async function getPrecedentAftermath(pastEvent, symbol) {
+    const cacheKey = `${pastEvent.id}:${symbol}`;
+    if (cacheKey in precedentAftermathCache) return precedentAftermathCache[cacheKey];
+
+    const yTicker = YAHOO_SYMBOLS[symbol];
+    if (!yTicker) return (precedentAftermathCache[cacheKey] = null);
+    try {
+        const period1 = new Date(pastEvent.date); period1.setDate(period1.getDate() - 10);
+        const period2 = new Date(pastEvent.date); period2.setDate(period2.getDate() + 100);
+        const chart = await yahooFinance.chart(yTicker, { period1, period2, interval: '1d' });
+        const cents = chart.meta?.currency === 'USX';
+        const bars = (chart.quotes || [])
+            .filter(q => q.close != null && q.date)
+            .map(q => ({ date: q.date, close: cents ? q.close / 100 : q.close }));
+        const aftermath = computeAftermath(bars, pastEvent.date);
+        precedentAftermathCache[cacheKey] = aftermath;
+        return aftermath;
+    } catch (e) {
+        console.error(`[PRECEDENT] History fetch failed for ${symbol} @ ${pastEvent.date}:`, e.message);
+        return null; // don't cache failures — transient Yahoo errors can retry
+    }
+}
+
+app.post('/api/precedent', requireAuth, async (req, res) => {
+    try {
+        const { text, category } = req.body || {};
+        if (!text || typeof text !== 'string') {
+            return res.status(400).json({ success: false, error: 'Missing event text' });
+        }
+
+        const tracked = req.userProfile?.commodities || [];
+        // Commodities are extracted from the event text by the engine itself —
+        // the user's full tracked list must NOT widen the match.
+        const matches = matchPrecedents({ text, category });
+
+        const precedents = [];
+        for (const { event: past, score } of matches) {
+            // Prefer a commodity the user actually tracks; fall back to the
+            // event's primary commodity.
+            const symbol = past.commodities.find(c => tracked.includes(c)) || past.commodities[0];
+            const aftermath = await getPrecedentAftermath(past, symbol);
+            precedents.push({
+                id: past.id,
+                date: past.date,
+                title: past.title,
+                category: past.category,
+                symbol,
+                matchScore: score,
+                aftermath,
+                summary: summarizePrecedent(past, symbol, aftermath),
+            });
+        }
+
+        res.json({ success: true, precedents });
+    } catch (err) {
+        console.error('Precedent lookup error:', err.message);
+        res.status(500).json({ success: false, error: 'Precedent lookup failed' });
     }
 });
 

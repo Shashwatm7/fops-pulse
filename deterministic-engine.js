@@ -520,6 +520,7 @@ function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
     for (const a of signals.userAlerts) {
       alerts.push({
         id: a.id, // DB id — enables acknowledge from the UI
+        category: a.category || null,
         severity: a.severity || 'CRITICAL',
         title: a.title || `🎯 Profile Alert: Match Detected`,
         reason: a.reason || a.headline || 'Match Detected',
