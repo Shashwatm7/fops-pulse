@@ -4,10 +4,8 @@ import { applyRuleEngine } from './stages/3_rule_engine.js';
 import { matchRegion } from './stages/4_region_matcher.js';
 import { calculateRelevanceScore } from './stages/5_relevance_scorer.js';
 import { applySemanticFilter } from './stages/6_semantic_filter.js';
-import { verifyWithLLM } from './stages/7_llm_verifier.js';
 import { applyMlClassifier } from './stages/6.5_ml_classifier.js';
 import { classifyPriority } from './stages/8_priority_classifier.js';
-import { isDuplicate } from './stages/9_deduplication.js';
 
 export class NewsPipeline {
     constructor(config) {
@@ -110,8 +108,11 @@ export class NewsPipeline {
                 return await doReturn({ accepted: false, reason: 'Classified as Spam by ML', stage: 6.5, score });
             }
 
-            // Stage 7 LLM (Disabled per user request)
-            llmResult = { relevant: true, reason: 'LLM Evaluation Disabled', impact: 'Medium' };
+            // Stage 7 LLM is disabled (tokens reserved for planner/deep-dive).
+            // Leaving llmResult null so Stage 8 classifies priority purely
+            // from the score — previously this hardcoded impact:'Medium',
+            // which flattened every borderline article (score 25-74) to the
+            // same label regardless of its actual score.
         }
 
         // Stage 8

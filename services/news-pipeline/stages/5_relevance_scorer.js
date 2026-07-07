@@ -49,13 +49,11 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
     }
     score += Math.min(25, regionScore);
 
-    // 4. Negative Weights (Penalties)
-    let penalty = 0;
-    profile.excludedContexts.forEach(term => {
-        if (hasExactTerm(title, term)) penalty += 50;
-        else if (hasExactTerm(body, term)) penalty += 20;
-    });
-    score -= penalty;
+    // Note: no excluded-context penalty here. Stage 3 (rule engine) already
+    // hard-rejects any article containing an excluded term (checked against
+    // fullTextNorm, a superset of title+body), so any article that reaches
+    // this scorer is guaranteed to have zero excluded terms — a penalty pass
+    // would always compute 0. Removed as dead code.
 
     const finalScore = Math.max(0, Math.min(100, score));
 
@@ -64,8 +62,7 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
         breakdown: {
             commodityScore,
             businessScore,
-            regionScore,
-            penalty
+            regionScore
         }
     };
 }
