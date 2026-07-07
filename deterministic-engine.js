@@ -510,19 +510,10 @@ function buildCauseEffectChains(signals, { energy, forex }) {
 function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
   const alerts = [];
 
-  // Add High-Impact News Articles as Alerts
-  if (signals.news && signals.news.triggeredNews && signals.news.triggeredNews.length > 0) {
-    for (const article of signals.news.triggeredNews) {
-      alerts.push({
-        severity: article.score >= 5 ? 'CRITICAL' : 'HIGH',
-        title: `📰 News Alert: ${article.title.slice(0, 50)}...`,
-        reason: `Matched critical supply chain keywords: ${article.keywords.join(', ')}`,
-        timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
-        url: article.url || null,
-        regions: ['Global Market'],
-      });
-    }
-  }
+  // NOTE: transient keyword-triggered news is intentionally NOT injected
+  // here. The Alerts tab must show exactly the persistent alerts store —
+  // unpersisted extras made it disagree with the Morning Brief and could
+  // never be acknowledged.
 
   // Live User-Specific Alerts (persistent event×exposure store)
   if (signals.userAlerts && signals.userAlerts.length > 0) {
@@ -559,7 +550,7 @@ function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
       uniqueAlertsMap.set(a.title, a);
   }
 
-  return Array.from(uniqueAlertsMap.values()).slice(0, 10);
+  return Array.from(uniqueAlertsMap.values()).slice(0, 20);
 }
 
 // ── SCENARIO ENGINE ────────────────────────────────────────────────

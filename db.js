@@ -483,10 +483,12 @@ export async function getRecentAlertsBySource(userId, source, hours = 72, limit 
 }
 
 export async function getAlertsSince(userId, hours = 24, limit = 20) {
+  // Active only: the Morning Brief must be a strict subset of the Alerts
+  // tab, or the two panels show conflicting lists.
   const { rows } = await pool.query(
     `SELECT id, source, category, severity, title, reason, url, status, created_at
      FROM alerts
-     WHERE user_id = $1 AND created_at > NOW() - ($2 || ' hours')::interval
+     WHERE user_id = $1 AND status = 'active' AND created_at > NOW() - ($2 || ' hours')::interval
      ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, created_at DESC
      LIMIT $3`,
     [userId, String(hours), limit]

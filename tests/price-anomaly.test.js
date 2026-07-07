@@ -54,11 +54,13 @@ test('volatility regime shift detected', () => {
     assert.ok(findings.some(f => f.type === 'vol-regime'));
 });
 
-test('describeAnomaly renders planner-readable text', () => {
+test('describeAnomaly renders planner-friendly text without statistics jargon', () => {
     const [finding] = analyzePriceSeries(calm, last * 1.04, last * 1.01, last);
     const d = describeAnomaly(finding, 'WHEAT', 6.32, 'USD/bushel');
     assert.match(d.title, /WHEAT/);
-    assert.match(d.reason, /σ event/);
+    assert.match(d.reason, /typical daily move/);
+    assert.ok(!d.title.includes('σ') && !d.reason.includes('σ'), 'no sigma symbol in user-facing text');
+    assert.ok(!/anomal/i.test(d.title), 'title avoids "anomaly" jargon');
 });
 
 test('relevance score increases with z-score magnitude', () => {
