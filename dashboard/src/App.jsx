@@ -15,6 +15,7 @@ import SettingsPage from './SettingsPage.jsx';
 import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
 import MorningBrief from './MorningBrief.jsx';
+import TagInput from './TagInput.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
   if (active && payload && payload.length) {
@@ -275,8 +276,8 @@ export default function Dashboard() {
   const [energy, setEnergy] = useState(null);
   const [news, setNews] = useState([]);
   const [newsFilter, setNewsFilter] = useState('');
-  const [pipelineKeywords, setPipelineKeywords] = useState('');
-  const [pipelineBlocklist, setPipelineBlocklist] = useState('');
+  const [pipelineKeywords, setPipelineKeywords] = useState([]);
+  const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
   const [weather, setWeather] = useState([]);
   const [weatherExt, setWeatherExt] = useState([]);
   const [forex, setForex] = useState(null);
@@ -389,15 +390,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (profile) {
-      setPipelineKeywords((profile.news_keywords || []).join(', '));
-      setPipelineBlocklist((profile.custom_blocklist || []).join(', '));
+      setPipelineKeywords(profile.news_keywords || []);
+      setPipelineBlocklist(profile.custom_blocklist || []);
     }
   }, [profile]);
 
   const handleSavePipelineConfig = async () => {
-    const news_keywords = pipelineKeywords.split(',').map(k => k.trim()).filter(Boolean);
-    const custom_blocklist = pipelineBlocklist.split(',').map(k => k.trim()).filter(Boolean);
-    await updateProfileField({ news_keywords, custom_blocklist });
+    await updateProfileField({ news_keywords: pipelineKeywords, custom_blocklist: pipelineBlocklist });
     refresh();
   };
 
@@ -1200,26 +1199,25 @@ export default function Dashboard() {
             <div className="section-label">News Pipeline Configuration</div>
             <div className="intel-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label className="form-label">Extra Tracked Keywords <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}>(comma separated)</span></label>
-                <input
-                  type="text"
-                  className="form-input"
+                <label className="form-label">Extra Tracked Keywords
+                  {pipelineKeywords.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {pipelineKeywords.length}</span>}
+                </label>
+                <TagInput
                   value={pipelineKeywords}
-                  onChange={e => setPipelineKeywords(e.target.value)}
-                  placeholder="e.g. frozen food, port congestion…"
-                  style={{ width: '100%' }}
+                  onChange={setPipelineKeywords}
+                  placeholder="Type a keyword, press Enter…"
                 />
                 <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Each keyword becomes an extra news search query for your pipeline.</div>
               </div>
               <div>
-                <label className="form-label">Blocklisted Sources/Keywords <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}>(comma separated)</span></label>
-                <input
-                  type="text"
-                  className="form-input"
+                <label className="form-label">Blocklisted Sources/Keywords
+                  {pipelineBlocklist.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {pipelineBlocklist.length}</span>}
+                </label>
+                <TagInput
                   value={pipelineBlocklist}
-                  onChange={e => setPipelineBlocklist(e.target.value)}
-                  placeholder="e.g. recipe, movie, celebrity, health tip…"
-                  style={{ width: '100%' }}
+                  onChange={setPipelineBlocklist}
+                  placeholder="Type a term to block, press Enter…"
+                  tone="danger"
                 />
                 <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Articles containing these terms are rejected at the rules stage.</div>
               </div>
