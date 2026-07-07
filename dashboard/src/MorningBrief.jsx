@@ -19,17 +19,17 @@ export default function MorningBrief({ brief, weatherExt }) {
 
   const sevColor = { CRITICAL: '#fb7185', HIGH: '#fbbf24', MEDIUM: '#38bdf8', LOW: '#a1a1aa' };
   const fmtPrice = (p) => `$${p.toFixed(p < 10 ? 4 : 2)}`;
-  const colStyle = { minWidth: 0 };
-  const colTitle = { fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px' };
+  const colStyle = { minWidth: 0, display: 'flex', flexDirection: 'column' };
+  const colTitle = { fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' };
   const emptyStyle = { fontSize: '13px', color: 'var(--text-dim)' };
-  const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', marginBottom: '7px', fontSize: '13px' };
+  const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '8px', fontSize: '13px', lineHeight: 1.4 };
 
   return (
     <div className="mb-xl">
       <div className="section-label">
         Morning Brief — since {new Date(brief.since).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </div>
-      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '24px' }}>
+      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', alignItems: 'start' }}>
 
         <div style={colStyle}>
           <div style={colTitle}>

@@ -156,33 +156,38 @@ export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null, pre
     return findings;
 }
 
-/** Human-readable title/reason for an anomaly finding, written for planners. */
+/** Human-readable title/reason for an anomaly finding, written for planners.
+ *  No statistics jargon — "5× its typical daily move", never "5σ". */
 export function describeAnomaly(finding, label, price, unit) {
     const priceStr = `$${price.toFixed(price < 10 ? 4 : 2)} ${unit}`;
     switch (finding.type) {
         case 'sigma-move-up':
         case 'sigma-move-down': {
-            const sign = finding.todayReturnPct >= 0 ? '+' : '';
-            const arrow = finding.todayReturnPct >= 0 ? '📈' : '📉';
+            const up = finding.todayReturnPct >= 0;
+            const sign = up ? '+' : '';
+            // "5× its typical day" reads better than a z-score and is the same fact
+            const timesTypical = finding.typicalDailyMovePct > 0
+                ? Math.round(Math.abs(finding.todayReturnPct) / finding.typicalDailyMovePct)
+                : null;
             return {
-                title: `${arrow} Price Anomaly: ${label} ${sign}${finding.todayReturnPct}% today (${Math.abs(finding.zScore)}σ)`,
-                reason: `${label} moved ${sign}${finding.todayReturnPct}% today against a typical daily move of ${finding.typicalDailyMovePct}% — a ${Math.abs(finding.zScore)}σ event for this commodity. Now at ${priceStr}.`,
+                title: `${up ? '📈' : '📉'} Unusual price ${up ? 'jump' : 'drop'}: ${label} ${sign}${finding.todayReturnPct}% today`,
+                reason: `${label} moved ${sign}${finding.todayReturnPct}% today${timesTypical ? ` — about ${timesTypical}× its typical daily move of ${finding.typicalDailyMovePct}%` : ''}. Now trading at ${priceStr}.`,
             };
         }
         case 'range-break-high':
             return {
-                title: `📈 ${label} broke above its 90-day high`,
+                title: `📈 ${label} hit a 90-day high`,
                 reason: `${label} is trading at ${priceStr}, above its 90-day range ($${finding.low}–$${finding.high}). Review open purchase commitments priced off older levels.`,
             };
         case 'range-break-low':
             return {
-                title: `📉 ${label} broke below its 90-day low`,
+                title: `📉 ${label} hit a 90-day low`,
                 reason: `${label} is trading at ${priceStr}, below its 90-day range ($${finding.low}–$${finding.high}). Potential forward-buy window if demand plans support it.`,
             };
         case 'vol-regime':
             return {
-                title: `⚡ Volatility regime change: ${label}`,
-                reason: `${label} 7-day volatility is ${finding.volRatio}× its 90-day baseline (typical daily move was ${finding.baselineDailyMovePct}%). Expect wider swings; consider staggering orders instead of single large buys.`,
+                title: `⚡ Price swings widening: ${label}`,
+                reason: `${label} daily swings this week are running ${finding.volRatio}× the past-quarter norm (typical day was ${finding.baselineDailyMovePct}%). Consider staggering orders instead of single large buys.`,
             };
         default:
             return { title: `Price signal: ${label}`, reason: `Unusual price behavior detected at ${priceStr}.` };
