@@ -840,7 +840,6 @@ export default function Dashboard() {
     if (price < 10) return price.toFixed(3);
     return price.toFixed(2);
   };
-  const getConfidenceColor = (c) => c >= 70 ? 'var(--accent-emerald)' : c >= 40 ? 'var(--accent-amber)' : 'var(--accent-rose)';
   const getStrengthColor = (s) => s >= 7 ? 'var(--accent-rose)' : s >= 4 ? 'var(--accent-amber)' : 'var(--accent-emerald)';
   const getRiskColor = (score) => score >= 7 ? 'risk-critical' : score >= 5 ? 'risk-high' : score >= 3 ? 'risk-medium' : 'risk-low';
   const getSoilColor = (val) => val > 0.3 ? 'var(--accent-emerald)' : val > 0.15 ? 'var(--accent-amber)' : 'var(--accent-rose)';
@@ -1042,21 +1041,6 @@ export default function Dashboard() {
           </button>
         </div>
         <div className="header-controls">
-          <div className="live-indicator">
-            <span className="live-dot" />
-            <span className="live-ring" />
-            LIVE
-          </div>
-          {summary && <span className={`market-state-badge ${summary.market_state}`}>{summary.market_state}</span>}
-          {summary && (
-            <div className="confidence-gauge">
-              <div className="confidence-bar">
-                <div className="confidence-fill" style={{ width: `${summary.confidence}%`, background: getConfidenceColor(summary.confidence) }} />
-              </div>
-              <span>{summary.confidence}%</span>
-            </div>
-          )}
-          <span className="time-ago">{formatTimeAgo(secondsAgo)}</span>
           <button
             className="btn-primary"
             onClick={() => setShowTrackModal(true)}
@@ -1066,14 +1050,20 @@ export default function Dashboard() {
           </button>
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              placeholder="Search items..." 
-              value={searchQuery} 
+            <input
+              type="text"
+              placeholder="Search items..."
+              value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: '200px', paddingLeft: '32px' }}
             />
           </div>
+          <div className="live-indicator">
+            <span className="live-dot" />
+            <span className="live-ring" />
+            LIVE
+          </div>
+          <span className="time-ago">{formatTimeAgo(secondsAgo)}</span>
           <button
             className="btn-primary"
             onClick={(e) => { handleRipple(e); refresh(); }}
