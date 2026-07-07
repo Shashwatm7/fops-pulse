@@ -124,8 +124,15 @@ export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null, pre
         const window90 = adjusted.slice(-90);
         const high = Math.max(...window90);
         const low = Math.min(...window90);
+        // Degenerate-range guard: on near-flat illiquid series (e.g. Class
+        // III Milk) the whole 90-day range can be a fraction of a percent
+        // wide, making any float-level drift a "breakout". Require a
+        // meaningful range before break detection applies.
+        const rangeWidth = (high - low) / reference;
         const breakSeverity = Math.abs(zScore) >= 2 ? 'HIGH' : 'MEDIUM';
-        if (livePrice > high) {
+        if (rangeWidth < 0.02) {
+            // skip range detection entirely
+        } else if (livePrice > high) {
             findings.push({ type: 'range-break-high', severity: breakSeverity, high: +high.toFixed(4), low: +low.toFixed(4) });
         } else if (livePrice < low) {
             findings.push({ type: 'range-break-low', severity: breakSeverity, high: +high.toFixed(4), low: +low.toFixed(4) });
