@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine
@@ -847,7 +847,6 @@ export default function Dashboard() {
 
   const summary = analysis?.summary;
   const drivers = analysis?.drivers || [];
-  const chains = analysis?.causeEffectChains || [];
   const alerts = (analysis?.alerts || []).sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99));
 
   const [precedents, setPrecedents] = useState({});
@@ -1153,25 +1152,12 @@ export default function Dashboard() {
           )}
 
 
-          {chains.length > 0 && (
+          {counterfactuals.length > 0 && (
             <div className="mb-xl">
-              <div className="section-label">Cause → Effect Chains</div>
-              {(chains || []).map((c, i) => (
-                <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.1}s` }}>
-                  <div className="chain-container animate">
-                    {(c.chain || []).map((node, j) => (
-                      <Fragment key={j}>
-                        {j > 0 && <div className="chain-arrow">→</div>}
-                        <div className="chain-node">{node}</div>
-                      </Fragment>
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <div className="section-label">Counterfactual Analysis</div>
+              <div className="grid-auto">{(counterfactuals || []).map((cf, i) => (<div key={i} className={`intel-card cf-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="cf-question">{cf.question}</div><div className="cf-answer">{cf.answer}</div></div>))}</div>
             </div>
           )}
-
-
 
         </div>
       )}
@@ -1382,12 +1368,6 @@ export default function Dashboard() {
             })()
           )}
 
-          {counterfactuals.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Counterfactual Analysis</div>
-              <div className="grid-auto">{(counterfactuals || []).map((cf, i) => (<div key={i} className={`intel-card cf-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="cf-question">{cf.question}</div><div className="cf-answer">{cf.answer}</div></div>))}</div>
-            </div>
-          )}
           {missingData.length > 0 && (
             <div className="missing-data-strip mb-xl"><div className="label">⊘ Data Gaps</div><div className="missing-data-list">{(missingData || []).map((m, i) => <span key={i} className="missing-item">{m}</span>)}</div></div>
           )}
