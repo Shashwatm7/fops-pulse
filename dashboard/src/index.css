@@ -436,6 +436,51 @@ h1, h2, h3, h4, h5, h6 {
 
 .chip-remove:hover { opacity: 1; transform: scale(1.15); }
 
+/* Danger-tone chip (blocklist terms) */
+.chip-danger {
+  background: rgba(244, 63, 94, 0.08);
+  border-color: rgba(244, 63, 94, 0.3);
+  color: #fb7185;
+}
+.chip-danger:hover {
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+/* ── Tag input (chip editor) ── */
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  min-height: 42px;
+  background: rgba(9, 9, 11, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: text;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tag-input:focus-within {
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+.tag-input-field {
+  flex: 1;
+  min-width: 140px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 2px;
+}
+
+.tag-input-field::placeholder { color: var(--text-dim); }
+
 /* ── Selectable tiles (settings checkbox grid) ── */
 .select-tile {
   padding: 10px 12px;
