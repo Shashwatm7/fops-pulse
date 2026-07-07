@@ -103,11 +103,14 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>Account Settings</h2>
-      <div style={styles.card}>
-        <h3 style={styles.sectionTitle}>Tracked Commodities</h3>
+      <div className="intel-card" style={styles.card}>
+        <div className="section-label" style={styles.sectionTitle}>Tracked Commodities</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px' }}>
+          {commodities.length} selected — all with live futures price feeds
+        </div>
         <div style={styles.grid}>
           {allCommodities.map(c => (
-            <label key={c.key} style={{...styles.checkbox, ...(commodities.includes(c.key) ? styles.checkboxActive : {})}}>
+            <label key={c.key} className={`select-tile${commodities.includes(c.key) ? ' active' : ''}`}>
               <input type="checkbox" style={{display:'none'}} checked={commodities.includes(c.key)}
                 onChange={(e) => {
                   if (e.target.checked) setCommodities([...commodities, c.key]);
@@ -119,10 +122,10 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           ))}
         </div>
 
-        <h3 style={styles.sectionTitle}>Agricultural Regions</h3>
+        <div className="section-label" style={styles.sectionTitle}>Agricultural Regions</div>
         <div style={styles.grid}>
           {allRegions.map(r => (
-            <label key={r.name} style={{...styles.checkbox, ...(regions.includes(r.name) ? styles.checkboxActive : {})}}>
+            <label key={r.name} className={`select-tile${regions.includes(r.name) ? ' active' : ''}`}>
               <input type="checkbox" style={{display:'none'}} checked={regions.includes(r.name)}
                 onChange={(e) => {
                   if (e.target.checked) setRegions([...regions, r.name]);
@@ -133,13 +136,13 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
             </label>
           ))}
           {customRegions.map((r, i) => (
-            <label key={`custom-${i}`} style={{...styles.checkbox, ...styles.checkboxActive, opacity: 0.8}}>
+            <label key={`custom-${i}`} className="select-tile active" style={{ opacity: 0.85 }} title="Custom region">
               ★ {r.name}
             </label>
           ))}
         </div>
-        <div style={{display:'flex', gap:'10px', marginTop: '10px'}}>
-          <input list="region-suggestions" style={styles.input} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="New City/Region Name (e.g. Omaha, NE)" />
+        <div style={{display:'flex', gap:'10px', marginTop: '14px'}}>
+          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="New city/region (e.g. Omaha, NE)" />
           <datalist id="region-suggestions">
             <option value="Omaha, NE" />
             <option value="Des Moines, IA" />
@@ -154,19 +157,25 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
             <option value="Punjab, India" />
             <option value="Paris Basin, France" />
           </datalist>
-          <input style={styles.input} value={customRegionCrop} onChange={e=>setCustomRegionCrop(e.target.value)} placeholder="Crop (Optional)" />
-          <button style={styles.btnSecondary} onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding...' : 'Add Region'}</button>
+          <input className="form-input" style={{ flex: 1 }} value={customRegionCrop} onChange={e=>setCustomRegionCrop(e.target.value)} placeholder="Crop (optional)" />
+          <button className="btn-secondary" onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding…' : 'Add Region'}</button>
         </div>
-        <h3 style={styles.sectionTitle}>Market Focus</h3>
+
+        <div className="section-label" style={styles.sectionTitle}>Market Focus</div>
         <div style={{display:'flex', gap:'15px', marginBottom:'15px'}}>
-          <input style={styles.input} value={focusRegion} onChange={e=>setFocusRegion(e.target.value)} placeholder="Focus Region" />
-          <input style={styles.input} value={focusProduct} onChange={e=>setFocusProduct(e.target.value)} placeholder="Focus Product" />
+          <div style={{ flex: 1 }}>
+            <label className="form-label">Focus Region</label>
+            <input className="form-input" style={{ width: '100%' }} value={focusRegion} onChange={e=>setFocusRegion(e.target.value)} placeholder="e.g. Middle East" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="form-label">Focus Product</label>
+            <input className="form-input" style={{ width: '100%' }} value={focusProduct} onChange={e=>setFocusProduct(e.target.value)} placeholder="e.g. Frozen Goods" />
+          </div>
         </div>
-        
 
         <div style={styles.btnRow}>
-          <button style={styles.btnSecondary} onClick={onCancel}>Cancel</button>
-          <button style={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="btn-accent" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
         </div>
       </div>
     </div>
@@ -176,13 +185,8 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
 const styles = {
   container: { padding: '40px', maxWidth: '900px', margin: '0 auto', color: 'var(--text-primary)' },
   title: { fontSize: '24px', marginBottom: '20px' },
-  card: { background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '30px' },
-  sectionTitle: { fontSize: '18px', marginBottom: '15px', color: 'var(--accent)', marginTop: '20px' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
-  checkbox: { padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', textAlign: 'center', fontSize: '14px' },
-  checkboxActive: { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'rgba(16,185,129,0.1)' },
-  input: { width: '100%', padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'white' },
-  btnRow: { display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '30px' },
-  btnPrimary: { padding: '10px 20px', background: 'var(--accent)', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
-  btnSecondary: { padding: '10px 20px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }
+  card: { padding: '30px' },
+  sectionTitle: { marginTop: '28px' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px' },
+  btnRow: { display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }
 };
