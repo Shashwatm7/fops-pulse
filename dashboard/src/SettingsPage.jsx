@@ -21,6 +21,21 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const [allRegions, setAllRegions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [addingRegion, setAddingRegion] = useState(false);
+  const [quickCommodity, setQuickCommodity] = useState('');
+  const [quickRegion, setQuickRegion] = useState('');
+
+  const commodityLabel = (key) =>
+    allCommodities.find(c => c.key === key)?.label
+    || String(key).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
+
+  const addCommodity = () => {
+    if (quickCommodity && !commodities.includes(quickCommodity)) setCommodities([...commodities, quickCommodity]);
+    setQuickCommodity('');
+  };
+  const addStandardRegion = () => {
+    if (quickRegion && !regions.includes(quickRegion)) setRegions([...regions, quickRegion]);
+    setQuickRegion('');
+  };
 
   useEffect(() => {
     fetch('/api/auth/templates')
@@ -107,45 +122,58 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
     <div style={styles.container}>
       <h2 style={styles.title}>Account Settings</h2>
       <div className="intel-card" style={styles.card}>
-        <div className="section-label" style={styles.sectionTitle}>Tracked Commodities</div>
-        <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px' }}>
-          {commodities.length} selected — all with live futures price feeds
+        <div className="section-label" style={styles.sectionTitle}>Tracked Commodities
+          {commodities.length > 0 && <span style={styles.count}> · {commodities.length}</span>}
         </div>
-        <div style={styles.grid}>
-          {allCommodities.map(c => (
-            <label key={c.key} className={`select-tile${commodities.includes(c.key) ? ' active' : ''}`}>
-              <input type="checkbox" style={{display:'none'}} checked={commodities.includes(c.key)}
-                onChange={(e) => {
-                  if (e.target.checked) setCommodities([...commodities, c.key]);
-                  else setCommodities(commodities.filter(x => x !== c.key));
-                }}
-              />
-              {c.label}
-            </label>
+        <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px' }}>
+          All commodities have live futures price feeds.
+        </div>
+        <div style={styles.chipRow}>
+          {commodities.length === 0 && <span style={styles.empty}>None selected yet.</span>}
+          {commodities.map(key => (
+            <span key={key} className="chip">
+              {commodityLabel(key)}
+              <button className="chip-remove" title="Remove" onClick={() => setCommodities(commodities.filter(x => x !== key))}>✕</button>
+            </span>
           ))}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <select className="form-select" style={{ minWidth: '220px' }} value={quickCommodity} onChange={e => setQuickCommodity(e.target.value)}>
+            <option value="">Add commodity…</option>
+            {allCommodities.filter(c => !commodities.includes(c.key)).map(c => (
+              <option key={c.key} value={c.key}>{c.label}</option>
+            ))}
+          </select>
+          <button className="btn-accent" onClick={addCommodity} disabled={!quickCommodity}>Add</button>
         </div>
 
-        <div className="section-label" style={styles.sectionTitle}>Agricultural Regions</div>
-        <div style={styles.grid}>
-          {allRegions.map(r => (
-            <label key={r.name} className={`select-tile${regions.includes(r.name) ? ' active' : ''}`}>
-              <input type="checkbox" style={{display:'none'}} checked={regions.includes(r.name)}
-                onChange={(e) => {
-                  if (e.target.checked) setRegions([...regions, r.name]);
-                  else setRegions(regions.filter(x => x !== r.name));
-                }}
-              />
-              {r.name}
-            </label>
+        <div className="section-label" style={styles.sectionTitle}>Tracked Regions</div>
+        <div style={styles.chipRow}>
+          {regions.length === 0 && customRegions.length === 0 && <span style={styles.empty}>None selected yet.</span>}
+          {regions.map(name => (
+            <span key={name} className="chip">
+              {name}
+              <button className="chip-remove" title="Remove" onClick={() => setRegions(regions.filter(x => x !== name))}>✕</button>
+            </span>
           ))}
           {customRegions.map((r, i) => (
-            <label key={`custom-${i}`} className="select-tile active" style={{ opacity: 0.85 }} title="Custom region">
+            <span key={`custom-${i}`} className="chip" title="Custom region">
               ★ {r.name}
-            </label>
+              <button className="chip-remove" title="Remove" onClick={() => setCustomRegions(customRegions.filter((_, j) => j !== i))}>✕</button>
+            </span>
           ))}
         </div>
-        <div style={{display:'flex', gap:'10px', marginTop: '14px'}}>
-          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="New city/region (e.g. Omaha, NE)" />
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <select className="form-select" style={{ minWidth: '220px' }} value={quickRegion} onChange={e => setQuickRegion(e.target.value)}>
+            <option value="">Add tracked region…</option>
+            {allRegions.filter(r => !regions.includes(r.name)).map(r => (
+              <option key={r.name} value={r.name}>{r.name}</option>
+            ))}
+          </select>
+          <button className="btn-accent" onClick={addStandardRegion} disabled={!quickRegion}>Add</button>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="Or add a custom city/region (e.g. Omaha, NE)" />
           <datalist id="region-suggestions">
             <option value="Omaha, NE" />
             <option value="Des Moines, IA" />
@@ -161,7 +189,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
             <option value="Paris Basin, France" />
           </datalist>
           <input className="form-input" style={{ flex: 1 }} value={customRegionCrop} onChange={e=>setCustomRegionCrop(e.target.value)} placeholder="Crop (optional)" />
-          <button className="btn-secondary" onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding…' : 'Add Region'}</button>
+          <button className="btn-secondary" onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding…' : 'Add Custom'}</button>
         </div>
 
         <div className="section-label" style={styles.sectionTitle}>Market Focus</div>
@@ -208,6 +236,8 @@ const styles = {
   title: { fontSize: '24px', marginBottom: '20px' },
   card: { padding: '30px' },
   sectionTitle: { marginTop: '28px' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px' },
+  chipRow: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', alignItems: 'center' },
+  count: { opacity: 0.6, textTransform: 'none', letterSpacing: 0 },
+  empty: { fontSize: '13px', color: 'var(--text-dim)' },
   btnRow: { display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }
 };
