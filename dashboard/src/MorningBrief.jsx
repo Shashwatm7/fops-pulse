@@ -11,8 +11,8 @@ function BriefSkeleton() {
   return (
     <div className="mb-xl brief-enter">
       <div className="section-label">Morning Brief</div>
-      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px' }}>
-        {[0, 1, 2, 3].map(i => (
+      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px' }}>
+        {[0, 1].map(i => (
           <div key={i}>
             <div className="skeleton skeleton-line w-40" style={{ marginBottom: '16px' }} />
             <div className="skeleton skeleton-line w-80" />
@@ -26,24 +26,16 @@ function BriefSkeleton() {
 }
 
 // "What changed since yesterday" — triage panel at the top of the dashboard.
-// Every value is real fetched data: alerts + accepted articles from Postgres,
-// price moves from live Yahoo quotes vs same-contract previous close,
-// weather flags from the live WeatherAPI feed already loaded by the app.
-export default function MorningBrief({ brief, weatherExt, username }) {
+// Every value is real fetched data: alerts + accepted articles from Postgres.
+export default function MorningBrief({ brief, username, onViewAlerts }) {
   if (!brief) return <BriefSkeleton />;
 
-  const movers = (brief.priceMovers || []).filter(m => Math.abs(m.changePct) >= 0.01).slice(0, 5);
-  const alerts = (brief.newAlerts || []).slice(0, 4);
+  const alerts = (brief.newAlerts || []).slice(0, 5);
   const counts = brief.alertCounts || {};
   const totalAlerts = (brief.newAlerts || []).length;
   const news = brief.acceptedNews || [];
-  const flaggedRegions = (weatherExt || []).filter(w => {
-    const alert = w.analytics?.alert || w.alert;
-    return alert && alert !== 'NORMAL';
-  });
 
   const sevColor = { CRITICAL: '#fb7185', HIGH: '#fbbf24', MEDIUM: '#38bdf8', LOW: '#a1a1aa' };
-  const fmtPrice = (p) => `$${p.toFixed(p < 10 ? 4 : 2)}`;
   const colStyle = { minWidth: 0, display: 'flex', flexDirection: 'column' };
   const colTitle = { fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' };
   const emptyStyle = { fontSize: '13px', color: 'var(--text-dim)' };
@@ -62,7 +54,7 @@ export default function MorningBrief({ brief, weatherExt, username }) {
       <div style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
         {greeting()}{username ? `, ${username}` : ''} — here's what changed in your supply chain.
       </div>
-      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '28px', alignItems: 'start' }}>
+      <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px', alignItems: 'start' }}>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.08s' }}>
           <div style={colTitle}>
@@ -82,34 +74,17 @@ export default function MorningBrief({ brief, weatherExt, username }) {
               </span>
             </div>
           ))}
+          {onViewAlerts && (
+            <button
+              onClick={onViewAlerts}
+              style={{ marginTop: '8px', alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#67e8f9', fontSize: '12px', fontWeight: 600 }}
+            >
+              {totalAlerts > alerts.length ? `View all ${totalAlerts} alerts` : 'View all alerts'} →
+            </button>
+          )}
         </div>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.16s' }}>
-          <div style={colTitle}>Price Movers <span style={{ letterSpacing: 0, textTransform: 'none', opacity: 0.7 }}>(vs prev close)</span></div>
-          {movers.length === 0 ? <div style={emptyStyle}>No meaningful moves in your tracked commodities.</div> : movers.map(m => (
-            <div key={m.symbol} style={rowStyle}>
-              <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</span>
-              <span className="value-pop" style={{ fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                {fmtPrice(m.price)}{' '}
-                <span style={{ color: m.changePct >= 0 ? '#34d399' : '#fb7185' }}>
-                  {m.changePct >= 0 ? '+' : ''}{m.changePct}%
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="section-enter" style={{ ...colStyle, animationDelay: '0.24s' }}>
-          <div style={colTitle}>Weather Watch</div>
-          {flaggedRegions.length === 0 ? <div style={emptyStyle}>All tracked regions normal.</div> : flaggedRegions.map((w, i) => (
-            <div key={i} style={rowStyle}>
-              <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
-              <span style={{ color: '#fbbf24', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>{w.analytics?.alert || w.alert}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="section-enter" style={{ ...colStyle, animationDelay: '0.32s' }}>
           <div style={colTitle}>Fresh Intelligence</div>
           {news.length === 0 ? <div style={emptyStyle}>No newly accepted articles in the last 24h.</div> : news.map((n, i) => (
             <div key={i} style={{ marginBottom: '7px', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.title}>
