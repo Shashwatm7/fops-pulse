@@ -850,6 +850,25 @@ export default function Dashboard() {
   const chains = analysis?.causeEffectChains || [];
   const alerts = (analysis?.alerts || []).sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99));
 
+  const [precedents, setPrecedents] = useState({});
+
+  const findPrecedent = async (a, key) => {
+    setPrecedents(prev => ({ ...prev, [key]: 'loading' }));
+    try {
+      const res = await fetch(`${API_BASE}/precedent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: `${a.title} ${a.reason || ''}`, category: a.category || null }),
+      });
+      const data = await res.json();
+      setPrecedents(prev => ({ ...prev, [key]: data.success ? (data.precedents || []) : [] }));
+    } catch (err) {
+      console.error('Precedent lookup failed:', err);
+      setPrecedents(prev => ({ ...prev, [key]: [] }));
+    }
+  };
+
   const acknowledgeAlert = async (alertId) => {
     try {
       await fetch(`${API_BASE}/alerts/${alertId}/ack`, { method: 'POST', credentials: 'include' });
@@ -1285,6 +1304,37 @@ export default function Dashboard() {
               </div>
               {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
               <div className="alert-reason">{a.reason || a.description}</div>
+
+              {(() => {
+                const pKey = a.id ?? `idx-${i}`;
+                const p = precedents[pKey];
+                if (p === undefined) {
+                  return (
+                    <button
+                      onClick={() => findPrecedent(a, pKey)}
+                      title="What happened to prices the last time an event like this occurred?"
+                      style={{ marginTop: '8px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', color: '#67e8f9', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                    >📜 Last time this happened…</button>
+                  );
+                }
+                if (p === 'loading') {
+                  return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>Searching 15 years of market history…</div>;
+                }
+                if (Array.isArray(p) && p.length === 0) {
+                  return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>No documented precedent matched this event.</div>;
+                }
+                return (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(6,182,212,0.06)', borderLeft: '2px solid rgba(6,182,212,0.5)', borderRadius: '0 6px 6px 0' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>📜 Historical Precedent</div>
+                    {p.map(prec => (
+                      <div key={prec.id} style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '4px' }}>
+                        {prec.summary}
+                      </div>
+                    ))}
+                    <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>Price paths computed from real Yahoo Finance daily history. Past behavior does not guarantee repetition.</div>
+                  </div>
+                );
+              })()}
               {a.url && (
                 <div style={{ marginTop: '8px' }}>
                   <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
