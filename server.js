@@ -1746,13 +1746,20 @@ async function tickPrices() {
             }
             
             let newPrice = q.regularMarketPrice;
-            
+
             // Normalize to USD: Yahoo quotes many futures in US cents
             // (currency "USX") — grains per bushel, softs/livestock per lb.
             // Driven by the quote's own currency field, not a symbol list.
-            if (q.currency === 'USX') {
+            const usxCents = q.currency === 'USX';
+            if (usxCents) {
                 newPrice = newPrice / 100;
             }
+
+            // Same-contract session refs for the anomaly detector — the
+            // quote's own previousClose/open cannot span a contract roll,
+            // unlike the continuous chart series.
+            state.prevClose = q.regularMarketPreviousClose > 0 ? (usxCents ? q.regularMarketPreviousClose / 100 : q.regularMarketPreviousClose) : null;
+            state.dayOpen = q.regularMarketOpen > 0 ? (usxCents ? q.regularMarketOpen / 100 : q.regularMarketOpen) : null;
 
             const rounded = +newPrice.toFixed(newPrice < 10 ? 4 : 2);
 
@@ -1847,7 +1854,8 @@ async function checkPriceAnomalies() {
             if (!YAHOO_SYMBOLS[symbol] || !(state.current > 0)) continue;
             const { closes, todayOpen } = await getDailyCloses(symbol);
             if (!closes || closes.length === 0) continue;
-            const findings = analyzePriceSeries(closes, state.current, todayOpen);
+            // Prefer the quote's own session open; chart-derived open is fallback
+            const findings = analyzePriceSeries(closes, state.current, state.dayOpen ?? todayOpen, state.prevClose);
             if (findings.length > 0) findingsBySymbol[symbol] = findings;
         }
         const anomalousSymbols = Object.keys(findingsBySymbol);
