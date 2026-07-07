@@ -1463,11 +1463,14 @@ CRITICAL INSTRUCTIONS:
 4. SYNTHESIZE the data into actionable insights. Tell the user WHY the data matters at a strategic executive level.
 5. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
 6. Provide 2 to 3 specific, highly actionable strategic bullet points directly relating to the selected commodity.
+7. QUALITY BAR: every bullet must cite a specific number, date, source, or named event from the data sections above. BANNED: "monitor the situation", "stay informed", "diversify", "enhance resilience", and "mitigate risks" without naming the risk and mechanism in the same sentence. If the data is thin, write fewer, sharper bullets — never pad.
 
 Return a JSON object: {"deepDive": "your concise, structured, and informative plain text analysis"}`;
 
+        // 70B for reasoning quality; callGroq's failover chain (Gemini, then
+        // 8B) protects against free-tier rate limits.
         const analysisRaw = await callGroq(
-            'llama-3.1-8b-instant',
+            'llama-3.3-70b-versatile',
             analysisPrompt,
             contextBundle,
             true,
@@ -1567,12 +1570,28 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         }
         payload.acceptedNewsInsights = acceptedNewsInsights;
 
+        // Active exposure-scored alerts: the strongest distilled signal we
+        // have — anchor the LLM's recommendations in them.
+        let activeAlertsForAI = [];
+        try {
+            const alertRows = await getActiveAlerts(req.session.userId, 8);
+            activeAlertsForAI = alertRows.map(a => ({
+                severity: a.severity,
+                title: String(a.title || '').replace(/^[^A-Za-z0-9]+\s*/, '').slice(0, 140),
+                reason: String(a.reason || '').slice(0, 180),
+            }));
+        } catch (e) {
+            console.error('[AI PLANNER] Failed to load active alerts:', e.message);
+        }
+        payload.activeAlerts = activeAlertsForAI;
+
         const plannerInputSignature = crypto
             .createHash('sha256')
             .update(JSON.stringify({
                 keywords: payload.keywords || [],
-                // New accepted articles must invalidate the 2h cache
-                insightTitles: acceptedNewsInsights.map(i => i.title)
+                // New accepted articles or alerts must invalidate the 2h cache
+                insightTitles: acceptedNewsInsights.map(i => i.title),
+                alertTitles: activeAlertsForAI.map(a => a.title)
             }))
             .digest('hex')
             .slice(0, 16);

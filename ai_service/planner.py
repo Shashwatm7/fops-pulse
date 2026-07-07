@@ -52,7 +52,7 @@ async def call_gemini(system_prompt: str, user_prompt: str, json_mode: bool = Tr
             print(f"[ERROR] Gemini failed: {e}")
             raise e
 
-async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500, api_keys_override: str = None, gemini_key_override: str = None):
+async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-instant", json_mode: bool = True, max_tokens: int = 1500, api_keys_override: str = None, gemini_key_override: str = None, temperature: float = 0.2):
     global _current_groq_key_idx
     
     # Read keys FRESH each call (not at import time)
@@ -73,7 +73,7 @@ async def call_groq(system_prompt: str, user_prompt: str, model="llama-3.1-8b-in
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.1,
+        "temperature": temperature,
         "max_tokens": max_tokens
     }
     
@@ -254,6 +254,17 @@ def format_accepted_news_insights(insights):
         )
     return "\n".join(lines)
 
+def format_active_alerts(alerts):
+    """The user's live exposure-scored risk alerts — the strongest distilled
+    signal the platform produces. Feeding them to the LLM anchors the
+    recommendations in what the system already verified matters."""
+    if not alerts:
+        return "None currently active."
+    lines = []
+    for a in alerts[:8]:
+        lines.append(f"- [{a.get('severity', '?')}] {a.get('title', '')} — {str(a.get('reason', ''))[:170]}")
+    return "\n".join(lines)
+
 def format_news_intelligence(extracted_articles):
     if not extracted_articles:
         return "No locally extracted relevant news facts available."
@@ -290,6 +301,7 @@ async def generate_planner_recommendations(payload: dict):
     top_news_intelligence = extract_top_news_intelligence(news, focus_product, user_commodities, focus_region, user_regions)
     top_news_intelligence_block = format_news_intelligence(top_news_intelligence)
     accepted_insights_block = format_accepted_news_insights(payload.get("acceptedNewsInsights", []))
+    active_alerts_block = format_active_alerts(payload.get("activeAlerts", []))
     
     if isinstance(prices, list):
         short_prices = ", ".join([f"{p.get('symbol', '')}: ${p.get('price', '')}" for p in prices])
@@ -310,6 +322,9 @@ Port Congestion: {', '.join([f"{p.get('port')} ({p.get('status')})" for p in log
 === REAL-TIME DATA ===
 Live Commodity Prices: {short_prices}
 
+=== ACTIVE RISK ALERTS (already exposure-scored against this user's supply chain) ===
+{active_alerts_block}
+
 === MARKET INTELLIGENCE ===
 TIER 1 — Pipeline-Verified News Insights (each passed a 9-stage relevance
 pipeline matched to this user's supply chain; NLP summaries and entities
@@ -324,37 +339,40 @@ keyword extraction from raw headlines/descriptions):
     
     tracked_commodity_scope = ', '.join([focus_product] + user_commodities)
 
-    analysis_prompt = f"""You are FOPs Market Pulse — an executive-grade supply chain intelligence engine.
-Based on the provided data, generate 4 dynamic, natural-sounding, strategic alerts for the user's specific supply chain.
+    analysis_prompt = f"""You are the senior procurement strategist for a food manufacturer. You write recommendations an S&OP planner will act on this week — not commentary.
 
-CRITICAL INSTRUCTIONS:
-=== FILTERING RULES (MANDATORY) ===
-- Treat the user-selected commodities as the only valid scope for analysis.
-- Discard: News about any non-selected commodity.
-- Never mention or recommend actions based on commodities that the user did not select.
-===================================
-1. The 4 alerts MUST form a cohesive, phased strategy. Recommendations must be derived from the locally extracted news facts, commodity prices, and weather conditions.
-2. DO NOT use robotic phrasing. Speak naturally, like a human supply chain analyst giving a dynamic alert directly to an executive.
-3. You MUST provide EXACTLY 2 alerts for the "90D" timeframe and EXACTLY 2 alerts for the "365D" timeframe.
-4. The "90D" action must be a SHORT-TERM tactical/operational strategy.
-5. The "365D" action must be a LONG-TERM STRATEGIC shift.
-6. Focus ONLY on the user's specifically tracked commodities ({tracked_commodity_scope}).
-7. Focus ONLY on the user's specifically tracked regions ({', '.join([focus_region] + user_regions)}).
-8. Ground every recommendation in the MARKET INTELLIGENCE sections. Prefer TIER 1 (pipeline-verified insights with NLP summaries/entities) as primary evidence; use TIER 2 as supporting context. Reference the specific events, figures, and places from those sections. Do NOT invent news events.
+Generate EXACTLY 4 recommendations: 2 with timeframe "90D" (tactical: hedging, forward cover, supplier moves, order timing) and 2 with "365D" (structural: sourcing geography, contract strategy, capacity).
 
-Return a JSON object containing an array of exactly 4 objects under the key "recommendations". 
-Each object must have these exact keys:
-- "timeframe" (string: exactly "90D" or "365D")
-- "action" (string: clear, natural-sounding actionable alert utilizing the specific live API data)
-- "businessImpact" (string: the simple business reason or impact)
+SCOPE (MANDATORY):
+- Only these commodities: {tracked_commodity_scope}. Never mention any commodity outside this list.
+- Only these regions: {', '.join([focus_region] + user_regions)}.
+
+QUALITY BAR — a recommendation is INVALID unless it does ALL THREE:
+1. CITES a specific fact from the data below — an exact price, % move, named news event with its source, weather alert, or active risk alert. Quote the number or name in the action text.
+2. NAMES a concrete action with scale or trigger: verb + object + how much / by when / at what level. Good: "Book 60-day forward cover on corn while it trades near $4.55, before the +7% move reaches feed contracts." Bad: "Consider hedging corn exposure."
+3. Explains WHY NOW — what in TODAY's data makes this urgent rather than evergreen good practice.
+
+BANNED PHRASES (their presence = failed output): "diversify your portfolio", "monitor the situation", "monitor closely", "stay informed", "consider exploring", "increase market share", "enhance resilience", "mitigate risks" unless the specific risk and mechanism are named in the same sentence.
+
+"businessImpact" must state the MECHANISM and DIRECTION, e.g. "Caps Q4 feed cost before the corn rally flows through to compound feed pricing", never "improves margins" or "reduces risk".
+
+PRIORITIZE evidence in this order: ACTIVE RISK ALERTS (already verified relevant) > TIER 1 verified news > live prices/weather > TIER 2 news. Do NOT invent events or numbers — if the data is thin, make the action narrower and more specific, not vaguer.
+
+Return a JSON object: {{"recommendations": [...]}} with exactly 4 objects, each with keys:
+- "timeframe": exactly "90D" or "365D"
+- "action": the recommendation (2-3 sentences max, citing the data)
+- "businessImpact": one sentence, mechanism + direction
 """
 
-    # 2. Generate final recommendations using Groq Llama 3.3 70B for high-quality reasoning
+    # llama-3.3-70b-versatile for reasoning quality; call_groq's failover
+    # chain automatically retries with llama-3.1-8b-instant on rate limits,
+    # so hitting the free-tier 70B cap degrades gracefully instead of erroring.
     return await call_groq(
         analysis_prompt,
         context_bundle,
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         json_mode=True,
+        temperature=0.35,
         api_keys_override=payload.get("_groq_api_key"),
         gemini_key_override=payload.get("_gemini_api_key")
     )
