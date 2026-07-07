@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   Activity, BarChart2, Globe2, Zap, Target, PlaySquare, 
-  Settings, Shield, RefreshCw, LogOut, Search, Sparkles, Plus,
+  Settings, Shield, RefreshCw, LogOut, Sparkles, Plus,
   LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown, Bell
 } from 'lucide-react';
 import './App.css';
@@ -267,7 +267,6 @@ export default function Dashboard() {
   const [showPipelineAnalytics, setShowPipelineAnalytics] = useState(false);
 
   const [tab, setTab] = useState('pulse');
-  const [searchQuery, setSearchQuery] = useState('');
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [trackSearch, setTrackSearch] = useState('');
   const [trackResults, setTrackResults] = useState([]);
@@ -1016,7 +1015,6 @@ export default function Dashboard() {
         <div className="pulse-logo">
           <div>
             <h1>⬡ FOPs Market Pulse</h1>
-            <div className="subtitle">{profile?.focus_product || 'Commodities'} Supply Chain Intelligence — {profile?.focus_region || 'Global'}</div>
           </div>
         </div>
         
@@ -1036,28 +1034,8 @@ export default function Dashboard() {
           <button className="btn-secondary" onClick={() => setShowSettings(true)}>
             <Settings size={14} /> Settings
           </button>
-          <button className="btn-secondary" onClick={handleLogout} style={{color:'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)'}}>
-            <LogOut size={14} /> Logout
-          </button>
         </div>
         <div className="header-controls">
-          <button
-            className="btn-primary"
-            onClick={() => setShowTrackModal(true)}
-            style={{ background: 'var(--accent-emerald)', color: '#000' }}
-          >
-            <Plus size={14} /> Track New
-          </button>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: '200px', paddingLeft: '32px' }}
-            />
-          </div>
           <div className="live-indicator">
             <span className="live-dot" />
             <span className="live-ring" />
@@ -1070,6 +1048,9 @@ export default function Dashboard() {
             disabled={loading}
           >
             <RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? 'Analyzing...' : 'Sync'}
+          </button>
+          <button className="btn-secondary" onClick={handleLogout} style={{color:'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)'}}>
+            <LogOut size={14} /> Logout
           </button>
         </div>
       </header>
