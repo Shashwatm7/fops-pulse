@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 
 export default function PipelineAnalyticsPage({ onBack }) {
     const [logs, setLogs] = useState([]);
@@ -8,9 +7,10 @@ export default function PipelineAnalyticsPage({ onBack }) {
     const [scanning, setScanning] = useState(false);
 
     const fetchLogs = () => {
-        axios.get('/api/pipeline-audit', { withCredentials: true })
-            .then(res => {
-                setLogs(res.data.logs || []);
+        fetch('/api/pipeline-audit', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                setLogs(data.logs || []);
                 setLoading(false);
             })
             .catch(err => {
@@ -27,7 +27,7 @@ export default function PipelineAnalyticsPage({ onBack }) {
     const handleTriggerScan = async () => {
         setScanning(true);
         try {
-            await axios.post('/api/trigger-scan', {}, { withCredentials: true });
+            await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
             fetchLogs();
         } catch (err) {
             console.error('Failed to trigger scan:', err);
