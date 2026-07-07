@@ -356,7 +356,15 @@ BANNED PHRASES (their presence = failed output): "diversify your portfolio", "mo
 
 "businessImpact" must state the MECHANISM and DIRECTION, e.g. "Caps Q4 feed cost before the corn rally flows through to compound feed pricing", never "improves margins" or "reduces risk".
 
-PRIORITIZE evidence in this order: ACTIVE RISK ALERTS (already verified relevant) > TIER 1 verified news > live prices/weather > TIER 2 news. Do NOT invent events or numbers — if the data is thin, make the action narrower and more specific, not vaguer.
+PRIORITIZE evidence in this order: ACTIVE RISK ALERTS (already verified relevant) > TIER 1 verified news > live prices/weather > TIER 2 news.
+
+NO FABRICATED NUMBERS: only state a specific % or $ figure if it is EITHER copied directly from the data above, OR a straightforward arithmetic derivation you show (e.g. data says corn +7%, so "a 7% move on your feed-corn spend"). If you cannot derive a number from the data, use qualitative language ("a material share of", "meaningfully reduces") instead of inventing a precise-sounding figure like "5%" or "$50K" that isn't actually computable from what's given.
+
+SOURCE DISCIPLINE: only attribute a claim to a named source if that source's headline/content in the data ACTUALLY supports that specific claim. Do not pair a claim with whichever source name is nearby if it doesn't genuinely support it. If you're not confident a cited source supports the claim, state the claim without naming a source rather than guessing — a wrong attribution is worse than no attribution.
+
+MATERIALITY CHECK: before using a regional weather/alert signal to justify a GLOBAL price call, ask whether that region is actually a major global producer of that commodity (e.g. wheat: Russia/Ukraine/US/EU/India; corn: US/Brazil/Argentina; cocoa: Ivory Coast/Ghana; coffee: Brazil/Vietnam; crude: OPEC/Gulf/Russia/US). If the alert region is NOT a major producer for that commodity (e.g. a heat alert in a small growing region like Jordan Valley or a single GCC locale), do NOT claim it moves the global/futures price — instead frame the impact as LOCAL: your own regional sourcing, logistics, or delivered cost, not the world price.
+
+CROSS-CHECK CONSISTENCY: before finalizing, verify no two of your 4 recommendations describe the same region or commodity contradictorily (e.g. calling a region "at risk" in one recommendation and "a stable, safe alternative" in another). If a region is genuinely both stressed now and a viable target once conditions ease, say so explicitly in both places rather than letting the two cards silently disagree.
 
 Return a JSON object: {{"recommendations": [...]}} with exactly 4 objects, each with keys:
 - "timeframe": exactly "90D" or "365D"

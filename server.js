@@ -1482,6 +1482,10 @@ CRITICAL INSTRUCTIONS:
 5. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
 6. Provide 2 to 3 specific, highly actionable strategic bullet points directly relating to the selected commodity.
 7. QUALITY BAR: every bullet must cite a specific number, date, source, or named event from the data sections above. BANNED: "monitor the situation", "stay informed", "diversify", "enhance resilience", and "mitigate risks" without naming the risk and mechanism in the same sentence. If the data is thin, write fewer, sharper bullets — never pad.
+8. ADD NEW INFORMATION, don't restate: the user already saw the action plan above. Do not just rephrase it back to them. Every bullet must surface something the action plan did NOT already say — a second-order effect, a hidden risk, a precedent, or a driver behind the action, not a summary of the action itself.
+9. NO FABRICATED NUMBERS: state a % or $ figure only if it is copied from the data or a shown arithmetic derivation from a number in the data. Otherwise use qualitative language instead of inventing a precise-sounding figure.
+10. SOURCE DISCIPLINE: only name a source if that source's actual content supports the specific claim you're attaching to it. If unsure, state the claim without a source rather than guessing.
+11. MATERIALITY CHECK: before treating a regional weather/alert signal as a driver of the GLOBAL/futures price, confirm that region is actually a major global producer of that commodity. If it is a minor growing region for this commodity, frame the impact as LOCAL sourcing/logistics risk, not a global price mover.
 
 Return a JSON object: {"deepDive": "your concise, structured, and informative plain text analysis"}`;
 
