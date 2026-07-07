@@ -482,6 +482,30 @@ export async function getRecentAlertsBySource(userId, source, hours = 72, limit 
   return rows;
 }
 
+export async function getAlertsSince(userId, hours = 24, limit = 20) {
+  const { rows } = await pool.query(
+    `SELECT id, source, category, severity, title, reason, url, status, created_at
+     FROM alerts
+     WHERE user_id = $1 AND created_at > NOW() - ($2 || ' hours')::interval
+     ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END, created_at DESC
+     LIMIT $3`,
+    [userId, String(hours), limit]
+  );
+  return rows;
+}
+
+export async function getAcceptedArticlesSince(userId, hours = 24, limit = 5) {
+  const { rows } = await pool.query(
+    `SELECT article_title, article_url, source, relevance_score, scanned_at
+     FROM pipeline_audit_logs
+     WHERE user_id = $1 AND is_accepted = TRUE AND scanned_at > NOW() - ($2 || ' hours')::interval
+     ORDER BY relevance_score DESC NULLS LAST, scanned_at DESC
+     LIMIT $3`,
+    [userId, String(hours), limit]
+  );
+  return rows;
+}
+
 export async function acknowledgeAlert(userId, alertId) {
   const { rowCount } = await pool.query(
     `UPDATE alerts SET status = 'acknowledged' WHERE id = $1 AND user_id = $2 AND status = 'active'`,

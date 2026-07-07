@@ -14,6 +14,7 @@ import OnboardingWizard from './OnboardingWizard.jsx';
 import SettingsPage from './SettingsPage.jsx';
 import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
+import MorningBrief from './MorningBrief.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
   if (active && payload && payload.length) {
@@ -297,6 +298,7 @@ export default function Dashboard() {
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvKeywords, setCsvKeywords] = useState([]);
   const [mlForecasts, setMlForecasts] = useState([]);
+  const [morningBrief, setMorningBrief] = useState(null);
   // ── S&OP State ──
   const [sopPlans, setSopPlans] = useState([]);
   const [showSopModal, setShowSopModal] = useState(false);
@@ -668,6 +670,12 @@ export default function Dashboard() {
       setForex(fx);
       setSopPlans(sops);
       setMlForecasts(mlFore);
+
+      // Morning brief: independent, non-blocking
+      fetch(`${API_BASE}/morning-brief`, fetchOpts)
+        .then(r => r.json())
+        .then(data => { if (data.success) setMorningBrief(data); })
+        .catch(() => {});
 
       setAiRecsLoading(true);
       setAiRecommendationsError('');
@@ -1096,6 +1104,8 @@ export default function Dashboard() {
       {/* ═══════════ COMMAND CENTER ═══════════ */}
       {tab === 'pulse' && (
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
+
+          <MorningBrief brief={morningBrief} weatherExt={weatherExt} />
 
           {drivers.length > 0 && (
             <div className="mb-xl">
