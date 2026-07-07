@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import TagInput from './TagInput.jsx';
 
 export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const [commodities, setCommodities] = useState(profile?.commodities || []);
   const [regions, setRegions] = useState(profile?.regions || []);
   const [focusRegion, setFocusRegion] = useState(profile?.focus_region || 'Global');
   const [focusProduct, setFocusProduct] = useState(profile?.focus_product || 'Commodities');
-  const [newsKeywords, setNewsKeywords] = useState((profile?.news_keywords || []).join(', '));
+  const [newsKeywords, setNewsKeywords] = useState(profile?.news_keywords || []);
+  const [blocklist, setBlocklist] = useState(profile?.custom_blocklist || []);
   const [customRegions, setCustomRegions] = useState(profile?.custom_regions || []);
   const [customRegionName, setCustomRegionName] = useState('');
   const [customRegionCrop, setCustomRegionCrop] = useState('');
@@ -78,7 +80,8 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
         regions,
         focus_region: focusRegion,
         focus_product: focusProduct,
-        news_keywords: newsKeywords.split(',').map(k => k.trim()).filter(Boolean),
+        news_keywords: newsKeywords,
+        custom_blocklist: blocklist,
         template_name: 'custom',
         custom_regions: customRegions,
         price_alerts: priceAlerts
@@ -170,6 +173,24 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           <div style={{ flex: 1 }}>
             <label className="form-label">Focus Product</label>
             <input className="form-input" style={{ width: '100%' }} value={focusProduct} onChange={e=>setFocusProduct(e.target.value)} placeholder="e.g. Frozen Goods" />
+          </div>
+        </div>
+
+        <div className="section-label" style={styles.sectionTitle}>News Pipeline Configuration</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div>
+            <label className="form-label">Extra Tracked Keywords
+              {newsKeywords.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {newsKeywords.length}</span>}
+            </label>
+            <TagInput value={newsKeywords} onChange={setNewsKeywords} placeholder="Type a keyword, press Enter…" />
+            <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Each keyword becomes an extra news search query for your pipeline.</div>
+          </div>
+          <div>
+            <label className="form-label">Blocklisted Sources/Keywords
+              {blocklist.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {blocklist.length}</span>}
+            </label>
+            <TagInput value={blocklist} onChange={setBlocklist} placeholder="Type a term to block, press Enter…" tone="danger" />
+            <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Articles containing these terms are rejected at the rules stage.</div>
           </div>
         </div>
 
