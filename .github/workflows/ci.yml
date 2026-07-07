@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Syntax check server entrypoints
+        run: |
+          node --check server.js
+          node --check db.js
+          node --check migrate.js
+          node --check auth.js
+          node --check deterministic-engine.js
+      - name: Unit tests (pure modules)
+        run: npm test
+
+  python-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Compile check
+        run: |
+          python -m py_compile ai_service/main.py ai_service/planner.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - name: Build dashboard
+        run: npm run build
+        working-directory: dashboard
