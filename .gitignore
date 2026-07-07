@@ -21,3 +21,7 @@ dashboard/dist/
 
 # Misc
 *.log
+
+# Runtime state (written by the server at runtime)
+alerted_articles.json
+tracked.json
