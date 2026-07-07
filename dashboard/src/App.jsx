@@ -1112,7 +1112,7 @@ export default function Dashboard() {
       {tab === 'pulse' && (
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
-          <MorningBrief brief={morningBrief} weatherExt={weatherExt} username={user?.username} />
+          <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} />
 
           {drivers.length > 0 && (
             <div className="mb-xl">
