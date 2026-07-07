@@ -1393,7 +1393,35 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
 
-        const topNews = (news || []).slice(0, 5).map(n => `- ${n.title} (${n.source})`).join('\n');
+        // Pipeline-verified insights only (token-efficient): NLP summaries of
+        // articles that passed the 9-stage profile scanner, from the alerts
+        // store. Falls back to 3 raw headlines only when no insights exist.
+        let newsBlock = '';
+        try {
+            const insightRows = await getRecentAlertsBySource(req.session.userId, 'PROFILE_NEWS', 72, 5);
+            newsBlock = insightRows.map((r, i) => {
+                const title = (r.title || '').replace(/^🎯 Profile Alert:\s*/, '');
+                const summary = String(r.payload?.description || '').replace(/^NLP Summary:\s*/, '').slice(0, 220);
+                const ent = r.payload?.entities || {};
+                const facts = [...(ent.places || []).slice(0, 3), ...(ent.values || []).slice(0, 3)].join(', ');
+                return `${i + 1}. [${r.severity} ${r.relevance_score ?? '?'}/100] ${title}${summary ? ` — ${summary}` : ''}${facts ? ` (Key facts: ${facts})` : ''}`;
+            }).join('\n');
+        } catch (e) { console.error('Deep-dive insights load failed:', e.message); }
+        if (!newsBlock) {
+            newsBlock = (news || []).slice(0, 3).map(n => `- ${n.title} (${n.source})`).join('\n') || 'No recent news available.';
+        }
+
+        // Weather: compact per-region line; numeric detail only when flagged
+        const weatherBlock = (weatherExtended || []).map(w => {
+            const a = w.analytics || {};
+            const alert = a.alert || w.alert || 'NORMAL';
+            const details = [];
+            if (a.droughtScore != null && a.droughtScore >= 40) details.push(`drought ${a.droughtScore}/100`);
+            if (a.maxTemp7d != null && a.maxTemp7d >= 38) details.push(`max ${a.maxTemp7d}°C/7d`);
+            if (a.totalPrecip30d != null && alert !== 'NORMAL') details.push(`${a.totalPrecip30d}mm/30d`);
+            return `${w.name}: ${alert}${details.length ? ` (${details.join(', ')})` : ''}`;
+        }).join(' | ') || 'No regional weather data.';
+
         const shortPrices = (prices || []).map(p => `${p.symbol}: $${p.price}`).slice(0, 15).join(', ');
         const contextBundle = `
 === TARGET ACTION PLAN (${timeframe}) ===
@@ -1403,8 +1431,11 @@ ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (determ
 Targeted Commodities: ${req.userProfile?.commodities?.join(', ') || focusProduct}
 Targeted Regions: ${[...(req.userProfile?.regions || []), focusRegion].join(', ')}
 
-=== LIVE NEWS FEED ===
-${topNews || 'No recent news available.'}
+=== PIPELINE-VERIFIED NEWS INSIGHTS ===
+${newsBlock}
+
+=== REGIONAL WEATHER (tracked growing regions) ===
+${weatherBlock}
 
 === MARKET DATA (SECONDARY) ===
 Live Commodity Prices: ${shortPrices || 'N/A'}
@@ -1425,7 +1456,7 @@ CRITICAL INSTRUCTIONS:
 - Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
 - Never mention or recommend actions based on commodities that the user did not select.
 ===================================
-1. You MUST heavily analyze the provided "LIVE NEWS FEED" to back up the action plan. Do NOT hallucinate news.
+1. You MUST ground the analysis in the "PIPELINE-VERIFIED NEWS INSIGHTS" (each passed a relevance pipeline for this user's supply chain — cite their specific events and figures) and the "REGIONAL WEATHER" conditions. Do NOT hallucinate news or weather.
 2. DO NOT use generic filler phrases like "variance index" or "macroeconomic indicators".
 3. Provide a highly structured, concise, and deeply informative analysis (around 100-150 words). Dive into the nuances and strategic implications of the data. Format the output as plain text with line breaks (\\n). Use dashes (-) for bullet points. DO NOT output any HTML tags.
 4. SYNTHESIZE the data into actionable insights. Tell the user WHY the data matters at a strategic executive level.
