@@ -137,6 +137,120 @@ export const HISTORICAL_EVENTS = [
         category: 'Natural Disaster', commodities: ['ORANGE_JUICE'], regions: ['florida', 'usa'],
         keywords: ['hurricane', 'florida', 'citrus', 'orange', 'groves', 'storm'],
     },
+    {
+        id: 'gold-crash-2013', date: '2013-04-12',
+        title: 'Gold suffers its steepest two-day crash in 30 years',
+        category: 'Market Shock', commodities: ['GOLD', 'SILVER'], regions: ['global'],
+        keywords: ['gold', 'crash', 'selloff', 'bullion', 'plunge'],
+    },
+    {
+        id: 'opec-no-cut-2014', date: '2014-11-27',
+        title: 'OPEC declines to cut output — oil glut deepens',
+        category: 'Energy Supply', commodities: ['BRENT_CRUDE'], regions: ['opec', 'saudi', 'global'],
+        keywords: ['opec', 'output', 'no cut', 'glut', 'shale', 'oversupply'],
+    },
+    {
+        id: 'opec-cut-2016', date: '2016-11-30',
+        title: 'OPEC agrees first production cut since 2008',
+        category: 'Energy Supply', commodities: ['BRENT_CRUDE'], regions: ['opec', 'vienna', 'global'],
+        keywords: ['opec', 'production cut', 'agreement', 'vienna', 'output deal'],
+    },
+    {
+        id: 'brexit-2016', date: '2016-06-24',
+        title: 'Brexit vote shocks markets — flight to safe havens',
+        category: 'Political Instability', commodities: ['GOLD', 'SILVER'], regions: ['uk', 'europe'],
+        keywords: ['brexit', 'referendum', 'eu exit', 'sterling', 'safe haven'],
+    },
+    {
+        id: 'hurricane-harvey-2017', date: '2017-08-25',
+        title: 'Hurricane Harvey floods US Gulf Coast refining hub',
+        category: 'Natural Disaster', commodities: ['NATURAL_GAS', 'BRENT_CRUDE'], regions: ['usa', 'texas', 'gulf coast'],
+        keywords: ['hurricane', 'refinery', 'gulf coast', 'flooding', 'texas', 'harvey'],
+    },
+    {
+        id: 'soleimani-strike-2020', date: '2020-01-03',
+        title: 'US strike kills Iranian general Soleimani in Baghdad',
+        category: 'Armed Conflict', commodities: ['BRENT_CRUDE', 'GOLD'], regions: ['iran', 'iraq', 'middle east', 'gulf'],
+        keywords: ['iran', 'strike', 'soleimani', 'baghdad', 'escalation', 'missile'],
+    },
+    {
+        id: 'saudi-price-war-2020', date: '2020-03-06',
+        title: 'OPEC+ collapses — Saudi Arabia launches oil price war',
+        category: 'Energy Supply', commodities: ['BRENT_CRUDE'], regions: ['saudi', 'russia', 'opec'],
+        keywords: ['opec collapse', 'price war', 'saudi', 'output flood', 'discount'],
+    },
+    {
+        id: 'oil-demand-collapse-2020', date: '2020-04-17',
+        title: 'Oil storage crisis — WTI goes negative as demand vanishes',
+        category: 'Energy Supply', commodities: ['BRENT_CRUDE'], regions: ['usa', 'global'],
+        keywords: ['storage', 'demand collapse', 'negative', 'glut', 'cushing', 'contango'],
+    },
+    {
+        id: 'iowa-derecho-2020', date: '2020-08-10',
+        title: 'Derecho windstorm flattens millions of acres of Iowa corn',
+        category: 'Natural Disaster', commodities: ['CORN', 'SOYBEANS'], regions: ['usa', 'iowa', 'midwest'],
+        keywords: ['derecho', 'windstorm', 'iowa', 'corn', 'crop damage', 'grain bins'],
+    },
+    {
+        id: 'silver-squeeze-2021', date: '2021-01-28',
+        title: 'Retail "silver squeeze" sends silver to 8-year high',
+        category: 'Market Shock', commodities: ['SILVER'], regions: ['usa', 'global'],
+        keywords: ['silver', 'squeeze', 'retail', 'short', 'reddit'],
+    },
+    {
+        id: 'omicron-shock-2021', date: '2021-11-26',
+        title: 'Omicron variant news triggers one-day oil crash',
+        category: 'Natural Disaster', commodities: ['BRENT_CRUDE'], regions: ['global'],
+        keywords: ['variant', 'omicron', 'travel ban', 'demand', 'virus'],
+    },
+    {
+        id: 'freeport-lng-2022', date: '2022-06-08',
+        title: 'Freeport LNG terminal explosion cuts US export capacity',
+        category: 'Energy Infrastructure', commodities: ['NATURAL_GAS'], regions: ['usa', 'texas'],
+        keywords: ['lng', 'explosion', 'freeport', 'export terminal', 'fire'],
+    },
+    {
+        id: 'nord-stream-2022', date: '2022-09-26',
+        title: 'Nord Stream pipelines sabotaged in the Baltic',
+        category: 'Energy Infrastructure', commodities: ['NATURAL_GAS'], regions: ['europe', 'russia', 'baltic'],
+        keywords: ['pipeline', 'sabotage', 'nord stream', 'baltic', 'leak', 'gas supply'],
+    },
+    {
+        id: 'kakhovka-dam-2023', date: '2023-06-06',
+        title: 'Kakhovka dam destroyed — Ukrainian farmland flooded',
+        category: 'Armed Conflict', commodities: ['WHEAT', 'CORN'], regions: ['ukraine', 'kherson', 'black sea'],
+        keywords: ['dam', 'kakhovka', 'ukraine', 'flood', 'kherson', 'irrigation'],
+    },
+    {
+        id: 'el-nino-declared-2023', date: '2023-06-08',
+        title: 'NOAA declares El Niño — Asian monsoon and cane crops at risk',
+        category: 'Agricultural Crisis', commodities: ['SUGAR', 'RICE'], regions: ['asia', 'india', 'thailand', 'global'],
+        keywords: ['el nino', 'monsoon', 'weather pattern', 'drought', 'asia', 'cane'],
+    },
+    {
+        id: 'israel-hamas-war-2023', date: '2023-10-09',
+        title: 'Hamas attack on Israel — Middle East risk premium returns',
+        category: 'Armed Conflict', commodities: ['BRENT_CRUDE', 'GOLD'], regions: ['israel', 'gaza', 'middle east'],
+        keywords: ['israel', 'gaza', 'hamas', 'middle east', 'escalation', 'war'],
+    },
+    {
+        id: 'iran-israel-strikes-2024', date: '2024-04-15',
+        title: 'Iran launches direct drone and missile attack on Israel',
+        category: 'Armed Conflict', commodities: ['BRENT_CRUDE', 'GOLD'], regions: ['iran', 'israel', 'middle east', 'gulf'],
+        keywords: ['iran', 'israel', 'drone', 'missile', 'retaliation', 'strike'],
+    },
+    {
+        id: 'copper-tariff-probe-2025', date: '2025-02-25',
+        title: 'US opens Section 232 probe into copper imports',
+        category: 'Trade Policy', commodities: ['COPPER'], regions: ['usa', 'global'],
+        keywords: ['copper', 'section 232', 'tariff', 'probe', 'import'],
+    },
+    {
+        id: 'us-reciprocal-tariffs-2025', date: '2025-04-02',
+        title: 'US announces sweeping reciprocal tariffs on all trading partners',
+        category: 'Trade Policy', commodities: ['SOYBEANS', 'CORN', 'COPPER', 'GOLD'], regions: ['usa', 'china', 'global'],
+        keywords: ['tariff', 'reciprocal', 'trade war', 'liberation day', 'import', 'retaliation'],
+    },
 ];
 
 const COMMODITY_NAME_TERMS = {
@@ -237,6 +351,47 @@ export function computeAftermath(bars, eventDate) {
         extremePct,
         daysToExtreme: Math.round((extreme.date.getTime() - t0) / 86400e3),
     };
+}
+
+// ── AI fallback matcher (token-minimal classification) ──────────────
+// Used ONLY when deterministic matching finds nothing. The model picks
+// from the library's self-describing ids (or NONE) — classification, not
+// generation: an invented id fails validation and becomes "no match".
+//
+// Token economy:
+// - The catalog is bare ids, one line each (~150 tokens) and is a
+//   CONSTANT prompt prefix — identical bytes on every call.
+// - Alert text is stripped of emoji/prefixes and hard-capped.
+// - Output is a single id (max ~12 tokens).
+// Typical call: ~250 input + ~10 output tokens.
+
+const MATCHER_SYSTEM_PROMPT =
+    'Match the supply-chain news event to ONE catalog id, or NONE if no catalog event describes the same kind of disruption (same commodity family and cause). Reply with only the id or NONE.';
+
+/** Normalize alert text for both the prompt and the cache key. */
+export function normalizeEventText(text) {
+    return String(text || '')
+        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '') // emoji
+        .replace(/^\s*(Profile Alert|Geo-Alert)\s*:\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 200);
+}
+
+export function buildMatcherPrompt(alertText) {
+    const catalog = HISTORICAL_EVENTS.map(e => e.id).join('\n');
+    return {
+        system: MATCHER_SYSTEM_PROMPT,
+        user: `CATALOG:\n${catalog}\n\nEVENT: ${normalizeEventText(alertText)}\n\nID:`,
+    };
+}
+
+/** Validate the model's reply against the library. Returns the event or null. */
+export function parseMatcherResponse(raw) {
+    const cleaned = String(raw || '').trim().toLowerCase();
+    if (!cleaned || cleaned.includes('none')) return null;
+    // Accept the id anywhere in the reply (models sometimes add a period)
+    return HISTORICAL_EVENTS.find(e => cleaned.includes(e.id)) || null;
 }
 
 /** One planner-readable sentence summarizing a precedent's aftermath. */

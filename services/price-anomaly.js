@@ -34,7 +34,7 @@ function median(xs) {
 
 // Robust volatility: 1.4826 × MAD ≈ stddev for normal data, but a single
 // contract-roll outlier barely moves it (unlike plain stddev).
-function robustSigma(returns) {
+export function robustSigma(returns) {
     if (!returns || returns.length < 2) return SIGMA_FLOOR;
     const med = median(returns);
     const mad = median(returns.map(r => Math.abs(r - med)));

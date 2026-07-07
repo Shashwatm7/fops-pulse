@@ -862,10 +862,10 @@ export default function Dashboard() {
         body: JSON.stringify({ text: `${a.title} ${a.reason || ''}`, category: a.category || null }),
       });
       const data = await res.json();
-      setPrecedents(prev => ({ ...prev, [key]: data.success ? (data.precedents || []) : [] }));
+      setPrecedents(prev => ({ ...prev, [key]: data.success ? { precedents: data.precedents || [], analogs: data.analogs || null } : { precedents: [], analogs: null } }));
     } catch (err) {
       console.error('Precedent lookup failed:', err);
-      setPrecedents(prev => ({ ...prev, [key]: [] }));
+      setPrecedents(prev => ({ ...prev, [key]: { precedents: [], analogs: null } }));
     }
   };
 
@@ -1320,18 +1320,31 @@ export default function Dashboard() {
                 if (p === 'loading') {
                   return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>Searching 15 years of market history…</div>;
                 }
-                if (Array.isArray(p) && p.length === 0) {
-                  return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>No documented precedent matched this event.</div>;
+                const noResults = (!p.precedents || p.precedents.length === 0) && !p.analogs;
+                if (noResults) {
+                  return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>No documented precedent or statistical analog matched this event.</div>;
                 }
                 return (
                   <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(6,182,212,0.06)', borderLeft: '2px solid rgba(6,182,212,0.5)', borderRadius: '0 6px 6px 0' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>📜 Historical Precedent</div>
-                    {p.map(prec => (
-                      <div key={prec.id} style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '4px' }}>
-                        {prec.summary}
+                    {p.analogs && (
+                      <div style={{ marginBottom: p.precedents?.length ? '10px' : 0 }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>📊 Statistical Analogs</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{p.analogs.summary}</div>
                       </div>
-                    ))}
-                    <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '4px' }}>Price paths computed from real Yahoo Finance daily history. Past behavior does not guarantee repetition.</div>
+                    )}
+                    {p.precedents?.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>
+                          📜 Historical Precedent{p.precedents[0]?.matchedBy === 'ai' && <span style={{ marginLeft: '6px', color: '#c4b5fd', letterSpacing: 0, textTransform: 'none' }}>AI-matched</span>}
+                        </div>
+                        {p.precedents.map(prec => (
+                          <div key={prec.id} style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '4px' }}>
+                            {prec.summary}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '6px' }}>All figures computed from real Yahoo Finance daily history. Past behavior does not guarantee repetition.</div>
                   </div>
                 );
               })()}

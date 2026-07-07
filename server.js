@@ -15,7 +15,8 @@ import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extra
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
-import { matchPrecedents, computeAftermath, summarizePrecedent } from './services/precedent-engine.js';
+import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
+import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
@@ -2790,6 +2791,79 @@ async function getPrecedentAftermath(pastEvent, symbol) {
     }
 }
 
+// Full daily history per symbol (~15y) for statistical analogs.
+// One Yahoo call per symbol per UTC day.
+const longHistoryCache = {}; // { symbol: { bars, fetchedDate } }
+async function getLongHistory(symbol) {
+    const today = new Date().toISOString().slice(0, 10);
+    const cached = longHistoryCache[symbol];
+    if (cached && cached.fetchedDate === today) return cached.bars;
+    const yTicker = YAHOO_SYMBOLS[symbol];
+    if (!yTicker) return null;
+    try {
+        const period1 = new Date();
+        period1.setFullYear(period1.getFullYear() - 15);
+        const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
+        const cents = chart.meta?.currency === 'USX';
+        const bars = (chart.quotes || [])
+            .filter(q => q.close != null && q.date)
+            .map(q => ({ date: q.date, close: cents ? q.close / 100 : q.close }));
+        longHistoryCache[symbol] = { bars, fetchedDate: today };
+        return bars;
+    } catch (e) {
+        console.error(`[ANALOGS] Long history fetch failed for ${symbol}:`, e.message);
+        return null;
+    }
+}
+
+// Parse "CORN +7.1%" / "LIVE CATTLE -3.2%" out of a price-alert title.
+const LABEL_TO_SYMBOL = Object.fromEntries(ALL_COMMODITIES.map(c => [c.key.replace(/_/g, ' '), c.key]));
+function parsePriceMove(text) {
+    const m = String(text).match(/([A-Za-z][A-Za-z ]{2,}?)\s+([+-]\d+(?:\.\d+)?)%/);
+    if (!m) return null;
+    const symbol = LABEL_TO_SYMBOL[m[1].trim().toUpperCase()];
+    if (!symbol) return null;
+    return { symbol, movePct: parseFloat(m[2]) };
+}
+
+// ── AI fallback matcher: token-minimal, cached, budgeted ──
+// Called ONLY when deterministic matching finds nothing for a news alert.
+// ~250 input + ~10 output tokens; identical alerts (which fan out to many
+// users) hit the response cache and cost zero.
+const llmMatchCache = new Map(); // normalizedText -> eventId | null
+let llmMatcherBudget = { date: '', used: 0 };
+const LLM_MATCHER_DAILY_CAP = envInt('PRECEDENT_LLM_DAILY_CAP', 100);
+
+async function aiFallbackMatch(text) {
+    const key = normalizeEventText(text);
+    if (!key) return null;
+    if (llmMatchCache.has(key)) {
+        const cachedId = llmMatchCache.get(key);
+        return cachedId ? parseMatcherResponse(cachedId) : null;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (llmMatcherBudget.date !== today) llmMatcherBudget = { date: today, used: 0 };
+    if (llmMatcherBudget.used >= LLM_MATCHER_DAILY_CAP) {
+        console.warn('[PRECEDENT] LLM matcher daily cap reached — falling back to no-match.');
+        return null;
+    }
+
+    try {
+        llmMatcherBudget.used++;
+        const { system, user } = buildMatcherPrompt(text);
+        // Plain text mode (jsonMode adds instruction tokens), 16-token output,
+        // temperature 0 for cache-stable classification.
+        const raw = await callGroq('llama-3.1-8b-instant', system, user, false, 16, 0, false);
+        const matched = parseMatcherResponse(raw);
+        llmMatchCache.set(key, matched ? matched.id : null);
+        return matched;
+    } catch (e) {
+        console.error('[PRECEDENT] LLM fallback matcher failed:', e.message);
+        return null; // not cached — transient errors may recover
+    }
+}
+
 app.post('/api/precedent', requireAuth, async (req, res) => {
     try {
         const { text, category } = req.body || {};
@@ -2798,9 +2872,39 @@ app.post('/api/precedent', requireAuth, async (req, res) => {
         }
 
         const tracked = req.userProfile?.commodities || [];
-        // Commodities are extracted from the event text by the engine itself —
-        // the user's full tracked list must NOT widen the match.
-        const matches = matchPrecedents({ text, category });
+
+        // 1) Statistical analogs for price-move alerts: the alert's own
+        // commodity history is the dataset — no library required.
+        let analogs = null;
+        const priceMove = parsePriceMove(text);
+        if (priceMove) {
+            const bars = await getLongHistory(priceMove.symbol);
+            const stats = bars ? findAnalogs(bars, priceMove.movePct) : null;
+            if (stats) {
+                analogs = {
+                    symbol: priceMove.symbol,
+                    movePct: priceMove.movePct,
+                    ...stats,
+                    summary: summarizeAnalogs(priceMove.symbol.replace(/_/g, ' '), priceMove.movePct, stats),
+                };
+            }
+        }
+
+        // 2) Curated-library precedents. Commodities are extracted from the
+        // event text by the engine itself — the user's full tracked list
+        // must NOT widen the match.
+        let matches = matchPrecedents({ text, category });
+        let matchedBy = matches.length ? 'deterministic' : null;
+
+        // 3) AI fallback: news-type alerts only (price alerts are already
+        // served by analogs), and only when keywords found nothing.
+        if (matches.length === 0 && !priceMove) {
+            const aiEvent = await aiFallbackMatch(text);
+            if (aiEvent) {
+                matches = [{ event: aiEvent, score: null }];
+                matchedBy = 'ai';
+            }
+        }
 
         const precedents = [];
         for (const { event: past, score } of matches) {
@@ -2815,12 +2919,13 @@ app.post('/api/precedent', requireAuth, async (req, res) => {
                 category: past.category,
                 symbol,
                 matchScore: score,
+                matchedBy,
                 aftermath,
                 summary: summarizePrecedent(past, symbol, aftermath),
             });
         }
 
-        res.json({ success: true, precedents });
+        res.json({ success: true, precedents, analogs });
     } catch (err) {
         console.error('Precedent lookup error:', err.message);
         res.status(500).json({ success: false, error: 'Precedent lookup failed' });
