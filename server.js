@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
@@ -2700,6 +2700,61 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 // ── API: Get recent geopolitical alerts ──
 app.get('/api/geo-alerts', requireAuth, (req, res) => {
   res.json({ success: true, alerts: recentGeoAlerts });
+});
+
+// ── Morning Brief: "what changed since yesterday", real data only ──
+// Alerts + accepted articles from Postgres; price moves computed from the
+// live Yahoo quote vs its own same-contract previous close. No proxies —
+// commodities without a real prevClose are omitted rather than estimated.
+app.get('/api/morning-brief', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        const [newAlerts, acceptedNews] = await Promise.all([
+            getAlertsSince(userId, 24, 20),
+            getAcceptedArticlesSince(userId, 24, 5),
+        ]);
+
+        const alertCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+        for (const a of newAlerts) {
+            if (alertCounts[a.severity] != null) alertCounts[a.severity]++;
+        }
+
+        const tracked = req.userProfile?.commodities || [];
+        const priceMovers = tracked
+            .map(symbol => {
+                const state = livePrices[symbol];
+                if (!state || !(state.current > 0) || !(state.prevClose > 0)) return null;
+                const changePct = ((state.current - state.prevClose) / state.prevClose) * 100;
+                return {
+                    symbol,
+                    label: symbol.replace(/_/g, ' '),
+                    price: state.current,
+                    prevClose: state.prevClose,
+                    changePct: +changePct.toFixed(2),
+                    unit: COMMODITY_UNITS[symbol] || 'USD',
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+
+        res.json({
+            success: true,
+            since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            newAlerts,
+            alertCounts,
+            priceMovers,
+            acceptedNews: acceptedNews.map(n => ({
+                title: n.article_title,
+                url: n.article_url,
+                source: n.source,
+                relevanceScore: n.relevance_score != null ? Number(n.relevance_score) : null,
+                scannedAt: n.scanned_at,
+            })),
+        });
+    } catch (err) {
+        console.error('Morning brief error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to build morning brief' });
+    }
 });
 
 // ── Unified persistent alerts (event × exposure store) ──
