@@ -69,7 +69,7 @@ export default function PipelineAnalyticsPage({ onBack }) {
             {!loading && !error && logs.length === 0 && (
                 <div className="intel-card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <div style={{ fontSize: '28px', marginBottom: '12px' }}>📭</div>
-                    No audit logs yet. Hit <strong>Run Scanner Now</strong> or wait for the background scan (every 30 min).
+                    No audit logs yet. Hit <strong>Run Scanner Now</strong> — or wait for the scheduled background scan, if enabled.
                 </div>
             )}
 

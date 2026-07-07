@@ -2743,9 +2743,32 @@ function scheduleScannerJobs() {
     }
 
     if (USER_SCANNER_ENABLED) {
-        setTimeout(scanUserSpecificNews, 10000);
-        setInterval(scanUserSpecificNews, USER_SCAN_INTERVAL_MS);
-        console.log(`[USER-SCANNER] User-Specific Profile Scanner initialized (polling every ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min)`);
+        // Gate automatic scans on the last scan time recorded in the DB.
+        // On free-tier hosting the process restarts constantly, so a naive
+        // boot-time scan would run on every cold start (far more often than
+        // the configured interval), while a plain setInterval would rarely
+        // survive long enough to fire. This gives "at most once per
+        // USER_SCAN_INTERVAL_MS, whenever the instance is awake".
+        // Manual triggers (/api/trigger-scan) bypass the gate.
+        const scanIfDue = async () => {
+            try {
+                const { rows } = await pool.query(
+                    'SELECT EXTRACT(EPOCH FROM (NOW() - MAX(scanned_at))) AS age_s FROM pipeline_audit_logs'
+                );
+                const ageMs = rows[0]?.age_s != null ? Number(rows[0].age_s) * 1000 : Infinity;
+                if (ageMs < USER_SCAN_INTERVAL_MS) {
+                    console.log(`[USER-SCANNER] Skipping auto scan — last scan ${Math.round(ageMs / 60000)} min ago (interval ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min).`);
+                    return;
+                }
+            } catch (e) {
+                console.error('[USER-SCANNER] Last-scan check failed, proceeding with scan:', e.message);
+            }
+            await scanUserSpecificNews();
+        };
+        setTimeout(scanIfDue, 10000);
+        // Re-check while awake, at most hourly — the DB gate enforces the real cadence.
+        setInterval(scanIfDue, Math.min(USER_SCAN_INTERVAL_MS, 60 * 60 * 1000));
+        console.log(`[USER-SCANNER] Profile scanner initialized (auto scan when last scan is older than ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min).`);
     } else {
         console.log('[USER-SCANNER] Disabled by configuration.');
     }
