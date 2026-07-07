@@ -44,10 +44,14 @@ function robustSigma(returns) {
 /**
  * @param {number[]} dailyCloses ascending completed daily closes (normalized USD)
  * @param {number} livePrice current normalized price
- * @param {number|null} todayOpen today's session open, if available (enables the roll guard)
+ * @param {number|null} todayOpen today's session open, if available
+ * @param {number|null} prevClose the quote's OWN regularMarketPreviousClose
+ *        (normalized). This is same-contract by construction — the
+ *        authoritative, roll-proof reference for today's move. The
+ *        continuous chart series is only used for volatility/range stats.
  * @returns {Array<object>} anomaly findings (empty when nothing abnormal or roll suspected)
  */
-export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null) {
+export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null, prevClose = null) {
     const findings = [];
     if (!Array.isArray(dailyCloses) || dailyCloses.length < MIN_OBS_ZSCORE || !(livePrice > 0)) return findings;
 
@@ -63,21 +67,31 @@ export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null) {
     const clippedReturns = rawReturns.map(r => Math.max(-CLIP_SIGMAS * sigmaAll, Math.min(CLIP_SIGMAS * sigmaAll, r)));
     const sigma30 = robustSigma(clippedReturns.slice(-30));
 
-    const todayReturn = (livePrice - lastClose) / lastClose;
+    // Reference for today's move: same-contract prevClose when available
+    // (roll-proof); the continuous-series last close only as fallback.
+    const sameContractRef = prevClose > 0;
+    const reference = sameContractRef ? prevClose : lastClose;
+    const todayReturn = (livePrice - reference) / reference;
 
-    // ── Roll guard ──
-    // Large overnight gap + roughly-normal intraday session = the series
-    // jumped contracts, the market didn't. 1.5σ intraday tolerance: normal
-    // drift on a roll day shouldn't defeat the guard. A genuine rally
-    // re-triggers tomorrow from clean same-contract closes.
-    if (todayOpen > 0) {
-        const gapReturn = (todayOpen - lastClose) / lastClose;
-        const intradayReturn = (livePrice - todayOpen) / todayOpen;
-        const gapSigmas = Math.abs(gapReturn) / sigma30;
-        const intradaySigmas = Math.abs(intradayReturn) / sigma30;
-        // Two roll signatures: huge gap with roughly-normal session, or
-        // moderate gap with a DEAD session (e.g. rice +3.5% gap, -0.2% day).
-        if ((gapSigmas >= 3 && intradaySigmas < 1.5) || (gapSigmas >= 2 && intradaySigmas < 0.5)) {
+    if (!sameContractRef) {
+        // ── Roll guards (fallback path only — a same-contract reference
+        // cannot produce a roll artifact, and a genuine limit-move day
+        // must not be suppressed there) ──
+        if (todayOpen > 0) {
+            const gapReturn = (todayOpen - reference) / reference;
+            const intradayReturn = (livePrice - todayOpen) / todayOpen;
+            const gapSigmas = Math.abs(gapReturn) / sigma30;
+            const intradaySigmas = Math.abs(intradayReturn) / sigma30;
+            // Two roll signatures: huge gap with roughly-normal session, or
+            // moderate gap with a DEAD session (e.g. rice +3.5% gap, -0.2% day).
+            if ((gapSigmas >= 3 && intradaySigmas < 1.5) || (gapSigmas >= 2 && intradaySigmas < 0.5)) {
+                return findings;
+            }
+        } else if (Math.abs(todayReturn) >= 4 * sigma30) {
+            // No same-contract reference AND no session open to verify against
+            // (e.g. overnight Globex, chart has no today-bar yet): a huge move
+            // is unverifiable and most likely a contract roll. Suppress — if
+            // real, it re-triggers within a tick once the session data exists.
             return findings;
         }
     }
@@ -98,10 +112,11 @@ export function analyzePriceSeries(dailyCloses, livePrice, todayOpen = null) {
     }
 
     // 2) 90-day range break — on the return-reconstructed series so old
-    // contract months compare at the current price scale.
+    // contract months compare at the current price scale. Anchored at the
+    // same-contract reference when available.
     if (dailyCloses.length >= MIN_OBS_RANGE) {
         const adjusted = new Array(clippedReturns.length + 1);
-        adjusted[adjusted.length - 1] = lastClose;
+        adjusted[adjusted.length - 1] = reference;
         for (let i = adjusted.length - 2; i >= 0; i--) {
             const r = clippedReturns[i];
             adjusted[i] = (1 + r) !== 0 ? adjusted[i + 1] / (1 + r) : adjusted[i + 1];
