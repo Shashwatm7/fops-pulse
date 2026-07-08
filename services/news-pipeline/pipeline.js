@@ -29,7 +29,9 @@ export class NewsPipeline {
             if (this.auditLogFn) {
                 const uid = userProfile.user_id || userProfile.id || userProfile.userId;
                 const stageToLog = res.accepted ? null : res.stage;
-                await this.auditLogFn(uid, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
+                // auditLogFn returns the inserted audit-log row id so the
+                // labeling system can link training data to it.
+                res.auditLogId = await this.auditLogFn(uid, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
             }
             return res;
         };

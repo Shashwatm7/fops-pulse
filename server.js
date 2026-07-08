@@ -12,11 +12,13 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
+import { processArticle as labelArticle } from './services/labeling/labelingPipeline.js';
+import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
@@ -2633,6 +2635,16 @@ async function scanSingleUser(user, pipeline) {
           dedupKey: `profile:${titleKey}`,
         });
 
+        // Article labeling (survivors of stage 8 only). Feature-flagged off by
+        // default; fully guarded so a labeling failure never breaks the scan.
+        if (labelingConfig.enabled && result.auditLogId) {
+          try {
+            await labelArticle(a, { auditLogId: result.auditLogId, userId: user.id });
+          } catch (labelErr) {
+            console.error('[LABELING] processArticle failed (non-fatal):', labelErr.message);
+          }
+        }
+
       }
     }
 
@@ -2970,6 +2982,50 @@ app.post('/api/precedent', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Precedent lookup error:', err.message);
         res.status(500).json({ success: false, error: 'Precedent lookup failed' });
+    }
+});
+
+// ── Article labeling: human review queue ──
+app.get('/api/review/queue', requireAuth, async (req, res) => {
+    try {
+        const confidenceLt = req.query.confidence_lt != null ? parseFloat(req.query.confidence_lt) : null;
+        const category = req.query.category || null;
+        const items = await getReviewQueue(req.session.userId, {
+            confidenceLt: Number.isFinite(confidenceLt) ? confidenceLt : null,
+            category,
+        });
+        res.json({ success: true, items });
+    } catch (err) {
+        console.error('Review queue error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to load review queue' });
+    }
+});
+
+app.post('/api/review/:id/label', requireAuth, async (req, res) => {
+    try {
+        const { relevant, category, priority, notes } = req.body || {};
+        if (relevant !== 0 && relevant !== 1) {
+            return res.status(400).json({ success: false, error: 'relevant must be 0 or 1' });
+        }
+        const out = await submitReview(req.session.userId, req.params.id, { relevant, category, priority, notes });
+        if (!out.ok) return res.status(404).json({ success: false, error: 'Review item not found or already reviewed' });
+        // If human disagreed with the LLM, that's the signal for future
+        // keyword/rule tuning — surfaced in the response and the logs.
+        if (!out.agreed) console.log(`[REVIEW] Human overrode LLM on ${req.params.id} — candidate for rule update`);
+        res.json({ success: true, agreed: out.agreed });
+    } catch (err) {
+        console.error('Review submit error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to submit review' });
+    }
+});
+
+app.get('/api/review/stats', requireAuth, async (req, res) => {
+    try {
+        const stats = await getReviewStats(req.session.userId);
+        res.json({ success: true, stats });
+    } catch (err) {
+        console.error('Review stats error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to load review stats' });
     }
 });
 
