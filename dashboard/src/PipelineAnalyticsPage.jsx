@@ -21,8 +21,48 @@ export default function PipelineAnalyticsPage({ onBack }) {
             });
     };
 
+    // Poll /api/scan-status until the scan finishes. A single Groq 429 during
+    // labeling triggers a 60s backoff+retry (by design), and a scan can hit
+    // this more than once across several accepted articles — so this must be
+    // patient rather than declaring failure while the backend is still
+    // legitimately working.
+    const pollScanStatus = (startedAt) => {
+        const HARD_CAP_MS = 8 * 60 * 1000; // 8 min — generous vs. stacked 60s backoffs
+        const check = async () => {
+            try {
+                const r = await fetch('/api/scan-status', { credentials: 'include' });
+                const d = await r.json();
+                if (!d.running) {
+                    setScanResult(d.stats || { error: 'Scan finished with no stats recorded.' });
+                    fetchLogs();
+                    setScanning(false);
+                    return;
+                }
+            } catch (err) {
+                console.error('scan-status poll failed:', err);
+                // transient network hiccup — keep polling, don't give up
+            }
+            if (Date.now() - startedAt > HARD_CAP_MS) {
+                // Not a failure — the backend keeps running regardless. Just
+                // stop watching; Refresh or reopening this page will pick up
+                // the result once it lands (see resume-on-mount below).
+                setScanResult({ stillRunning: true });
+                setScanning(false);
+                return;
+            }
+            setTimeout(check, 4000);
+        };
+        setTimeout(check, 4000);
+    };
+
     useEffect(() => {
         fetchLogs();
+        // Resume watching if a scan was already running (e.g. page reloaded
+        // mid-scan) instead of leaving the user with no feedback at all.
+        fetch('/api/scan-status', { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => { if (d.running) { setScanning(true); pollScanStatus(Date.now()); } })
+            .catch(() => {});
     }, []);
 
     const handleTriggerScan = async () => {
@@ -32,25 +72,7 @@ export default function PipelineAnalyticsPage({ onBack }) {
             await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
             // The scan runs in the background (it can exceed the HTTP gateway
             // timeout), so poll for its result rather than awaiting the POST.
-            const started = Date.now();
-            const poll = async () => {
-                const r = await fetch('/api/scan-status', { credentials: 'include' });
-                const d = await r.json();
-                if (!d.running && d.stats) {
-                    setScanResult(d.stats);
-                    fetchLogs();
-                    setScanning(false);
-                    return;
-                }
-                if (Date.now() - started > 150000) { // 2.5 min safety cap
-                    setScanResult({ error: 'Scan is taking unusually long — check server logs.' });
-                    fetchLogs();
-                    setScanning(false);
-                    return;
-                }
-                setTimeout(poll, 4000);
-            };
-            setTimeout(poll, 4000);
+            pollScanStatus(Date.now());
         } catch (err) {
             console.error('Failed to trigger scan:', err);
             setScanResult({ error: err.message || 'request failed' });
@@ -86,9 +108,13 @@ export default function PipelineAnalyticsPage({ onBack }) {
             </p>
 
             {scanResult && (
-                <div className="intel-card" style={{ marginBottom: '20px', padding: '14px 16px', fontSize: '13px', fontFamily: 'var(--font-mono)', borderLeft: `2px solid ${scanResult.error ? 'var(--danger)' : '#34d399'}` }}>
+                <div className="intel-card" style={{ marginBottom: '20px', padding: '14px 16px', fontSize: '13px', fontFamily: 'var(--font-mono)', borderLeft: `2px solid ${scanResult.error ? 'var(--danger)' : scanResult.stillRunning ? 'var(--accent-amber)' : '#34d399'}` }}>
                     <div style={{ fontWeight: 700, marginBottom: '6px', color: 'var(--text-secondary)' }}>Last scan result</div>
-                    {scanResult.error ? (
+                    {scanResult.stillRunning ? (
+                        <div style={{ color: 'var(--accent-amber)' }}>
+                            Still running in the background (a Groq rate-limit backoff can add a minute or two per hit). It hasn't failed — click <b>Refresh</b> in a bit, or reopen this page to resume watching.
+                        </div>
+                    ) : scanResult.error ? (
                         <div style={{ color: 'var(--danger)' }}>Error: {scanResult.error}</div>
                     ) : scanResult.skippedReason ? (
                         <div style={{ color: 'var(--accent-amber)' }}>Skipped: {scanResult.skippedReason}</div>
