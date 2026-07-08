@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -2546,6 +2546,29 @@ async function scanSingleUser(user, pipeline) {
     if (!user.id) { stats.skippedReason = 'no user.id'; return stats; }
     const profile = await getUserProfile(user.id);
     if (!profile) { stats.skippedReason = 'no user_profiles row'; return stats; }
+
+    // If this user belongs to a customer (e.g. Aramtec), enrich the
+    // news-relevance fields (keywords + regions) from the customer profile so
+    // the scanner targets their ports/routes/suppliers/products. Price-symbol
+    // `commodities` are deliberately left untouched (pricing/exposure use them).
+    if (profile.customer_id) {
+      const customer = await getCustomerProfile(profile.customer_id);
+      if (customer) {
+        stats.customer = customer.id;
+        const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+        profile.news_keywords = uniq([
+          ...(profile.news_keywords || []),
+          ...(customer.signal_keywords || []),
+          ...(customer.commodities || []),
+        ]);
+        profile.regions = uniq([
+          ...(profile.regions || []),
+          ...(customer.key_ports || []),
+          ...(customer.supplier_countries || []),
+          'UAE', 'GCC', 'Middle East', 'Red Sea', 'Suez',
+        ]);
+      }
+    }
 
     // 1. Fetch News
     let customKeywords = profile.news_keywords && profile.news_keywords.length > 0 ? profile.news_keywords : [];
