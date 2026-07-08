@@ -275,6 +275,7 @@ export default function Dashboard() {
   const [energy, setEnergy] = useState(null);
   const [news, setNews] = useState([]);
   const [newsFilter, setNewsFilter] = useState('');
+  const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
   const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
   const [weather, setWeather] = useState([]);
@@ -738,6 +739,21 @@ export default function Dashboard() {
     fetchHistory();
     return () => { active = false; };
   }, [timeframe, liveSelectedSymbol]);
+
+  // ── Fetch stored labeling insights for the current news feed (hover cards) ──
+  useEffect(() => {
+    if (!news || news.length === 0) { setNewsInsights({ byUrl: {}, byTitle: {} }); return; }
+    const articles = news.slice(0, 60).map(a => ({ url: a.url, title: a.title }));
+    fetch(`${API_BASE}/insights/by-articles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ articles }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) setNewsInsights({ byUrl: d.byUrl || {}, byTitle: d.byTitle || {} }); })
+      .catch(() => {});
+  }, [news]);
 
   // ── SSE Live Price Feed ──
   useEffect(() => {
@@ -1252,13 +1268,38 @@ export default function Dashboard() {
                  return <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No news articles match your filter.</div>;
               }
 
-              return filteredNews.map((a, i) => (
-                <div key={i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
+              const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };
+              return filteredNews.map((a, i) => {
+                const insight = newsInsights.byUrl?.[a.url] || newsInsights.byTitle?.[(a.title || '').trim().toLowerCase()];
+                const d = insight?.detail || {};
+                return (
+                <div key={i} className={`intel-card mb-sm${insight ? ' has-insight' : ''}`} style={{ animationDelay: `${i * 0.05}s`, position: 'relative' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
                   <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
+                  {insight && (
+                    <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[insight.severity] || 'var(--text-muted)', border: `1px solid ${sevColor[insight.severity] || 'var(--text-muted)'}`, borderRadius: '4px', padding: '1px 6px' }}>
+                      ✨ AI INSIGHT{insight.severity ? ` · ${insight.severity.toUpperCase()}` : ''}
+                    </span>
+                  )}
                   <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
                     {a.source} · {a.publishedAt} {a.via && <span style={{ color: 'var(--accent-violet)' }}>via {a.via}</span>}
                   </div>
                   {a.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{a.description}</div>}
+                  {insight && (
+                    <div className="insight-popover">
+                      <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c4b5fd', marginBottom: '6px' }}>
+                        ✨ Aramtec Insight{insight.category ? ` · ${insight.category.replace(/_/g, ' ')}` : ''}
+                      </div>
+                      {insight.headline && <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>{insight.headline}</div>}
+                      {d.what && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>What:</b> {d.what}</div>}
+                      {d.where && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Where:</b> {d.where}</div>}
+                      {d.duration && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Duration:</b> {d.duration}</div>}
+                      {d.commodities_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Commodities:</b> {d.commodities_affected.join(', ')}</div>}
+                      {d.routes_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Routes:</b> {d.routes_affected.join(', ')}</div>}
+                      {d.ports_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Ports:</b> {d.ports_affected.join(', ')}</div>}
+                      {d.action_note && <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', color: '#34d399' }}>→ {d.action_note}</div>}
+                      {(insight.urgency) && <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-dim)' }}>Urgency: {insight.urgency}</div>}
+                    </div>
+                  )}
                   {a.entities && (
                     <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {a.entities.organizations?.map((org, idx) => <span key={`org-${idx}`} style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🏢 {org}</span>)}
@@ -1267,7 +1308,8 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
-              ));
+                );
+              });
             })()}
           </div>
         </div>
