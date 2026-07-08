@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getInsightsForArticles } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getInsightsForArticles, getRecentInsights } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -2586,6 +2586,9 @@ async function scanSingleUser(user, pipeline) {
         ]);
         // Seeds drive the real semantic filter (stage 6).
         profile.ml_seeds = customer.ml_seeds || [];
+        // Customer-specific blocked topics, unioned with the user's own
+        // blocklist (never overwritten — additive only).
+        profile.custom_blocklist = uniq([...(profile.custom_blocklist || []), ...(customer.blocked_topics || [])]);
       }
     }
 
@@ -3095,13 +3098,33 @@ app.get('/api/debug-labeling', requireAuth, async (req, res) => {
             `SELECT article_title FROM pipeline_audit_logs WHERE user_id=$1 AND is_accepted=true ORDER BY scanned_at DESC LIMIT 5`, [uid]);
         out.recent_accepted_titles = acc.rows.map(r => r.article_title);
 
-        // Prices
+        // Prices — list every symbol with zero price, and whether it even has
+        // a Yahoo ticker mapped, so a gap is diagnosable without guessing.
         const priced = Object.entries(livePrices).filter(([, s]) => s.current > 0);
-        out.prices = { total_symbols: Object.keys(livePrices).length, with_live_price: priced.length, sample: priced.slice(0, 5).map(([k, s]) => `${k}=${s.current}`) };
+        const missing = Object.entries(livePrices).filter(([, s]) => !(s.current > 0));
+        out.prices = {
+            total_symbols: Object.keys(livePrices).length,
+            with_live_price: priced.length,
+            priced_symbols: priced.map(([k, s]) => `${k}=${s.current}`),
+            missing_symbols: missing.map(([k]) => ({ symbol: k, yahooTicker: YAHOO_SYMBOLS[k] || 'NOT MAPPED' })),
+        };
 
         res.json({ success: true, ...out });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message, partial: out });
+    }
+});
+
+// Recent labeled insights, read straight from storage — always has data
+// once any scan has labeled something, unlike hover-matching against the
+// live (rotating) news feed.
+app.get('/api/insights/recent', requireAuth, async (req, res) => {
+    try {
+        const rows = await getRecentInsights(req.session.userId, 15);
+        res.json({ success: true, insights: rows });
+    } catch (err) {
+        console.error('Recent insights error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to load insights' });
     }
 });
 
