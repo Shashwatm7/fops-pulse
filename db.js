@@ -613,6 +613,28 @@ export async function getReviewStats(userId) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PILLAR 9: Customer (company) profiles
+// ═══════════════════════════════════════════════════════════════
+
+export async function getCustomerProfile(customerId) {
+  if (!customerId) return null;
+  const { rows } = await pool.query('SELECT * FROM customer_profiles WHERE id = $1', [customerId]);
+  return rows[0] || null;
+}
+
+// The customer profile linked to a given user (via user_profiles.customer_id),
+// or null if the user isn't attached to a customer.
+export async function getCustomerProfileForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT cp.* FROM customer_profiles cp
+     JOIN user_profiles up ON up.customer_id = cp.id
+     WHERE up.user_id = $1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 // Export the pool for session store
 export { pool };
 export default pool;
