@@ -19,6 +19,8 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   
   const [allCommodities, setAllCommodities] = useState([]);
   const [allRegions, setAllRegions] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [customerId, setCustomerId] = useState(profile?.customer_id || '');
   const [saving, setSaving] = useState(false);
   const [addingRegion, setAddingRegion] = useState(false);
   const [quickCommodity, setQuickCommodity] = useState('');
@@ -43,6 +45,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
       .then(data => {
         setAllCommodities(data.commodities);
         setAllRegions(data.regions);
+        setCustomers(data.customers || []);
       });
   }, []);
 
@@ -99,7 +102,8 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
         custom_blocklist: blocklist,
         template_name: 'custom',
         custom_regions: customRegions,
-        price_alerts: priceAlerts
+        price_alerts: priceAlerts,
+        customer_id: customerId || null,
       };
 
       const res = await fetch('/api/auth/profile', {
@@ -122,6 +126,18 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
     <div style={styles.container}>
       <h2 style={styles.title}>Account Settings</h2>
       <div className="intel-card" style={styles.card}>
+        {customers.length > 0 && (
+          <>
+            <div className="section-label">Company Profile</div>
+            <select className="form-select" style={{ width: '100%', marginBottom: '8px' }} value={customerId} onChange={e => setCustomerId(e.target.value)}>
+              <option value="">None (independent profile)</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.company} — {c.region}</option>)}
+            </select>
+            <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '24px' }}>
+              Linking a company profile enriches your news scan and AI labeling with that company's ports, routes, commodities, and supplier countries. Save to apply.
+            </div>
+          </>
+        )}
         <div className="section-label" style={styles.sectionTitle}>Tracked Commodities
           {commodities.length > 0 && <span style={styles.count}> · {commodities.length}</span>}
         </div>
