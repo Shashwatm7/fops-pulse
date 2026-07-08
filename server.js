@@ -12,12 +12,13 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getInsightsForArticles, getRecentInsights } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
 import { processArticle as labelArticle } from './services/labeling/labelingPipeline.js';
+import { summarizeArticle, extractLocalEntities } from './services/labeling/labelingService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
@@ -3138,6 +3139,47 @@ app.post('/api/insights/by-articles', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Insights lookup error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to load insights' });
+    }
+});
+
+// On-demand click-to-summarize for a single article. Cheap by design:
+// 1) reuse an existing scanner-pipeline insight if this article was already
+//    labeled (free, no LLM call), 2) else reuse a cached prior summary
+//    (free), 3) else extract entities locally (regex, free) and send only
+//    title+snippet+entities to Groq — no full article body, no re-derivation
+//    of entities the LLM would otherwise have to search for.
+app.post('/api/article-summary', requireAuth, async (req, res) => {
+    try {
+        const { url, title, description, source } = req.body || {};
+        if (!url || !title) return res.status(400).json({ success: false, error: 'url and title are required' });
+
+        const existing = await getInsightsForArticles(req.session.userId, [{ url, title }]);
+        const labeled = existing.byUrl?.[url] || existing.byTitle?.[(title || '').trim().toLowerCase()];
+        if (labeled) {
+            return res.json({ success: true, source: 'labeled', insight: labeled });
+        }
+
+        const cached = await getArticleSummaryCache(url);
+        if (cached) {
+            return res.json({
+                success: true, source: 'cache',
+                insight: { summary: cached.summary, impact: cached.impact, action_note: cached.action_note, entities: cached.entities_json },
+            });
+        }
+
+        if (!labelingConfig.groqApiKey && labelingConfig.provider !== 'anthropic') {
+            return res.status(503).json({ success: false, error: 'Summary generation is not configured' });
+        }
+
+        const customer = await getCustomerProfileForUser(req.session.userId);
+        const entities = extractLocalEntities(`${title} ${description || ''}`, customer);
+        const result = await summarizeArticle({ title, description, source }, entities, customer);
+
+        await saveArticleSummaryCache(url, title, { ...result, entities, model: labelingConfig.models[labelingConfig.provider] });
+        res.json({ success: true, source: 'generated', insight: { ...result, entities } });
+    } catch (err) {
+        console.error('Article summary error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to generate summary' });
     }
 });
 

@@ -277,6 +277,7 @@ export default function Dashboard() {
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [recentInsights, setRecentInsights] = useState([]);
+  const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
   const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
   const [weather, setWeather] = useState([]);
@@ -751,6 +752,22 @@ export default function Dashboard() {
       .then(d => { if (d.success) setRecentInsights(d.insights || []); })
       .catch(() => {});
   }, [tab, user]);
+
+  const openArticleSummary = (article) => {
+    setArticleSummary({ article, loading: true, data: null, error: null });
+    fetch(`${API_BASE}/article-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ url: article.url, title: article.title, description: article.description, source: article.source }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setArticleSummary({ article, loading: false, data: d.insight, error: null, source: d.source });
+        else setArticleSummary({ article, loading: false, data: null, error: d.error || 'Failed to generate summary' });
+      })
+      .catch(() => setArticleSummary({ article, loading: false, data: null, error: 'Network error' }));
+  };
 
   // ── Fetch stored labeling insights for the current news feed (hover cards) ──
   useEffect(() => {
@@ -1322,7 +1339,12 @@ export default function Dashboard() {
                 const d = insight?.detail || {};
                 return (
                 <div key={i} className={`intel-card mb-sm${insight ? ' has-insight' : ''}`} style={{ animationDelay: `${i * 0.05}s`, position: 'relative' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                  <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
+                  <span
+                    onClick={() => openArticleSummary(a)}
+                    title="Click for an AI summary"
+                    style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none', cursor: 'pointer' }}
+                  >{a.title}</span>{' '}
+                  <a href={a.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Open original article" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '12px' }}>↗</a>
                   {insight && (
                     <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[insight.severity] || 'var(--text-muted)', border: `1px solid ${sevColor[insight.severity] || 'var(--text-muted)'}`, borderRadius: '4px', padding: '1px 6px' }}>
                       ✨ AI INSIGHT{insight.severity ? ` · ${insight.severity.toUpperCase()}` : ''}
@@ -1584,6 +1606,74 @@ export default function Dashboard() {
                 <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>No results found</div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ ARTICLE SUMMARY MODAL ═══════════ */}
+      {articleSummary && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={() => setArticleSummary(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '520px', maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#fff', lineHeight: 1.4 }}>{articleSummary.article.title}</h3>
+              <button onClick={() => setArticleSummary(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '20px', flexShrink: 0 }}>✕</button>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '16px', fontFamily: 'var(--font-mono)' }}>
+              {articleSummary.article.source}
+            </div>
+
+            {articleSummary.loading && (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>✨ Generating summary…</div>
+            )}
+
+            {articleSummary.error && (
+              <div style={{ color: '#fb7185', fontSize: '13px' }}>{articleSummary.error}</div>
+            )}
+
+            {!articleSummary.loading && !articleSummary.error && articleSummary.data && (() => {
+              const d = articleSummary.data;
+              const isLabeled = d.headline !== undefined; // shape from the labeling pipeline vs. on-demand generation
+              const detail = d.detail || {};
+              return (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {d.severity && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: '#fbbf24', border: '1px solid #fbbf24', borderRadius: '4px', padding: '1px 6px', marginBottom: '10px', display: 'inline-block' }}>
+                      {d.severity.toUpperCase()}{d.urgency ? ` · ${d.urgency}` : ''}
+                    </span>
+                  )}
+                  <div style={{ marginBottom: '10px' }}>{isLabeled ? (detail.what || d.headline) : d.summary}</div>
+                  {(isLabeled ? detail.action_note : d.impact) && (
+                    <div style={{ marginBottom: '10px', color: '#67e8f9' }}>
+                      <b style={{ color: 'var(--text-muted)' }}>Impact:</b> {isLabeled ? detail.action_note : d.impact}
+                    </div>
+                  )}
+                  {!isLabeled && d.action_note && (
+                    <div style={{ marginBottom: '10px', color: '#34d399' }}>→ {d.action_note}</div>
+                  )}
+                  {(() => {
+                    const ents = isLabeled
+                      ? { commodities: detail.commodities_affected, ports: detail.ports_affected, routes: detail.routes_affected }
+                      : d.entities || {};
+                    const chips = [
+                      ...(ents.commodities || []).map(v => ['🌾', v]),
+                      ...(ents.ports || []).map(v => ['⚓', v]),
+                      ...(ents.routes || []).map(v => ['🚢', v]),
+                    ];
+                    if (chips.length === 0) return null;
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                        {chips.map(([icon, v], idx) => (
+                          <span key={idx} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>{icon} {v}</span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                    <a href={articleSummary.article.url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', textDecoration: 'none' }}>Read Full Article ↗</a>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

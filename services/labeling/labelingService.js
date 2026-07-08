@@ -99,6 +99,60 @@ Return EXACTLY this JSON shape:
 Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above.`;
 }
 
+// Cheap, zero-LLM-cost entity extraction: regex-match the customer's own
+// profile lists against the article text. Feeding these into the summary
+// prompt (instead of asking Groq to find them) keeps the prompt short and
+// the extraction free.
+export function extractLocalEntities(text, customer) {
+    const hay = (text || '').toLowerCase();
+    const matchAll = (list) => (Array.isArray(list) ? list : [])
+        .filter(term => term && hay.includes(String(term).toLowerCase()));
+    return {
+        commodities: matchAll(customer?.commodities),
+        ports: matchAll(customer?.key_ports),
+        routes: matchAll(customer?.key_routes),
+        supplier_countries: matchAll(customer?.supplier_countries),
+    };
+}
+
+const SUMMARY_SYSTEM_PROMPT =
+    'You are a supply chain intelligence analyst for a food-service distributor. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
+
+function summaryPrompt(article, entities, customer) {
+    const j = (v) => (v && v.length ? v.join(', ') : 'none detected');
+    return `Distributor: ${customer?.company || 'general food-service importer'} (${customer?.region || 'GCC'})
+Reader: demand/supply planner deciding whether this article needs action.
+
+Title: ${article.title}
+Source: ${article.source || 'unknown'}
+Snippet: ${(article.description || '').slice(0, 500)}
+
+Entities already matched to this distributor's profile (do not re-derive, just use them):
+Commodities: ${j(entities.commodities)}
+Ports: ${j(entities.ports)}
+Routes: ${j(entities.routes)}
+Supplier countries: ${j(entities.supplier_countries)}
+
+Return EXACTLY this JSON shape:
+{
+  "summary": "2-3 sentence plain-English summary of what happened",
+  "impact": "1 sentence: why this matters to the distributor above, or 'Limited direct impact' if none",
+  "action_note": "1 sentence: what the team should do, or null if no action needed"
+}`;
+}
+
+/**
+ * On-demand click-to-summarize for a single article. Distinct from label()
+ * above: no training/category output, smaller max_tokens, meant to be
+ * cached by caller (article_summary_cache) rather than run at scan time.
+ * @returns {Promise<{summary: string, impact: string, action_note: string|null}>}
+ */
+export async function summarizeArticle(article, entities, customer = null) {
+    const client = makeClient();
+    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer), 250);
+    return JSON.parse(raw);
+}
+
 function validate(obj) {
     const t = obj?.training, i = obj?.insights;
     if (!t || !i) return false;
