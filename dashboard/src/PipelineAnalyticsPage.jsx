@@ -29,15 +29,33 @@ export default function PipelineAnalyticsPage({ onBack }) {
         setScanning(true);
         setScanResult(null);
         try {
-            const res = await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
-            const data = await res.json();
-            setScanResult(data.stats || { error: data.error || 'no stats returned' });
-            fetchLogs();
+            await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
+            // The scan runs in the background (it can exceed the HTTP gateway
+            // timeout), so poll for its result rather than awaiting the POST.
+            const started = Date.now();
+            const poll = async () => {
+                const r = await fetch('/api/scan-status', { credentials: 'include' });
+                const d = await r.json();
+                if (!d.running && d.stats) {
+                    setScanResult(d.stats);
+                    fetchLogs();
+                    setScanning(false);
+                    return;
+                }
+                if (Date.now() - started > 150000) { // 2.5 min safety cap
+                    setScanResult({ error: 'Scan is taking unusually long — check server logs.' });
+                    fetchLogs();
+                    setScanning(false);
+                    return;
+                }
+                setTimeout(poll, 4000);
+            };
+            setTimeout(poll, 4000);
         } catch (err) {
             console.error('Failed to trigger scan:', err);
             setScanResult({ error: err.message || 'request failed' });
+            setScanning(false);
         }
-        setScanning(false);
     };
 
     const accepted = logs.filter(l => l.is_accepted).length;
