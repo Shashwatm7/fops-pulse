@@ -278,6 +278,9 @@ export default function Dashboard() {
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [recentInsights, setRecentInsights] = useState([]);
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
+  const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
+  const [alertLimit, setAlertLimit] = useState(5);
+  const [newsLimit, setNewsLimit] = useState(10);
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
   const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
   const [weather, setWeather] = useState([]);
@@ -753,6 +756,26 @@ export default function Dashboard() {
       .catch(() => {});
   }, [tab, user]);
 
+  // Match visible alert cards against stored AI labels (dates, figures,
+  // action notes) so alerted articles carry the same intelligence as the
+  // labeled-articles panel.
+  useEffect(() => {
+    if (tab !== 'alerts' || !user) return;
+    const alertArticles = (analysis?.alerts || [])
+      .filter(a => a.url || a.title)
+      .map(a => ({ url: a.url, title: a.title }));
+    if (alertArticles.length === 0) return;
+    fetch(`${API_BASE}/insights/by-articles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ articles: alertArticles }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) setAlertInsights({ byUrl: d.byUrl || {}, byTitle: d.byTitle || {} }); })
+      .catch(() => {});
+  }, [tab, user, analysis?.alerts]);
+
   const openArticleSummary = (article) => {
     setArticleSummary({ article, loading: true, data: null, error: null });
     fetch(`${API_BASE}/article-summary`, {
@@ -1183,10 +1206,61 @@ export default function Dashboard() {
       {/* ═══════════ ALERTS ═══════════ */}
       {tab === 'alerts' && (
         <div className={`tab-content enter-${tabDirection}`} key="alerts">
-          <div className="section-label">Risk Alerts ({alerts.length})</div>
+          <div className="mb-xl">
+            <div className="section-label">✨ AI Intelligence — Labeled Articles</div>
+            {recentInsights.length === 0 ? (
+              <div className="intel-card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                No labeled articles yet — run the scanner (Pipeline Analytics → Run Scanner Now) to generate AI intelligence.
+              </div>
+            ) : (() => {
+              const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };
+              return recentInsights.map((ins, i) => {
+                const d = ins.insight_json || {};
+                return (
+                  <div key={ins.id || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s`, borderLeft: `2px solid ${sevColor[ins.severity] || 'rgba(139, 92, 246, 0.55)'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                      <a href={ins.article_url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
+                        {ins.summary || ins.article_title}
+                      </a>
+                      {ins.severity && (
+                        <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[ins.severity], border: `1px solid ${sevColor[ins.severity]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                          {ins.severity.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                      {ins.source} {ins.category && <>· {ins.category.replace(/_/g, ' ')}</>} {ins.urgency && <>· {ins.urgency}</>}
+                    </div>
+                    {d.what && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{d.what}</div>}
+                    <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {d.key_dates?.map((kd, j) => <span key={`kd-${j}`} style={{ fontSize: '10px', background: 'rgba(244,114,182,0.15)', color: '#f9a8d4', padding: '2px 6px', borderRadius: '4px' }}>📅 {kd}</span>)}
+                      {d.key_figures?.map((kf, j) => <span key={`kf-${j}`} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>📊 {kf}</span>)}
+                      {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
+                      {d.routes_affected?.map((r, j) => <span key={`r-${j}`} style={{ fontSize: '10px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🚢 {r}</span>)}
+                      {d.ports_affected?.map((p, j) => <span key={`p-${j}`} style={{ fontSize: '10px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>⚓ {p}</span>)}
+                    </div>
+                    {ins.action_note && <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: '#34d399' }}>→ {ins.action_note}</div>}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div className="section-label" style={{ margin: 0 }}>Risk Alerts ({alerts.length})</div>
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Show
+              <select value={alertLimit} onChange={e => setAlertLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
           {alerts.length === 0 ? (
             <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No active alerts</div>
-          ) : (alerts || []).map((a, i) => (
+          ) : (alertLimit === 'all' ? alerts : alerts.slice(0, alertLimit)).map((a, i) => (
             <div key={i} className={`alert-card ${a.severity}`} style={{ animationDelay: `${i * 0.08}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
               <div className="alert-header">
                 <div className="alert-title">
@@ -1211,6 +1285,27 @@ export default function Dashboard() {
               </div>
               {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
               <div className="alert-reason">{a.reason || a.description}</div>
+
+              {(() => {
+                const ins = alertInsights.byUrl?.[a.url] || alertInsights.byTitle?.[(a.title || '').trim().toLowerCase()];
+                if (!ins) return null;
+                const d = ins.detail || {};
+                return (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(139,92,246,0.06)', borderLeft: '2px solid rgba(139,92,246,0.5)', borderRadius: '0 6px 6px 0' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c4b5fd', marginBottom: '6px' }}>
+                      ✨ AI Label{ins.category ? ` · ${ins.category.replace(/_/g, ' ')}` : ''}{ins.severity ? ` · ${ins.severity}` : ''}
+                    </div>
+                    {ins.headline && <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{ins.headline}</div>}
+                    {d.what && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{d.what}</div>}
+                    <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {d.key_dates?.map((kd, j) => <span key={`kd-${j}`} style={{ fontSize: '10px', background: 'rgba(244,114,182,0.15)', color: '#f9a8d4', padding: '2px 6px', borderRadius: '4px' }}>📅 {kd}</span>)}
+                      {d.key_figures?.map((kf, j) => <span key={`kf-${j}`} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>📊 {kf}</span>)}
+                      {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
+                    </div>
+                    {d.action_note && <div style={{ marginTop: '6px', fontSize: '12px', color: '#34d399' }}>→ {d.action_note}</div>}
+                  </div>
+                );
+              })()}
 
               {(() => {
                 const pKey = a.id ?? `idx-${i}`;
@@ -1273,61 +1368,37 @@ export default function Dashboard() {
             </div>
           ))}
 
-          {recentInsights.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">✨ AI Intelligence — Labeled Articles</div>
-              {(() => {
-                const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };
-                return recentInsights.map((ins, i) => {
-                  const d = ins.insight_json || {};
-                  return (
-                    <div key={ins.id || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s`, borderLeft: `2px solid ${sevColor[ins.severity] || 'rgba(139, 92, 246, 0.55)'}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                        <a href={ins.article_url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
-                          {ins.summary || ins.article_title}
-                        </a>
-                        {ins.severity && (
-                          <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[ins.severity], border: `1px solid ${sevColor[ins.severity]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
-                            {ins.severity.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
-                        {ins.source} {ins.category && <>· {ins.category.replace(/_/g, ' ')}</>} {ins.urgency && <>· {ins.urgency}</>}
-                      </div>
-                      {d.what && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{d.what}</div>}
-                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
-                        {d.routes_affected?.map((r, j) => <span key={`r-${j}`} style={{ fontSize: '10px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🚢 {r}</span>)}
-                        {d.ports_affected?.map((p, j) => <span key={`p-${j}`} style={{ fontSize: '10px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>⚓ {p}</span>)}
-                      </div>
-                      {ins.action_note && <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: '#34d399' }}>→ {ins.action_note}</div>}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          )}
-
           <div className="mt-lg">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div className="section-label" style={{ margin: 0 }}>News Feed — {profile?.focus_product || 'Commodities'} / {profile?.focus_region || 'Global'}</div>
-              <input
-                type="text"
-                placeholder="Filter news by keyword or source..." 
-                value={newsFilter} 
-                onChange={(e) => setNewsFilter(e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', borderRadius: '6px', width: '300px', fontSize: '13px' }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Show
+                  <select value={newsLimit} onChange={e => setNewsLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Filter news by keyword or source..."
+                  value={newsFilter}
+                  onChange={(e) => setNewsFilter(e.target.value)}
+                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', borderRadius: '6px', width: '300px', fontSize: '13px' }}
+                />
+              </div>
             </div>
             {(() => {
-              const filteredNews = (news || []).filter(a => {
+              const allFiltered = (news || []).filter(a => {
                 if (!newsFilter.trim()) return true;
                 const q = newsFilter.toLowerCase();
-                return (a.title?.toLowerCase().includes(q)) || 
-                       (a.description?.toLowerCase().includes(q)) || 
+                return (a.title?.toLowerCase().includes(q)) ||
+                       (a.description?.toLowerCase().includes(q)) ||
                        (a.source?.toLowerCase().includes(q));
               });
+              const filteredNews = newsLimit === 'all' ? allFiltered : allFiltered.slice(0, newsLimit);
               
               if (filteredNews.length === 0) {
                  return <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No news articles match your filter.</div>;
