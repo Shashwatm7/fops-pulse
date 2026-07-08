@@ -1093,12 +1093,16 @@ app.post('/api/trigger-scan', requireAuth, async (req, res) => {
     try {
         // Run the scan specifically for this user and wait for it to finish
         // so that the frontend's refresh actually sees the new logs.
+        let stats = null;
         if (global.triggerUserScan) {
-            await global.triggerUserScan(req.session.userId);
+            stats = await global.triggerUserScan(req.session.userId);
         } else {
             scanUserSpecificNews(); // fallback if global not registered yet
         }
-        res.json({ success: true, message: 'Scanner triggered successfully' });
+        // Return the actual outcome so the UI/caller can see what happened
+        // (articles fetched, accepted, labeled, any errors) instead of a
+        // blind success.
+        res.json({ success: true, stats });
     } catch (err) {
         console.error('Failed to trigger scanner:', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
@@ -2516,10 +2520,13 @@ async function initScannerPipeline() {
 }
 
 async function scanSingleUser(user, pipeline) {
+  // Diagnostic stats returned to the caller so "Run Scanner Now" can report
+  // exactly what happened instead of a blind "success".
+  const stats = { fetched: 0, accepted: 0, labeled: 0, labelingEnabled: labelingConfig.enabled, labelErrors: [], skippedReason: null, error: null };
   try {
-    if (!user.id) return;
+    if (!user.id) { stats.skippedReason = 'no user.id'; return stats; }
     const profile = await getUserProfile(user.id);
-    if (!profile) return;
+    if (!profile) { stats.skippedReason = 'no user_profiles row'; return stats; }
 
     // 1. Fetch News
     let customKeywords = profile.news_keywords && profile.news_keywords.length > 0 ? profile.news_keywords : [];
@@ -2580,6 +2587,7 @@ async function scanSingleUser(user, pipeline) {
     }
 
     console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles from RSS for user ${user.id}`);
+    stats.fetched = allArticles.length;
 
     const triggeredAlerts = [];
     
@@ -2591,7 +2599,8 @@ async function scanSingleUser(user, pipeline) {
 
       if (result.accepted) {
         const a = result.article;
-        
+        stats.accepted++;
+
         // Extract insights locally to save LLM tokens
         const extractedData = await fetchAndExtractArticle(a.url);
         let nlpDescription = a.description;
@@ -2640,9 +2649,13 @@ async function scanSingleUser(user, pipeline) {
         if (labelingConfig.enabled && result.auditLogId) {
           try {
             await labelArticle(a, { auditLogId: result.auditLogId, userId: user.id });
+            stats.labeled++;
           } catch (labelErr) {
             console.error('[LABELING] processArticle failed (non-fatal):', labelErr.message);
+            stats.labelErrors.push(labelErr.message);
           }
+        } else if (labelingConfig.enabled && !result.auditLogId) {
+          stats.labelErrors.push('no auditLogId (audit-log insert returned null)');
         }
 
       }
@@ -2691,8 +2704,11 @@ async function scanSingleUser(user, pipeline) {
         }
       }
     }
+    return stats;
   } catch (err) {
     console.error(`[USER-SCANNER] Failure for user ${user.id}:`, err);
+    stats.error = err.message;
+    return stats;
   }
 }
 
@@ -2713,13 +2729,13 @@ async function scanUserSpecificNews() {
 global.triggerUserScan = async (userId) => {
     try {
         const user = await findUserById(userId);
-        if (user) {
-            console.log(`[USER-SCANNER] Manual scan triggered for user ${userId}`);
-            const pipeline = await initScannerPipeline();
-            await scanSingleUser(user, pipeline);
-        }
+        if (!user) return { error: 'user not found' };
+        console.log(`[USER-SCANNER] Manual scan triggered for user ${userId}`);
+        const pipeline = await initScannerPipeline();
+        return await scanSingleUser(user, pipeline);
     } catch (err) {
         console.error('Trigger scan error:', err);
+        return { error: err.message };
     }
 };
 

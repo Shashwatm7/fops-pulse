@@ -5,6 +5,7 @@ export default function PipelineAnalyticsPage({ onBack }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [scanning, setScanning] = useState(false);
+    const [scanResult, setScanResult] = useState(null);
 
     const fetchLogs = () => {
         fetch('/api/pipeline-audit', { credentials: 'include' })
@@ -26,12 +27,15 @@ export default function PipelineAnalyticsPage({ onBack }) {
 
     const handleTriggerScan = async () => {
         setScanning(true);
+        setScanResult(null);
         try {
-            await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
+            const res = await fetch('/api/trigger-scan', { method: 'POST', credentials: 'include' });
+            const data = await res.json();
+            setScanResult(data.stats || { error: data.error || 'no stats returned' });
             fetchLogs();
         } catch (err) {
             console.error('Failed to trigger scan:', err);
-            alert('Failed to trigger scan.');
+            setScanResult({ error: err.message || 'request failed' });
         }
         setScanning(false);
     };
@@ -62,6 +66,28 @@ export default function PipelineAnalyticsPage({ onBack }) {
                     <span style={{ color: 'var(--text-secondary)' }}> Last {logs.length} scanned — <span style={{ color: '#34d399', fontWeight: 600 }}>{accepted} accepted</span>, {logs.length - accepted} filtered.</span>
                 )}
             </p>
+
+            {scanResult && (
+                <div className="intel-card" style={{ marginBottom: '20px', padding: '14px 16px', fontSize: '13px', fontFamily: 'var(--font-mono)', borderLeft: `2px solid ${scanResult.error ? 'var(--danger)' : '#34d399'}` }}>
+                    <div style={{ fontWeight: 700, marginBottom: '6px', color: 'var(--text-secondary)' }}>Last scan result</div>
+                    {scanResult.error ? (
+                        <div style={{ color: 'var(--danger)' }}>Error: {scanResult.error}</div>
+                    ) : scanResult.skippedReason ? (
+                        <div style={{ color: 'var(--accent-amber)' }}>Skipped: {scanResult.skippedReason}</div>
+                    ) : (
+                        <div style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                            Fetched <b>{scanResult.fetched}</b> articles · accepted <b style={{ color: '#34d399' }}>{scanResult.accepted}</b>
+                            {' · labeling '}<b>{scanResult.labelingEnabled ? 'ON' : 'OFF'}</b>
+                            {scanResult.labelingEnabled && <> · labeled <b>{scanResult.labeled}</b></>}
+                            {scanResult.labelErrors?.length > 0 && (
+                                <div style={{ color: 'var(--danger)', marginTop: '4px' }}>Label errors: {scanResult.labelErrors.slice(0, 3).join(' | ')}</div>
+                            )}
+                            {scanResult.fetched === 0 && <div style={{ color: 'var(--accent-amber)', marginTop: '4px' }}>0 articles fetched — Google News RSS may be rate-limiting this server's IP.</div>}
+                            {scanResult.fetched > 0 && scanResult.accepted === 0 && <div style={{ color: 'var(--text-dim)', marginTop: '4px' }}>Articles fetched but none passed the relevance pipeline this run.</div>}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {loading && <p style={{ color: 'var(--text-muted)' }}>Loading analytics…</p>}
             {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
