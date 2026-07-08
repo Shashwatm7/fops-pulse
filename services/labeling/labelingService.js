@@ -49,7 +49,7 @@ function makeClient() {
 }
 
 const SYSTEM_PROMPT =
-    'You are a supply chain intelligence analyst for a food-service distributor. You label news articles for ML training and generate insights for demand/supply planners and a supply chain director. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
+    'You are a supply chain intelligence analyst for a food-service distributor. You label news articles for ML training and generate insights for demand/supply planners and a supply chain director — readers who already know the industry and need the specific fact from THIS article, not a generic restatement of the headline. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
 
 // Build a compact customer-context block so labels are grounded in the
 // distributor's actual ports/routes/products/suppliers (DB-driven, not
@@ -81,11 +81,11 @@ Return EXACTLY this JSON shape:
     "confidence": 0.0 to 1.0
   },
   "insights": {
-    "headline": "one line, plain english, specific to this distributor",
-    "what": "what happened",
-    "where": "geography affected",
-    "when": "is this happening now or forecast",
-    "duration": "how long this likely lasts",
+    "headline": "one line, plain english, specific to this distributor — must include a fact from the article body, not just the article's own headline reworded",
+    "what": "2-3 sentences pulling the concrete facts from the article: numbers, dates, named companies/officials/vessels/ports, volumes, percentages. If the article genuinely has none of these, say so plainly instead of restating the headline in different words.",
+    "where": "geography affected — specific country/port/route, not just 'the region'",
+    "when": "is this happening now or forecast — with the actual date/timeframe if stated",
+    "duration": "how long this likely lasts, grounded in what the article says (e.g. contract length, season, distance/speed if a shipping delay) — not a generic guess",
     "commodities_affected": [only items from the distributor's commodity list],
     "routes_affected": [only items from the distributor's route list],
     "ports_affected": [only items from the distributor's port list],
@@ -94,11 +94,11 @@ Return EXACTLY this JSON shape:
     "key_figures": ["specific numbers stated in the article — prices, percentages, volumes — each with its meaning, e.g. 'wheat -4.2% this week'"],
     "urgency": "immediate" | "this_week" | "monitor" | "informational",
     "action_required": true or false,
-    "action_note": "one sentence: what the team should do, or null"
+    "action_note": "one concrete, specific action tied to what this article actually says (e.g. 'Confirm alternate poultry supplier for the 3-week Brazil export halt'), or null. Never generic advice like 'monitor the situation' or 'stay informed'."
   }
 }
 
-Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above. key_dates and key_figures must only contain values explicitly stated in the article — use empty arrays if none, never invent numbers or dates.`;
+Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above. key_dates and key_figures must only contain values explicitly stated in the article — use empty arrays if none, never invent numbers or dates. Do not use generic filler ("could impact the market", "monitor the situation", "remains to be seen") anywhere in the output — every sentence must carry a specific fact from this article.`;
 }
 
 // Cheap, zero-LLM-cost entity extraction: regex-match the customer's own
@@ -118,7 +118,13 @@ export function extractLocalEntities(text, customer) {
 }
 
 const SUMMARY_SYSTEM_PROMPT =
-    'You are a supply chain intelligence analyst for a food-service distributor. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
+    'You are a supply chain intelligence analyst for a food-service distributor. You write for planners who already know the industry — every sentence must carry a fact (a number, a date, a name, a place) they did not already know from the headline. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
+
+const BANNED_PHRASES = [
+    'could impact the market', 'may affect prices', 'monitor the situation',
+    'keep an eye on', 'stay informed', 'could have implications',
+    'it is important to', 'in the coming days/weeks', 'remains to be seen',
+];
 
 function summaryPrompt(article, entities, customer) {
     const j = (v) => (v && v.length ? v.join(', ') : 'none detected');
@@ -127,7 +133,7 @@ Reader: demand/supply planner deciding whether this article needs action.
 
 Title: ${article.title}
 Source: ${article.source || 'unknown'}
-Snippet: ${(article.description || '').slice(0, 500)}
+Snippet: ${(article.description || '').slice(0, 800)}
 
 Entities already matched to this distributor's profile (do not re-derive, just use them):
 Commodities: ${j(entities.commodities)}
@@ -137,10 +143,12 @@ Supplier countries: ${j(entities.supplier_countries)}
 
 Return EXACTLY this JSON shape:
 {
-  "summary": "2-3 sentence plain-English summary of what happened",
-  "impact": "1 sentence: why this matters to the distributor above, or 'Limited direct impact' if none",
-  "action_note": "1 sentence: what the team should do, or null if no action needed"
-}`;
+  "summary": "2-3 sentences. Pull the concrete facts from the snippet: numbers, percentages, dates, named companies/officials/vessels, volumes. If the snippet has no such facts, say plainly 'No figures given in this report' instead of padding with generic language.",
+  "impact": "1 sentence naming the SPECIFIC mechanism: which commodity/port/route from the entity list is affected and how (e.g. 'Red Sea rerouting adds ~10-14 days to Europe-UAE chicken shipments'), or 'Limited direct impact' if genuinely none.",
+  "action_note": "1 concrete, specific action tied to this article (e.g. 'Confirm buffer stock covers a 2-week delay on the affected route'), or null if no action needed. Never write generic advice like 'monitor the situation' or 'stay informed'."
+}
+
+Banned phrases — do not use any of these or close paraphrases: ${BANNED_PHRASES.join('; ')}.`;
 }
 
 /**
@@ -151,7 +159,7 @@ Return EXACTLY this JSON shape:
  */
 export async function summarizeArticle(article, entities, customer = null) {
     const client = makeClient();
-    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer), 250);
+    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer), 350);
     return JSON.parse(raw);
 }
 
@@ -178,9 +186,9 @@ export async function label(snippet, customer = null) {
         const user = strict
             ? userPrompt(snippet, customer) + '\n\nCRITICAL: your previous reply was not valid JSON. Return ONLY the raw JSON object, nothing else.'
             : userPrompt(snippet, customer);
-        // 850: the two extracted arrays (key_dates, key_figures) need headroom
-        // beyond the original 700 or the JSON gets truncated mid-array.
-        const raw = await client(SYSTEM_PROMPT, user, 850);
+        // 1000: key_dates/key_figures arrays plus the now-longer "what" field
+        // need headroom beyond the original 700 or the JSON truncates mid-field.
+        const raw = await client(SYSTEM_PROMPT, user, 1000);
         return JSON.parse(raw);
     };
 
