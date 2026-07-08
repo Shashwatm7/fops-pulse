@@ -1089,20 +1089,37 @@ app.get('/api/pipeline-audit', requireAuth, async (req, res) => {
     }
 });
 
+app.get('/api/scan-status', requireAuth, (req, res) => {
+    const st = (global.scanState || {})[req.session.userId];
+    res.json({ success: true, running: !!st?.running, stats: st?.stats || null, finishedAt: st?.finishedAt || null });
+});
+
 app.post('/api/trigger-scan', requireAuth, async (req, res) => {
     try {
         // Run the scan specifically for this user and wait for it to finish
         // so that the frontend's refresh actually sees the new logs.
-        let stats = null;
-        if (global.triggerUserScan) {
-            stats = await global.triggerUserScan(req.session.userId);
-        } else {
-            scanUserSpecificNews(); // fallback if global not registered yet
+        // Fire-and-forget: a full scan (per-article article fetches + optional
+        // embedding/LLM labeling) can exceed the platform's HTTP gateway
+        // timeout, which returns an HTML error page and breaks the caller's
+        // JSON parse. So we start the scan, return immediately, and let the
+        // client poll /api/scan-status for the result.
+        const uid = req.session.userId;
+        global.scanState = global.scanState || {};
+        const existing = global.scanState[uid];
+        if (existing && existing.running) {
+            return res.json({ success: true, started: false, running: true });
         }
-        // Return the actual outcome so the UI/caller can see what happened
-        // (articles fetched, accepted, labeled, any errors) instead of a
-        // blind success.
-        res.json({ success: true, stats });
+        global.scanState[uid] = { running: true, stats: null, startedAt: Date.now(), finishedAt: null };
+
+        if (global.triggerUserScan) {
+            global.triggerUserScan(uid)
+                .then(stats => { global.scanState[uid] = { running: false, stats, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; })
+                .catch(err => { global.scanState[uid] = { running: false, stats: { error: err.message }, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; });
+        } else {
+            scanUserSpecificNews();
+            global.scanState[uid] = { running: false, stats: null, startedAt: Date.now(), finishedAt: Date.now() };
+        }
+        res.json({ success: true, started: true, running: true });
     } catch (err) {
         console.error('Failed to trigger scanner:', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
