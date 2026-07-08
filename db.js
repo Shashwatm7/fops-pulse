@@ -647,6 +647,24 @@ export async function getCustomerProfileForUser(userId) {
   return rows[0] || null;
 }
 
+// Recent labeled insights for THIS user, straight from storage — no
+// dependency on the live (rotating) news feed happening to still contain
+// the same articles. This is what the dashboard's Intelligence panel shows.
+export async function getRecentInsights(userId, limit = 15) {
+  const { rows } = await pool.query(
+    `SELECT ai.id, ai.severity, ai.category, ai.urgency, ai.summary, ai.action_note,
+            ai.action_required, ai.insight_json, ai.created_at,
+            pal.article_title, pal.article_url, pal.source
+     FROM article_insights ai
+     JOIN pipeline_audit_logs pal ON ai.audit_log_id = pal.id
+     WHERE ai.user_id = $1
+     ORDER BY ai.created_at DESC
+     LIMIT $2`,
+    [userId, limit]
+  );
+  return rows;
+}
+
 // Look up stored labeling insights for a set of displayed articles, matched to
 // pipeline_audit_logs by URL or (fallback) normalized title. Returns a map so
 // the frontend can show hover insights on news the scanner already labeled.
