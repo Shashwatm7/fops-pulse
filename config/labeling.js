@@ -31,10 +31,15 @@ export const labelingConfig = {
     embeddingModel: 'Xenova/all-MiniLM-L6-v2',
     embeddingDims: 384,
 
-    // Commodity supply-chain taxonomy (adapted from the generic B2B-SaaS spec).
+    // Food-service supply-chain taxonomy (Aramtec Part 7).
     categories: [
-        'export_ban', 'trade_policy', 'drought_weather', 'livestock_disease',
-        'chokepoint_disruption', 'energy_shock', 'harvest_yield', 'price_move',
-        'labor_disruption', 'other',
+        'port_disruption', 'shipping_route_change', 'cold_chain_risk',
+        'protein_price_move', 'grain_price_move', 'dairy_price_move',
+        'edible_oil_move', 'middle_east_tension', 'suez_canal_event',
+        'sanctions_trade', 'uae_trade_policy', 'supplier_country_risk',
+        'food_safety_recall', 'crop_weather_event', 'hospitality_demand',
+        'ramadan_eid_signal', 'food_inflation', 'currency_risk', 'other',
     ],
+    severities: ['critical', 'high', 'medium', 'low'],
+    tierWeights: { gold: 3, silver: 2, bronze: 1 },
 };

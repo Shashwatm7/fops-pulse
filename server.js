@@ -2551,9 +2551,11 @@ async function scanSingleUser(user, pipeline) {
     // news-relevance fields (keywords + regions) from the customer profile so
     // the scanner targets their ports/routes/suppliers/products. Price-symbol
     // `commodities` are deliberately left untouched (pricing/exposure use them).
+    let customerProfile = null;
     if (profile.customer_id) {
       const customer = await getCustomerProfile(profile.customer_id);
       if (customer) {
+        customerProfile = customer;
         stats.customer = customer.id;
         const uniq = (arr) => [...new Set(arr.filter(Boolean))];
         profile.news_keywords = uniq([
@@ -2692,7 +2694,7 @@ async function scanSingleUser(user, pipeline) {
         // default; fully guarded so a labeling failure never breaks the scan.
         if (labelingConfig.enabled && result.auditLogId) {
           try {
-            await labelArticle(a, { auditLogId: result.auditLogId, userId: user.id });
+            await labelArticle(a, { auditLogId: result.auditLogId, userId: user.id, customer: customerProfile });
             stats.labeled++;
           } catch (labelErr) {
             console.error('[LABELING] processArticle failed (non-fatal):', labelErr.message);
@@ -3063,11 +3065,11 @@ app.get('/api/review/queue', requireAuth, async (req, res) => {
 
 app.post('/api/review/:id/label', requireAuth, async (req, res) => {
     try {
-        const { relevant, category, priority, notes } = req.body || {};
+        const { relevant, category, severity, notes } = req.body || {};
         if (relevant !== 0 && relevant !== 1) {
             return res.status(400).json({ success: false, error: 'relevant must be 0 or 1' });
         }
-        const out = await submitReview(req.session.userId, req.params.id, { relevant, category, priority, notes });
+        const out = await submitReview(req.session.userId, req.params.id, { relevant, category, severity, notes });
         if (!out.ok) return res.status(404).json({ success: false, error: 'Review item not found or already reviewed' });
         // If human disagreed with the LLM, that's the signal for future
         // keyword/rule tuning — surfaced in the response and the logs.
