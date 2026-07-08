@@ -2567,6 +2567,8 @@ async function scanSingleUser(user, pipeline) {
           ...(customer.supplier_countries || []),
           'UAE', 'GCC', 'Middle East', 'Red Sea', 'Suez',
         ]);
+        // Seeds drive the real semantic filter (stage 6).
+        profile.ml_seeds = customer.ml_seeds || [];
       }
     }
 

@@ -90,5 +90,8 @@ export function buildWatchlistProfile(userProfile) {
         regionAliases: Array.from(profile.regionAliases),
         businessTerms: Array.from(profile.businessTerms),
         excludedContexts: Array.from(profile.excludedContexts),
+        // Passthrough for the semantic filter (stage 6): the customer's ML
+        // seed examples, if any, attached to the raw profile.
+        mlSeeds: Array.isArray(userProfile.ml_seeds) ? userProfile.ml_seeds : [],
     };
 }
