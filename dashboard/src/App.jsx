@@ -1268,6 +1268,13 @@ export default function Dashboard() {
                 );
               })()}
 
+              {a.url && (
+                <button
+                  onClick={() => openArticleSummary({ url: a.url, title: (a.title || '').replace(/^🎯 Profile Alert:\s*/, ''), description: a.description || a.reason, source: a.source })}
+                  title="Generate a plain-English AI summary of this article"
+                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', color: '#c4b5fd', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                >✨ AI Summary</button>
+              )}
               {(() => {
                 const pKey = a.id ?? `idx-${i}`;
                 const p = precedents[pKey];
