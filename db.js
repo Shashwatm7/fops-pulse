@@ -665,6 +665,31 @@ export async function getRecentInsights(userId, limit = 15) {
   return rows;
 }
 
+// On-demand click-to-summarize cache, keyed by article URL so repeat
+// clicks (by this user or any other) are a free DB read instead of a
+// second Groq call.
+export async function getArticleSummaryCache(articleUrl) {
+  if (!articleUrl) return null;
+  const { rows } = await pool.query(
+    'SELECT * FROM article_summary_cache WHERE article_url = $1',
+    [articleUrl]
+  );
+  return rows[0] || null;
+}
+
+export async function saveArticleSummaryCache(articleUrl, articleTitle, { summary, impact, action_note, entities, model }) {
+  const { rows } = await pool.query(
+    `INSERT INTO article_summary_cache (article_url, article_title, summary, impact, action_note, entities_json, model)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (article_url) DO UPDATE SET
+       summary = EXCLUDED.summary, impact = EXCLUDED.impact, action_note = EXCLUDED.action_note,
+       entities_json = EXCLUDED.entities_json, model = EXCLUDED.model
+     RETURNING *`,
+    [articleUrl, articleTitle, summary, impact, action_note || null, JSON.stringify(entities || {}), model]
+  );
+  return rows[0];
+}
+
 // Look up stored labeling insights for a set of displayed articles, matched to
 // pipeline_audit_logs by URL or (fallback) normalized title. Returns a map so
 // the frontend can show hover insights on news the scanner already labeled.
