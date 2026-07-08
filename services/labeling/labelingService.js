@@ -49,10 +49,26 @@ function makeClient() {
 }
 
 const SYSTEM_PROMPT =
-    'You are a food-commodity supply-chain intelligence analyst. You label news articles for model training and planner insights. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
+    'You are a supply chain intelligence analyst for a food-service distributor. You label news articles for ML training and generate insights for demand/supply planners and a supply chain director. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
 
-function userPrompt(snippet) {
-    return `Label this article for a food-commodity supply-chain intelligence platform.
+// Build a compact customer-context block so labels are grounded in the
+// distributor's actual ports/routes/products/suppliers (DB-driven, not
+// hardcoded). Falls back to generic when no customer is attached.
+function customerBlock(customer) {
+    if (!customer) return 'Distributor profile: general food-service importer in the GCC.';
+    const j = (v) => (Array.isArray(v) ? v.join(', ') : (v || ''));
+    return `Distributor: ${customer.company} (${customer.region})
+  Key ports: ${j(customer.key_ports)}
+  Key routes: ${j(customer.key_routes)}
+  Commodities: ${j(customer.commodities)}
+  Supplier countries: ${j(customer.supplier_countries)}
+  Customers: ${j(customer.customer_segments)}`;
+}
+
+function userPrompt(snippet, customer) {
+    return `Label this article for the distributor below.
+
+${customerBlock(customer)}
 
 Article: ${snippet}
 
@@ -61,25 +77,26 @@ Return EXACTLY this JSON shape:
   "training": {
     "relevant": 0 or 1,
     "category": one of [${cfg.categories.join(', ')}],
-    "priority": "high" | "medium" | "low",
+    "severity": "critical" | "high" | "medium" | "low",
     "confidence": 0.0 to 1.0
   },
   "insights": {
-    "summary": "one sentence, plain english",
-    "entities": {
-      "commodities": [{"name": "", "role": "affected|driver|other"}],
-      "regions":     [{"name": "", "role": "producer|importer|exporter|transit|affected"}],
-      "organizations": [{"name": "", "role": "government|company|body|other"}]
-    },
-    "sentiment": "positive" | "negative" | "neutral",
-    "threat_level": "high" | "medium" | "low" | "none",
-    "opportunity": "high" | "medium" | "low" | "none",
+    "headline": "one line, plain english, specific to this distributor",
+    "what": "what happened",
+    "where": "geography affected",
+    "when": "is this happening now or forecast",
+    "duration": "how long this likely lasts",
+    "commodities_affected": [only items from the distributor's commodity list],
+    "routes_affected": [only items from the distributor's route list],
+    "ports_affected": [only items from the distributor's port list],
+    "supplier_countries": [affected supplier countries],
+    "urgency": "immediate" | "this_week" | "monitor" | "informational",
     "action_required": true or false,
-    "action_note": "one sentence what a procurement/S&OP team should do, or null"
+    "action_note": "one sentence: what the team should do, or null"
   }
 }
 
-Rules: "relevant" is 1 only if the article genuinely concerns commodity supply, demand, price, trade, weather, or logistics. Marketing, recipes, and consumer lifestyle are 0. confidence reflects how certain you are of the label.`;
+Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above.`;
 }
 
 function validate(obj) {
@@ -87,9 +104,9 @@ function validate(obj) {
     if (!t || !i) return false;
     if (t.relevant !== 0 && t.relevant !== 1) return false;
     if (typeof t.category !== 'string') return false;
-    if (!['high', 'medium', 'low'].includes(t.priority)) return false;
+    if (!cfg.severities.includes(t.severity)) return false;
     if (typeof t.confidence !== 'number') return false;
-    if (typeof i.summary !== 'string') return false;
+    if (typeof i.headline !== 'string') return false;
     return true;
 }
 
@@ -97,14 +114,14 @@ function validate(obj) {
  * Label one article snippet.
  * @returns {Promise<{result: object|null, needsReview: boolean, error?: string}>}
  */
-export async function label(snippet) {
+export async function label(snippet, customer = null) {
     const client = makeClient();
     await sleep(100); // gentle spacing to avoid burst rejections
 
     const attempt = async (strict) => {
         const user = strict
-            ? userPrompt(snippet) + '\n\nCRITICAL: your previous reply was not valid JSON. Return ONLY the raw JSON object, nothing else.'
-            : userPrompt(snippet);
+            ? userPrompt(snippet, customer) + '\n\nCRITICAL: your previous reply was not valid JSON. Return ONLY the raw JSON object, nothing else.'
+            : userPrompt(snippet, customer);
         const raw = await client(SYSTEM_PROMPT, user, 700);
         return JSON.parse(raw);
     };

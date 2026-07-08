@@ -562,11 +562,12 @@ export async function submitReview(userId, reviewId, human) {
       `UPDATE review_queue SET human_label = $1, reviewed = TRUE, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3`,
       [JSON.stringify(human), String(userId), reviewId]
     );
+    // Human review is ground truth → promote to gold (Part 8: gold overrides).
     await client.query(
       `UPDATE training_data SET human_label = $1, category = COALESCE($2, category),
-              priority = COALESCE($3, priority), source = 'human_reviewed'
+              severity = COALESCE($3, severity), source = 'human_reviewed', label_tier = 'gold'
        WHERE id = $4`,
-      [human.relevant, human.category || null, human.priority || null, training_id]
+      [human.relevant, human.category || null, human.severity || null, training_id]
     );
     await client.query('COMMIT');
     return { ok: true, agreed };

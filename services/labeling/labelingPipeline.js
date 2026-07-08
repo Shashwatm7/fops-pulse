@@ -30,7 +30,7 @@ export async function processArticle(article, ctx) {
         console.error('[LABELING] embed failed (continuing without vector):', err.message);
     }
 
-    const labelOut = await label(snippet);
+    const labelOut = await label(snippet, ctx.customer || null);
 
     const saved = await saveLabels(
         { auditLogId: ctx.auditLogId, userId: ctx.userId, snippet, title: article.title },
