@@ -1128,16 +1128,31 @@ app.post('/api/trigger-scan', requireAuth, async (req, res) => {
 
 app.get('/api/news', requireAuth, async (req, res) => {
     try {
-        const userKeywords = req.userProfile?.news_keywords || ['frozen food', 'cold chain', 'frozen goods'];
+        let userKeywords = req.userProfile?.news_keywords || ['frozen food', 'cold chain', 'frozen goods'];
         const trackedCommodities = req.userProfile?.commodities || [];
         const focusRegion = req.userProfile?.focus_region || 'Middle East';
         const focusProduct = req.userProfile?.focus_product || 'Commodities';
-        
+
+        // If the user belongs to a customer (e.g. Aramtec), search the SAME
+        // topics the scanner labels — otherwise the feed (frozen-food defaults)
+        // and the labeled set never overlap, so hover insights never appear.
+        if (req.userProfile?.customer_id) {
+            try {
+                const customer = await getCustomerProfile(req.userProfile.customer_id);
+                if (customer) {
+                    userKeywords = [...new Set([
+                        ...(customer.commodities || []),
+                        ...(customer.signal_keywords || []),
+                    ])];
+                }
+            } catch (e) { console.error('[NEWS] customer enrich failed:', e.message); }
+        }
+
         // Dynamically build Google News queries. Append market context to avoid consumer/recipe news.
+        // Cap to keep RSS fan-out bounded (these run as parallel fetches).
         const querySuffix = ' AND (market OR "supply chain" OR trade OR agriculture OR prices OR export)';
         const googleQueries = [
-            ...userKeywords.map(kw => `"${kw}"${querySuffix}`),
-            ...trackedCommodities.map(c => `"${c.replace(/_/g, ' ')}"${querySuffix}`),
+            ...userKeywords.slice(0, 16).map(kw => `"${kw}"${querySuffix}`),
             `"${focusProduct}" "${focusRegion}"${querySuffix}`
         ];
         const allArticles = [];
