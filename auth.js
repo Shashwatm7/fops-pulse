@@ -4,6 +4,7 @@ import {
   createUser, findUserByEmail, findUserById, findUserByUsername,
   getUserProfile, updateUserProfile, setOnboarded,
   getAllUsers, deleteUser, updateUserAdmin, getUserCount,
+  listCustomerProfiles, setUserCustomer, getCustomerProfile,
 } from './db.js';
 import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
@@ -125,11 +126,32 @@ router.get('/me', requireAuth, async (req, res) => {
 // ── POST /api/auth/onboard ──────────────────────────────────
 router.post('/onboard', requireAuth, async (req, res) => {
   try {
-    const { template_id, commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies } = req.body;
+    const { template_id, customer_id, commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies } = req.body;
 
     let profileData;
+    let customer = null;
+    if (customer_id) {
+      customer = await getCustomerProfile(customer_id);
+      if (!customer) return res.status(400).json({ error: 'Unknown customer profile' });
+    }
 
-    if (template_id && TEMPLATES[template_id]) {
+    if (customer) {
+      // Customer preset (e.g. Aramtec): derive an immediately-relevant
+      // profile from the customer's own data rather than a generic template,
+      // so the news feed matches this customer's supply chain from minute one
+      // instead of waiting for the first scan to enrich it.
+      profileData = {
+        commodities: commodities || [],
+        regions: regions || [...(customer.key_ports || []), ...(customer.supplier_countries || [])],
+        focus_region: focus_region || customer.region || 'Middle East',
+        focus_countries: focus_countries || (customer.supplier_countries || []),
+        focus_product: focus_product || customer.industry || 'Food Service',
+        news_keywords: news_keywords || [...new Set([...(customer.commodities || []), ...(customer.signal_keywords || [])])],
+        news_country_codes: news_country_codes || 'ae,sa,eg,qa,kw',
+        currencies: currencies || [],
+        template_name: `customer:${customer.id}`,
+      };
+    } else if (template_id && TEMPLATES[template_id]) {
       // Use template as base, allow overrides
       const tmpl = TEMPLATES[template_id];
       profileData = {
@@ -159,6 +181,7 @@ router.post('/onboard', requireAuth, async (req, res) => {
     }
 
     await updateUserProfile(req.user.id, profileData);
+    if (customer_id) await setUserCustomer(req.user.id, customer_id);
     await setOnboarded(req.user.id);
 
     const updatedProfile = await getUserProfile(req.user.id);
@@ -172,9 +195,17 @@ router.post('/onboard', requireAuth, async (req, res) => {
 // ── PUT /api/auth/profile ───────────────────────────────────
 router.put('/profile', requireAuth, async (req, res) => {
   try {
-    const { commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies, template_name, custom_regions, price_alerts, custom_blocklist: req_blocklist } = req.body;
+    const { commodities, regions, focus_region, focus_countries, focus_product, news_keywords, news_country_codes, currencies, template_name, custom_regions, price_alerts, custom_blocklist: req_blocklist, customer_id } = req.body;
     const current = await getUserProfile(req.user.id);
-    
+
+    if (customer_id !== undefined) {
+      if (customer_id) {
+        const c = await getCustomerProfile(customer_id);
+        if (!c) return res.status(400).json({ error: 'Unknown customer profile' });
+      }
+      await setUserCustomer(req.user.id, customer_id || null); // '' or null detaches
+    }
+
     // Automatically generate smart news keywords based on the focus product
     const product = focus_product ?? current.focus_product ?? 'Commodities';
     const prodLower = product.toLowerCase();
@@ -261,8 +292,10 @@ router.put('/profile', requireAuth, async (req, res) => {
 });
 
 // ── GET /api/auth/templates ─────────────────────────────────
-router.get('/templates', (req, res) => {
-  res.json({ templates: getAllTemplates(), commodities: ALL_COMMODITIES, regions: ALL_REGIONS });
+router.get('/templates', async (req, res) => {
+  let customers = [];
+  try { customers = await listCustomerProfiles(); } catch (e) { console.error('listCustomerProfiles failed:', e.message); }
+  res.json({ templates: getAllTemplates(), commodities: ALL_COMMODITIES, regions: ALL_REGIONS, customers });
 });
 
 // ── ADMIN: GET /api/auth/admin/db-stats ─────────────────────

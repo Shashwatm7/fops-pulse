@@ -4,6 +4,7 @@ import { Settings, Rocket } from 'lucide-react';
 export default function OnboardingWizard({ user, onComplete }) {
   const [step, setStep] = useState(1);
   const [templates, setTemplates] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [allCommodities, setAllCommodities] = useState([]);
   const [allRegions, setAllRegions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +12,7 @@ export default function OnboardingWizard({ user, onComplete }) {
 
   // Profile State
   const [selectedTemplate, setSelectedTemplate] = useState('custom');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [commodities, setCommodities] = useState([]);
   const [regions, setRegions] = useState([]);
   const [focusRegion, setFocusRegion] = useState('');
@@ -22,15 +24,23 @@ export default function OnboardingWizard({ user, onComplete }) {
       .then(res => res.json())
       .then(data => {
         setTemplates(data.templates);
+        setCustomers(data.customers || []);
         setAllCommodities(data.commodities);
         setAllRegions(data.regions);
         setLoading(false);
       });
   }, []);
 
+  const handleCustomerSelect = (customerId) => {
+    setSelectedCustomer(customerId);
+    setSelectedTemplate('custom'); // customer preset bypasses generic templates
+    setStep(4); // straight to review — the backend derives the full profile
+  };
+
   const handleTemplateSelect = async (templateId) => {
+    setSelectedCustomer(null);
     setSelectedTemplate(templateId);
-    
+
     // Fetch full template to pre-fill
     // (For this implementation, we just post the template_id later, but we want to show it in UI)
     if (templateId !== 'custom') {
@@ -55,13 +65,15 @@ export default function OnboardingWizard({ user, onComplete }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = selectedTemplate !== 'custom' 
+      const payload = selectedCustomer
+        ? { customer_id: selectedCustomer }
+        : selectedTemplate !== 'custom'
         ? { template_id: selectedTemplate }
-        : { 
+        : {
             template_id: 'custom',
-            commodities, 
-            regions, 
-            focus_region: focusRegion || 'Global', 
+            commodities,
+            regions,
+            focus_region: focusRegion || 'Global',
             focus_product: focusProduct || 'Commodities',
             news_keywords: newsKeywords.split(',').map(k => k.trim()).filter(Boolean)
           };
@@ -102,6 +114,21 @@ export default function OnboardingWizard({ user, onComplete }) {
         {/* Step 1: Template */}
         {step === 1 && (
           <div>
+            {customers.length > 0 && (
+              <>
+                <h3 style={styles.stepTitle}>Your Company</h3>
+                <div style={styles.grid}>
+                  {customers.map(c => (
+                    <div key={c.id} style={{ ...styles.templateCard, borderColor: 'var(--accent, #10b981)' }} onClick={() => handleCustomerSelect(c.id)}>
+                      <div style={styles.templateIcon}>🏢</div>
+                      <div style={styles.templateName}>{c.company}</div>
+                      <div style={styles.templateDesc}>{c.region}{c.industry ? ` · ${c.industry.replace(/_/g, ' ')}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ color: 'var(--text-dim)', fontSize: '13px', margin: '16px 0 30px' }}>Or pick a generic template instead:</p>
+              </>
+            )}
             <h3 style={styles.stepTitle}>Choose a Configuration Template</h3>
             <div style={styles.grid}>
               {templates.map(t => (
@@ -182,8 +209,11 @@ export default function OnboardingWizard({ user, onComplete }) {
           <div>
             <h3 style={styles.stepTitle}>Ready to Launch</h3>
             <div style={styles.reviewBox}>
-              <p><strong>Configuration:</strong> {selectedTemplate === 'custom' ? 'Custom Setup' : templates.find(t=>t.id===selectedTemplate)?.name}</p>
-              {selectedTemplate === 'custom' && (
+              <p><strong>Configuration:</strong> {selectedCustomer ? customers.find(c => c.id === selectedCustomer)?.company : selectedTemplate === 'custom' ? 'Custom Setup' : templates.find(t=>t.id===selectedTemplate)?.name}</p>
+              {selectedCustomer && (
+                <p style={{ color: 'var(--text-dim)' }}>Your dashboard will be pre-configured with this company's ports, routes, commodities, and supplier countries.</p>
+              )}
+              {!selectedCustomer && selectedTemplate === 'custom' && (
                 <>
                   <p><strong>Commodities:</strong> {commodities.length} selected</p>
                   <p><strong>Regions:</strong> {regions.length} selected</p>
@@ -194,7 +224,7 @@ export default function OnboardingWizard({ user, onComplete }) {
             </div>
 
             <div style={styles.btnRow}>
-              <button onClick={() => setStep(selectedTemplate==='custom'?3:1)} style={styles.btnSecondary}>Back</button>
+              <button onClick={() => setStep(selectedCustomer ? 1 : selectedTemplate==='custom' ? 3 : 1)} style={styles.btnSecondary}>Back</button>
               <button onClick={handleSave} style={{...styles.btnPrimary, display: 'flex', alignItems: 'center', gap: '8px'}} disabled={saving}>
                 {saving ? 'Configuring...' : <>Launch Dashboard <Rocket size={16} /></>}
               </button>

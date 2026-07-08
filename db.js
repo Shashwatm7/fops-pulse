@@ -618,6 +618,17 @@ export async function getReviewStats(userId) {
 // PILLAR 9: Customer (company) profiles
 // ═══════════════════════════════════════════════════════════════
 
+export async function listCustomerProfiles() {
+  const { rows } = await pool.query('SELECT id, company, industry, region FROM customer_profiles ORDER BY company');
+  return rows;
+}
+
+export async function setUserCustomer(userId, customerId) {
+  // customerId may be null to detach. Validated by the FK constraint on
+  // user_profiles.customer_id -> customer_profiles.id.
+  await pool.query('UPDATE user_profiles SET customer_id = $1 WHERE user_id = $2', [customerId, userId]);
+}
+
 export async function getCustomerProfile(customerId) {
   if (!customerId) return null;
   const { rows } = await pool.query('SELECT * FROM customer_profiles WHERE id = $1', [customerId]);
