@@ -375,7 +375,8 @@ export async function getRecentAiFeedback(userId, featureName = null, limit = 5)
 export async function insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted) {
   const sql =
     `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`;
   const params = [
     userId,
     article.title || 'Unknown Title',
@@ -388,7 +389,8 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
     article.extracted_features ? JSON.stringify(article.extracted_features) : null
   ];
   try {
-    await pool.query(sql, params);
+    const { rows } = await pool.query(sql, params);
+    return rows[0]?.id ?? null; // id enables the labeling system to link to this row
   } catch (err) {
     // 42703 = undefined column. Older deployments are missing
     // extracted_features (migration ordering bug) — self-heal and retry
@@ -396,15 +398,16 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
     if (err.code === '42703') {
       try {
         await pool.query('ALTER TABLE pipeline_audit_logs ADD COLUMN IF NOT EXISTS extracted_features JSONB');
-        await pool.query(sql, params);
+        const { rows } = await pool.query(sql, params);
         console.log('[DB] Self-healed missing extracted_features column on pipeline_audit_logs.');
-        return;
+        return rows[0]?.id ?? null;
       } catch (retryErr) {
         console.error('[DB] Failed to insert pipeline audit log after self-heal:', retryErr.message);
-        return;
+        return null;
       }
     }
     console.error('[DB] Failed to insert pipeline audit log:', err.message);
+    return null;
   }
 }
 
@@ -514,6 +517,100 @@ export async function acknowledgeAlert(userId, alertId) {
     [alertId, userId]
   );
   return rowCount > 0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PILLAR 8: Article Labeling — review queue
+// ═══════════════════════════════════════════════════════════════
+
+export async function getReviewQueue(userId, { confidenceLt, category, limit = 50 } = {}) {
+  const clauses = ['rq.user_id = $1', 'rq.reviewed = FALSE'];
+  const params = [userId];
+  if (confidenceLt != null) { params.push(confidenceLt); clauses.push(`td.confidence < $${params.length}`); }
+  if (category) { params.push(category); clauses.push(`td.category = $${params.length}`); }
+  params.push(Math.min(limit, 50));
+  const { rows } = await pool.query(
+    `SELECT rq.id, rq.title, rq.snippet, rq.llm_label, rq.created_at,
+            td.confidence, td.category, td.priority, td.relevant
+     FROM review_queue rq
+     JOIN training_data td ON rq.training_id = td.id
+     WHERE ${clauses.join(' AND ')}
+     ORDER BY rq.created_at ASC
+     LIMIT $${params.length}`,
+    params
+  );
+  return rows;
+}
+
+export async function submitReview(userId, reviewId, human) {
+  // Returns { ok, agreed } — agreed = whether the human relevant label
+  // matched the LLM's, for tracking model quality.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT rq.training_id, rq.llm_label FROM review_queue rq
+       WHERE rq.id = $1 AND rq.user_id = $2 AND rq.reviewed = FALSE FOR UPDATE`,
+      [reviewId, userId]
+    );
+    if (rows.length === 0) { await client.query('ROLLBACK'); return { ok: false }; }
+    const { training_id, llm_label } = rows[0];
+    const llmRelevant = llm_label?.training?.relevant;
+    const agreed = llmRelevant != null && Number(llmRelevant) === Number(human.relevant);
+
+    await client.query(
+      `UPDATE review_queue SET human_label = $1, reviewed = TRUE, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3`,
+      [JSON.stringify(human), String(userId), reviewId]
+    );
+    await client.query(
+      `UPDATE training_data SET human_label = $1, category = COALESCE($2, category),
+              priority = COALESCE($3, priority), source = 'human_reviewed'
+       WHERE id = $4`,
+      [human.relevant, human.category || null, human.priority || null, training_id]
+    );
+    await client.query('COMMIT');
+    return { ok: true, agreed };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[REVIEW] submitReview failed:', err.message);
+    return { ok: false, error: err.message };
+  } finally {
+    client.release();
+  }
+}
+
+export async function getReviewStats(userId) {
+  const { rows } = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE td.id IS NOT NULL)                       AS total_labeled,
+       COUNT(*) FILTER (WHERE td.source = 'llm_auto')                  AS llm_auto,
+       COUNT(*) FILTER (WHERE td.source = 'human_reviewed')            AS human_reviewed,
+       AVG(td.confidence)                                             AS avg_confidence,
+       COUNT(*) FILTER (WHERE td.human_label IS NOT NULL
+                        AND td.human_label = td.relevant)              AS agreements,
+       COUNT(*) FILTER (WHERE td.human_label IS NOT NULL)              AS total_reviewed
+     FROM training_data td WHERE td.user_id = $1`,
+    [userId]
+  );
+  const { rows: pending } = await pool.query(
+    `SELECT COUNT(*) AS pending FROM review_queue WHERE user_id = $1 AND reviewed = FALSE`,
+    [userId]
+  );
+  const { rows: byCat } = await pool.query(
+    `SELECT category, COUNT(*) AS n FROM training_data WHERE user_id = $1 GROUP BY category ORDER BY n DESC`,
+    [userId]
+  );
+  const s = rows[0] || {};
+  const totalReviewed = Number(s.total_reviewed || 0);
+  return {
+    total_labeled: Number(s.total_labeled || 0),
+    llm_auto: Number(s.llm_auto || 0),
+    human_reviewed: Number(s.human_reviewed || 0),
+    pending_review: Number(pending[0]?.pending || 0),
+    agreement_rate: totalReviewed > 0 ? +(Number(s.agreements || 0) / totalReviewed).toFixed(3) : null,
+    avg_confidence: s.avg_confidence != null ? +Number(s.avg_confidence).toFixed(3) : null,
+    by_category: byCat.reduce((acc, r) => { acc[r.category || 'uncategorized'] = Number(r.n); return acc; }, {}),
+  };
 }
 
 // Export the pool for session store
