@@ -2524,7 +2524,9 @@ async function initScannerPipeline() {
   if (userScannerPipeline) return userScannerPipeline;
     userScannerPipeline = new NewsPipeline({
     auditLogFn: async (userId, article, stageDropped, rejectionReason, score, isAccepted) => {
-        await insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted);
+        // Must RETURN the inserted row id — the pipeline threads it through as
+        // result.auditLogId, which the labeling system links training data to.
+        return await insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted);
     },
     llmFn: async (messages, expectJson) => {
       return { relevant: false, reason: 'LLM review disabled; API tokens reserved for planner recommendations and deep dives only.' };
