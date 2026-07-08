@@ -3062,6 +3062,49 @@ app.post('/api/precedent', requireAuth, async (req, res) => {
     }
 });
 
+// One-shot diagnostic: the real state behind "no AI insight / no prices /
+// no blocklist". Authenticated, scoped to the current user.
+app.get('/api/debug-labeling', requireAuth, async (req, res) => {
+    const uid = req.session.userId;
+    const out = { userId: uid };
+    try {
+        const prof = await getUserProfile(uid);
+        out.profile = {
+            customer_id: prof?.customer_id || null,
+            news_keywords_count: (prof?.news_keywords || []).length,
+            news_keywords_sample: (prof?.news_keywords || []).slice(0, 8),
+            custom_blocklist: prof?.custom_blocklist || [],
+            commodities: prof?.commodities || [],
+            regions_count: (prof?.regions || []).length,
+        };
+        out.labelingEnabled = labelingConfig.enabled;
+
+        const td = await pool.query('SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE relevant=1)::int rel FROM training_data WHERE user_id=$1', [uid]);
+        out.training_data = td.rows[0];
+        const ai = await pool.query(
+            `SELECT ai.severity, ai.category, pal.article_title, ai.audit_log_id
+             FROM article_insights ai JOIN pipeline_audit_logs pal ON ai.audit_log_id = pal.id
+             WHERE ai.user_id=$1 ORDER BY ai.created_at DESC LIMIT 5`, [uid]);
+        out.article_insights_count = (await pool.query('SELECT COUNT(*)::int n FROM article_insights WHERE user_id=$1', [uid])).rows[0].n;
+        out.article_insights_sample = ai.rows;
+        out.review_queue_count = (await pool.query('SELECT COUNT(*)::int n FROM review_queue WHERE user_id=$1 AND reviewed=false', [uid])).rows[0].n;
+
+        // Recent accepted-article titles (what labeling saw) — compare to the
+        // news feed to judge title-overlap for hover matching.
+        const acc = await pool.query(
+            `SELECT article_title FROM pipeline_audit_logs WHERE user_id=$1 AND is_accepted=true ORDER BY scanned_at DESC LIMIT 5`, [uid]);
+        out.recent_accepted_titles = acc.rows.map(r => r.article_title);
+
+        // Prices
+        const priced = Object.entries(livePrices).filter(([, s]) => s.current > 0);
+        out.prices = { total_symbols: Object.keys(livePrices).length, with_live_price: priced.length, sample: priced.slice(0, 5).map(([k, s]) => `${k}=${s.current}`) };
+
+        res.json({ success: true, ...out });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message, partial: out });
+    }
+});
+
 // Batch insight lookup for the dashboard news feed (hover insights).
 app.post('/api/insights/by-articles', requireAuth, async (req, res) => {
     try {
