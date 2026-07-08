@@ -2595,7 +2595,12 @@ async function scanSingleUser(user, pipeline) {
 
     // 1. Fetch News
     let customKeywords = profile.news_keywords && profile.news_keywords.length > 0 ? profile.news_keywords : [];
-    const regionTarget = profile.focus_region ? ` ${profile.focus_region}` : '';
+    // 'Global' pins nothing, so generic queries ("grain export") return
+    // whatever dominates world news that day. For customer-linked users,
+    // fall back to the customer's market so results stay relevant to them.
+    let focusRegionTerm = profile.focus_region && profile.focus_region !== 'Global' ? profile.focus_region : '';
+    if (!focusRegionTerm && customerProfile) focusRegionTerm = 'Middle East';
+    const regionTarget = focusRegionTerm ? ` ${focusRegionTerm}` : '';
 
     // Apply region target to custom keywords
     customKeywords = customKeywords.map(k => `${k}${regionTarget}`);
@@ -2604,8 +2609,11 @@ async function scanSingleUser(user, pipeline) {
     const targets = [...(profile.commodities || []), profile.focus_product].filter(Boolean);
     const regions = [...(profile.regions || []), profile.focus_region].filter(Boolean);
 
-    // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries
-    const commQueries = [...new Set(targets)].map(c => `${String(c).replace(/_/g, ' ')} supply chain OR logistics`);
+    // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries.
+    // Commodity queries get the same region pinning as keyword queries:
+    // "SOYBEANS supply chain" unpinned returns whichever country dominates
+    // that commodity's news cycle, not the user's market.
+    const commQueries = [...new Set(targets)].map(c => `${String(c).replace(/_/g, ' ')} supply chain OR logistics${regionTarget}`);
     const regQueries = [...new Set(regions)].map(r => `${r} supply chain OR logistics`);
 
     // Combine all sources into a single search pool
@@ -2617,6 +2625,7 @@ async function scanSingleUser(user, pipeline) {
     if (keywords.length === 0) {
         keywords = ['supply chain', 'logistics'];
     }
+    stats.queries = keywords; // surfaced via scan-status/debug so query targeting is verifiable
     const rssResults = await Promise.allSettled(
       keywords.map(async (q) => {
         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en&when=1d`;
