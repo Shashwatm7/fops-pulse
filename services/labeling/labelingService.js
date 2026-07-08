@@ -90,13 +90,15 @@ Return EXACTLY this JSON shape:
     "routes_affected": [only items from the distributor's route list],
     "ports_affected": [only items from the distributor's port list],
     "supplier_countries": [affected supplier countries],
+    "key_dates": ["specific dates or timeframes stated in the article, each with what happens then, e.g. 'Aug 1: tariff takes effect'"],
+    "key_figures": ["specific numbers stated in the article — prices, percentages, volumes — each with its meaning, e.g. 'wheat -4.2% this week'"],
     "urgency": "immediate" | "this_week" | "monitor" | "informational",
     "action_required": true or false,
     "action_note": "one sentence: what the team should do, or null"
   }
 }
 
-Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above.`;
+Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above. key_dates and key_figures must only contain values explicitly stated in the article — use empty arrays if none, never invent numbers or dates.`;
 }
 
 // Cheap, zero-LLM-cost entity extraction: regex-match the customer's own
@@ -176,7 +178,9 @@ export async function label(snippet, customer = null) {
         const user = strict
             ? userPrompt(snippet, customer) + '\n\nCRITICAL: your previous reply was not valid JSON. Return ONLY the raw JSON object, nothing else.'
             : userPrompt(snippet, customer);
-        const raw = await client(SYSTEM_PROMPT, user, 700);
+        // 850: the two extracted arrays (key_dates, key_figures) need headroom
+        // beyond the original 700 or the JSON gets truncated mid-array.
+        const raw = await client(SYSTEM_PROMPT, user, 850);
         return JSON.parse(raw);
     };
 
