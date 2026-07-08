@@ -636,6 +636,38 @@ export async function getCustomerProfileForUser(userId) {
   return rows[0] || null;
 }
 
+// Look up stored labeling insights for a set of displayed articles, matched to
+// pipeline_audit_logs by URL or (fallback) normalized title. Returns a map so
+// the frontend can show hover insights on news the scanner already labeled.
+export async function getInsightsForArticles(userId, articles) {
+  const urls = [...new Set(articles.map(a => a.url).filter(Boolean))];
+  const titles = [...new Set(articles.map(a => (a.title || '').trim().toLowerCase()).filter(Boolean))];
+  if (urls.length === 0 && titles.length === 0) return {};
+
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (pal.article_url, lower(pal.article_title))
+            pal.article_url, pal.article_title,
+            ai.severity, ai.urgency, ai.category, ai.summary, ai.insight_json
+     FROM article_insights ai
+     JOIN pipeline_audit_logs pal ON ai.audit_log_id = pal.id
+     WHERE ai.user_id = $1
+       AND (pal.article_url = ANY($2) OR lower(pal.article_title) = ANY($3))
+     ORDER BY pal.article_url, lower(pal.article_title), ai.created_at DESC`,
+    [userId, urls, titles]
+  );
+
+  const byUrl = {}, byTitle = {};
+  for (const r of rows) {
+    const insight = {
+      severity: r.severity, urgency: r.urgency, category: r.category,
+      headline: r.summary, detail: r.insight_json || null,
+    };
+    if (r.article_url) byUrl[r.article_url] = insight;
+    if (r.article_title) byTitle[r.article_title.trim().toLowerCase()] = insight;
+  }
+  return { byUrl, byTitle };
+}
+
 // Export the pool for session store
 export { pool };
 export default pool;

@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getInsightsForArticles } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -3044,6 +3044,19 @@ app.post('/api/precedent', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Precedent lookup error:', err.message);
         res.status(500).json({ success: false, error: 'Precedent lookup failed' });
+    }
+});
+
+// Batch insight lookup for the dashboard news feed (hover insights).
+app.post('/api/insights/by-articles', requireAuth, async (req, res) => {
+    try {
+        const articles = Array.isArray(req.body?.articles) ? req.body.articles.slice(0, 60) : [];
+        if (articles.length === 0) return res.json({ success: true, byUrl: {}, byTitle: {} });
+        const maps = await getInsightsForArticles(req.session.userId, articles);
+        res.json({ success: true, ...maps });
+    } catch (err) {
+        console.error('Insights lookup error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to load insights' });
     }
 });
 
