@@ -15,6 +15,7 @@ import SettingsPage from './SettingsPage.jsx';
 import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
 import MorningBrief from './MorningBrief.jsx';
+import WeeklyDigest from './WeeklyDigest.jsx';
 import TagInput from './TagInput.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
@@ -307,6 +308,7 @@ export default function Dashboard() {
   const [csvKeywords, setCsvKeywords] = useState([]);
   const [mlForecasts, setMlForecasts] = useState([]);
   const [morningBrief, setMorningBrief] = useState(null);
+  const [weeklyDigest, setWeeklyDigest] = useState(null);
   // ── S&OP State ──
   const [sopPlans, setSopPlans] = useState([]);
   const [showSopModal, setShowSopModal] = useState(false);
@@ -681,6 +683,12 @@ export default function Dashboard() {
       fetch(`${API_BASE}/morning-brief`, fetchOpts)
         .then(r => r.json())
         .then(data => { if (data.success) setMorningBrief(data); })
+        .catch(() => {});
+
+      // Weekly digest: independent, non-blocking
+      fetch(`${API_BASE}/weekly-digest`, fetchOpts)
+        .then(r => r.json())
+        .then(data => { if (data.success) setWeeklyDigest(data); })
         .catch(() => {});
 
       setAiRecsLoading(true);
@@ -1204,6 +1212,8 @@ export default function Dashboard() {
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
           <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} />
+
+          <WeeklyDigest digest={weeklyDigest} />
 
           {drivers.length > 0 && (
             <div className="mb-xl">

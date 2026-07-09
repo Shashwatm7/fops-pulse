@@ -12,7 +12,7 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache, getPriceChangeOverDays } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -2909,6 +2909,59 @@ app.get('/api/morning-brief', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Morning brief error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to build morning brief' });
+    }
+});
+
+// 7-day digest: alert activity, real week-over-week price moves for tracked
+// commodities (from stored ticks), and the week's notable articles. Same
+// shape philosophy as the morning brief, wider window.
+app.get('/api/weekly-digest', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        const HOURS_7D = 7 * 24;
+        const [weekAlerts, weekNews] = await Promise.all([
+            getAlertsSince(userId, HOURS_7D, 200),
+            getAcceptedArticlesSince(userId, HOURS_7D, 8),
+        ]);
+
+        const alertCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+        for (const a of weekAlerts) {
+            if (alertCounts[a.severity] != null) alertCounts[a.severity]++;
+        }
+
+        const tracked = req.userProfile?.commodities || [];
+        const changes = await Promise.all(tracked.map(async (symbol) => {
+            const chg = await getPriceChangeOverDays(symbol, 7);
+            if (!chg) return null;
+            const changePct = ((chg.lastPrice - chg.firstPrice) / chg.firstPrice) * 100;
+            return {
+                symbol,
+                label: symbol.replace(/_/g, ' '),
+                firstPrice: chg.firstPrice,
+                lastPrice: chg.lastPrice,
+                changePct: +changePct.toFixed(2),
+                unit: COMMODITY_UNITS[symbol] || 'USD',
+            };
+        }));
+        const priceMovers = changes.filter(Boolean).sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+
+        res.json({
+            success: true,
+            since: new Date(Date.now() - HOURS_7D * 60 * 60 * 1000).toISOString(),
+            totalAlerts: weekAlerts.length,
+            alertCounts,
+            priceMovers,
+            notableArticles: weekNews.map(n => ({
+                title: n.article_title,
+                url: n.article_url,
+                source: n.source,
+                relevanceScore: n.relevance_score != null ? Number(n.relevance_score) : null,
+                scannedAt: n.scanned_at,
+            })),
+        });
+    } catch (err) {
+        console.error('Weekly digest error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to build weekly digest' });
     }
 });
 
