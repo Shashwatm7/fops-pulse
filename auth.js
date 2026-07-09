@@ -4,7 +4,7 @@ import {
   createUser, findUserByEmail, findUserById, findUserByUsername,
   getUserProfile, updateUserProfile, setOnboarded,
   getAllUsers, deleteUser, updateUserAdmin, getUserCount,
-  listCustomerProfiles, setUserCustomer, getCustomerProfile,
+  listCustomerProfiles, setUserCustomer, getCustomerProfile, touchSettingsChanged,
 } from './db.js';
 import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
@@ -276,15 +276,30 @@ router.put('/profile', requireAuth, async (req, res) => {
 
     const updatedProfile = await getUserProfile(req.user.id);
 
-    // Clear old alerts and trigger an immediate scan for the newly updated profile!
-    if (global.clearUserAlertsCache) {
-        global.clearUserAlertsCache(req.user.id);
-    }
-    if (global.triggerUserScan) {
-        global.triggerUserScan(req.user.id);
+    // Did the user materially change WHAT they track (not just currency or a
+    // keyword tweak)? Only then do we hide old alerts/labels and rescan —
+    // a currency-only save shouldn't wipe the alert feed.
+    const norm = (v) => JSON.stringify(Array.isArray(v) ? [...v].sort() : (v ?? null));
+    const materialChange =
+        norm(current.commodities) !== norm(updatedProfile.commodities) ||
+        norm(current.regions) !== norm(updatedProfile.regions) ||
+        norm(current.focus_region) !== norm(updatedProfile.focus_region) ||
+        norm(current.focus_product) !== norm(updatedProfile.focus_product) ||
+        norm(current.customer_id) !== norm(updatedProfile.customer_id);
+
+    let rescan = false;
+    if (materialChange) {
+        // Stamp the cutoff: old alerts + labeled insights drop out of view
+        // immediately (kept in the DB), then a fresh scan repopulates.
+        await touchSettingsChanged(req.user.id);
+        if (global.clearUserAlertsCache) global.clearUserAlertsCache(req.user.id);
+        // Tracked scan so the frontend can poll /api/scan-status and refetch
+        // once the new-profile results land.
+        if (global.startUserScanTracked) { global.startUserScanTracked(req.user.id); rescan = true; }
+        else if (global.triggerUserScan) { global.triggerUserScan(req.user.id); rescan = true; }
     }
 
-    res.json({ success: true, profile: updatedProfile });
+    res.json({ success: true, profile: updatedProfile, rescan });
   } catch (err) {
     console.error('Profile update error:', err);
     res.status(500).json({ error: 'Profile update failed' });

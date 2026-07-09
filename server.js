@@ -1106,16 +1106,11 @@ app.post('/api/trigger-scan', requireAuth, async (req, res) => {
         // client poll /api/scan-status for the result.
         const uid = req.session.userId;
         global.scanState = global.scanState || {};
-        const existing = global.scanState[uid];
-        if (existing && existing.running) {
+        if (global.scanState[uid]?.running) {
             return res.json({ success: true, started: false, running: true });
         }
-        global.scanState[uid] = { running: true, stats: null, startedAt: Date.now(), finishedAt: null };
-
         if (global.triggerUserScan) {
-            global.triggerUserScan(uid)
-                .then(stats => { global.scanState[uid] = { running: false, stats, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; })
-                .catch(err => { global.scanState[uid] = { running: false, stats: { error: err.message }, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; });
+            global.startUserScanTracked(uid);
         } else {
             scanUserSpecificNews();
             global.scanState[uid] = { running: false, stats: null, startedAt: Date.now(), finishedAt: Date.now() };
@@ -2819,6 +2814,20 @@ global.clearUserAlertsCache = (userId) => {
     } else {
         Object.keys(userSpecificAlertsCache).forEach(k => delete userSpecificAlertsCache[k]);
     }
+};
+
+// Fire a scan and record it in global.scanState so /api/scan-status can be
+// polled. Shared by the trigger-scan route and the settings-save rescan so
+// both surface progress the same way. No-ops if a scan is already running.
+global.startUserScanTracked = (uid) => {
+    global.scanState = global.scanState || {};
+    const existing = global.scanState[uid];
+    if (existing && existing.running) return false;
+    global.scanState[uid] = { running: true, stats: null, startedAt: Date.now(), finishedAt: null };
+    global.triggerUserScan(uid)
+        .then(stats => { global.scanState[uid] = { running: false, stats, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; })
+        .catch(err => { global.scanState[uid] = { running: false, stats: { error: err.message }, startedAt: global.scanState[uid].startedAt, finishedAt: Date.now() }; });
+    return true;
 };
 
 app.put('/api/sop/:id', requireAuth, async (req, res) => {

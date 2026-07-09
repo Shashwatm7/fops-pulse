@@ -460,10 +460,15 @@ export async function getActiveAlerts(userId, limit = 30) {
   await pool.query(
     `UPDATE alerts SET status = 'expired' WHERE status = 'active' AND created_at < NOW() - INTERVAL '7 days'`
   ).catch(() => {});
+  // Gate on settings_changed_at: after a material profile change, alerts from
+  // the old profile are hidden (not deleted). COALESCE → NULL means show all.
   const { rows } = await pool.query(
     `SELECT id, source, category, severity, title, reason, url, relevance_score, payload, created_at
      FROM alerts
      WHERE user_id = $1 AND status = 'active'
+       AND created_at >= COALESCE(
+         (SELECT settings_changed_at FROM user_profiles WHERE user_id = $1),
+         '1970-01-01'::timestamptz)
      ORDER BY created_at DESC
      LIMIT $2`,
     [userId, limit]
@@ -658,11 +663,21 @@ export async function getRecentInsights(userId, limit = 15) {
      FROM article_insights ai
      JOIN pipeline_audit_logs pal ON ai.audit_log_id = pal.id
      WHERE ai.user_id = $1
+       AND ai.created_at >= COALESCE(
+         (SELECT settings_changed_at FROM user_profiles WHERE user_id = $1),
+         '1970-01-01'::timestamptz)
      ORDER BY ai.created_at DESC
      LIMIT $2`,
     [userId, limit]
   );
   return rows;
+}
+
+// Stamp the cutoff used by getActiveAlerts/getRecentInsights so pre-change
+// alerts and labels drop out of view immediately (kept in the DB for
+// training/history). Called from PUT /profile only on a material change.
+export async function touchSettingsChanged(userId) {
+  await pool.query('UPDATE user_profiles SET settings_changed_at = NOW() WHERE user_id = $1', [userId]);
 }
 
 // On-demand click-to-summarize cache, keyed by article URL so repeat
