@@ -34,6 +34,9 @@ export default function MorningBrief({ brief, username, onViewAlerts }) {
   const counts = brief.alertCounts || {};
   const totalAlerts = (brief.newAlerts || []).length;
   const news = brief.acceptedNews || [];
+  const priceMovers = brief.priceMovers || [];
+
+  const fmtPrice = (p) => (p >= 100 ? p.toFixed(0) : p >= 1 ? p.toFixed(2) : p.toFixed(4));
 
   const sevColor = { CRITICAL: '#fb7185', HIGH: '#fbbf24', MEDIUM: '#38bdf8', LOW: '#a1a1aa' };
   const colStyle = { minWidth: 0, display: 'flex', flexDirection: 'column' };
@@ -85,6 +88,27 @@ export default function MorningBrief({ brief, username, onViewAlerts }) {
         </div>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.16s' }}>
+          <div style={colTitle}>Tracked Prices <span style={{ letterSpacing: 0, textTransform: 'none', color: 'var(--text-dim)', fontWeight: 400 }}>· vs prev close</span></div>
+          {priceMovers.length === 0 ? (
+            <div style={emptyStyle}>No live price data for your tracked commodities right now.</div>
+          ) : priceMovers.map(m => {
+            const up = m.changePct > 0, flat = m.changePct === 0;
+            const col = flat ? 'var(--text-dim)' : up ? '#34d399' : '#fb7185';
+            return (
+              <div key={m.symbol} style={rowStyle}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', textTransform: 'capitalize' }} title={m.label}>{m.label.toLowerCase()}</span>
+                <span style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '8px', fontFamily: 'var(--font-mono)' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{fmtPrice(m.price)}</span>
+                  <span style={{ color: col, fontWeight: 600, minWidth: '58px', textAlign: 'right' }}>
+                    {flat ? '0.00%' : `${up ? '▲' : '▼'} ${Math.abs(m.changePct).toFixed(2)}%`}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="section-enter" style={{ ...colStyle, animationDelay: '0.24s' }}>
           <div style={colTitle}>Fresh Intelligence</div>
           {news.length === 0 ? <div style={emptyStyle}>No newly accepted articles in the last 24h.</div> : news.map((n, i) => (
             <div key={i} style={{ marginBottom: '7px', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.title}>
