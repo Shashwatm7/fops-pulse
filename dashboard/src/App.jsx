@@ -1413,7 +1413,7 @@ export default function Dashboard() {
             </div>
             {recentInsights.length === 0 ? (
               <div className="intel-card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                No labeled articles yet — run the scanner (Pipeline Analytics → Run Scanner Now) to generate AI intelligence.
+                No labeled articles. Automatic AI labeling during scans has been turned off — click "✨ AI Summary" on a Risk Alert below for an on-demand summary instead.
               </div>
             ) : (() => {
               const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };

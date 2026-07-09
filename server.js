@@ -17,7 +17,6 @@ import { scoreAlertExposure, severityFromScore, severityFromPriority } from './s
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
-import { processArticle as labelArticle } from './services/labeling/labelingPipeline.js';
 import { summarizeArticle, extractLocalEntities } from './services/labeling/labelingService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
@@ -2592,7 +2591,11 @@ async function initScannerPipeline() {
 async function scanSingleUser(user, pipeline) {
   // Diagnostic stats returned to the caller so "Run Scanner Now" can report
   // exactly what happened instead of a blind "success".
-  const stats = { fetched: 0, accepted: 0, labeled: 0, labelingEnabled: labelingConfig.enabled, labelErrors: [], skippedReason: null, error: null };
+  // labeled/labelErrors/labelingEnabled are always 0/[]/false now — ingestion
+  // never calls an LLM. Kept in the shape so the Pipeline Analytics UI (which
+  // reads these fields) doesn't need its own change; they just always report
+  // "off" going forward.
+  const stats = { fetched: 0, accepted: 0, labeled: 0, labelingEnabled: false, labelErrors: [], skippedReason: null, error: null };
   try {
     if (!user.id) { stats.skippedReason = 'no user.id'; return stats; }
     const profile = await getUserProfile(user.id);
@@ -2753,19 +2756,13 @@ async function scanSingleUser(user, pipeline) {
           dedupKey: `profile:${titleKey}`,
         });
 
-        // Article labeling (survivors of stage 8 only). Feature-flagged off by
-        // default; fully guarded so a labeling failure never breaks the scan.
-        if (labelingConfig.enabled && result.auditLogId) {
-          try {
-            await labelArticle(a, { auditLogId: result.auditLogId, userId: user.id, customer: customerProfile });
-            stats.labeled++;
-          } catch (labelErr) {
-            console.error('[LABELING] processArticle failed (non-fatal):', labelErr.message);
-            stats.labelErrors.push(labelErr.message);
-          }
-        } else if (labelingConfig.enabled && !result.auditLogId) {
-          stats.labelErrors.push('no auditLogId (audit-log insert returned null)');
-        }
+        // Ingestion is intentionally 100% LLM-free: stages 1-9 above are
+        // regex/arithmetic/local-embedding only, and no Groq call happens
+        // here regardless of ENABLE_ARTICLE_LABELING. The AI Intelligence
+        // panel/AI-label blocks that this used to feed are now historical
+        // only (existing rows stay queryable). The only remaining LLM call
+        // in the app is the on-demand "AI Summary" click, which is
+        // user-triggered and outside the scan/ingestion path entirely.
 
       }
     }
@@ -3141,7 +3138,9 @@ app.get('/api/debug-labeling', requireAuth, async (req, res) => {
             commodities: prof?.commodities || [],
             regions_count: (prof?.regions || []).length,
         };
-        out.labelingEnabled = labelingConfig.enabled;
+        // Ingestion-time labeling is permanently removed (see scanSingleUser)
+        // — this always reports false now regardless of the env flag.
+        out.labelingEnabled = false;
 
         const td = await pool.query('SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE relevant=1)::int rel FROM training_data WHERE user_id=$1', [uid]);
         out.training_data = td.rows[0];
