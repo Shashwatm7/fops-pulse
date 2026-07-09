@@ -26,14 +26,14 @@ function BriefSkeleton() {
 }
 
 // "What changed since yesterday" — triage panel at the top of the dashboard.
-// Every value is real fetched data: alerts + accepted articles from Postgres.
-export default function MorningBrief({ brief, username, onViewAlerts }) {
+// Every value is real fetched data: alerts from Postgres, prices from live
+// Yahoo ticks (current vs prev close). Clicking a commodity opens its chart.
+export default function MorningBrief({ brief, username, onViewAlerts, onSelectCommodity }) {
   if (!brief) return <BriefSkeleton />;
 
   const alerts = (brief.newAlerts || []).slice(0, 5);
   const counts = brief.alertCounts || {};
   const totalAlerts = (brief.newAlerts || []).length;
-  const news = brief.acceptedNews || [];
   const priceMovers = brief.priceMovers || [];
 
   const fmtPrice = (p) => (p >= 100 ? p.toFixed(0) : p >= 1 ? p.toFixed(2) : p.toFixed(4));
@@ -88,15 +88,24 @@ export default function MorningBrief({ brief, username, onViewAlerts }) {
         </div>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.16s' }}>
-          <div style={colTitle}>Tracked Prices <span style={{ letterSpacing: 0, textTransform: 'none', color: 'var(--text-dim)', fontWeight: 400 }}>· vs prev close</span></div>
+          <div style={colTitle}>Tracked Commodities <span style={{ letterSpacing: 0, textTransform: 'none', color: 'var(--text-dim)', fontWeight: 400 }}>· vs prev close · click for chart</span></div>
           {priceMovers.length === 0 ? (
             <div style={emptyStyle}>No live price data for your tracked commodities right now.</div>
           ) : priceMovers.map(m => {
             const up = m.changePct > 0, flat = m.changePct === 0;
             const col = flat ? 'var(--text-dim)' : up ? '#34d399' : '#fb7185';
             return (
-              <div key={m.symbol} style={rowStyle}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', textTransform: 'capitalize' }} title={m.label}>{m.label.toLowerCase()}</span>
+              <div
+                key={m.symbol}
+                onClick={() => onSelectCommodity && onSelectCommodity(m)}
+                title={`Open ${m.label.toLowerCase()} chart`}
+                style={{ ...rowStyle, cursor: 'pointer', padding: '4px 8px', margin: '0 -8px 4px', borderRadius: '6px' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                  <span style={{ color: 'var(--text-dim)', marginRight: '6px' }}>📈</span>{m.label.toLowerCase()}
+                </span>
                 <span style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '8px', fontFamily: 'var(--font-mono)' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{fmtPrice(m.price)}</span>
                   <span style={{ color: col, fontWeight: 600, minWidth: '58px', textAlign: 'right' }}>
@@ -106,18 +115,6 @@ export default function MorningBrief({ brief, username, onViewAlerts }) {
               </div>
             );
           })}
-        </div>
-
-        <div className="section-enter" style={{ ...colStyle, animationDelay: '0.24s' }}>
-          <div style={colTitle}>Fresh Intelligence</div>
-          {news.length === 0 ? <div style={emptyStyle}>No newly accepted articles in the last 24h.</div> : news.map((n, i) => (
-            <div key={i} style={{ marginBottom: '7px', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.title}>
-              <a href={n.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>
-                {n.title}
-              </a>
-              {n.source && <span style={{ color: 'var(--text-dim)', fontSize: '11px' }}> · {n.source}</span>}
-            </div>
-          ))}
         </div>
 
       </div>

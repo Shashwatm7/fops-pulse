@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine
@@ -15,7 +15,7 @@ import SettingsPage from './SettingsPage.jsx';
 import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
 import MorningBrief from './MorningBrief.jsx';
-import WeeklyDigest from './WeeklyDigest.jsx';
+const CommodityChartModal = lazy(() => import('./CommodityChartModal.jsx'));
 import TagInput from './TagInput.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
@@ -308,7 +308,7 @@ export default function Dashboard() {
   const [csvKeywords, setCsvKeywords] = useState([]);
   const [mlForecasts, setMlForecasts] = useState([]);
   const [morningBrief, setMorningBrief] = useState(null);
-  const [weeklyDigest, setWeeklyDigest] = useState(null);
+  const [chartModal, setChartModal] = useState(null); // { symbol, label, unit }
   // ── S&OP State ──
   const [sopPlans, setSopPlans] = useState([]);
   const [showSopModal, setShowSopModal] = useState(false);
@@ -685,11 +685,6 @@ export default function Dashboard() {
         .then(data => { if (data.success) setMorningBrief(data); })
         .catch(() => {});
 
-      // Weekly digest: independent, non-blocking
-      fetch(`${API_BASE}/weekly-digest`, fetchOpts)
-        .then(r => r.json())
-        .then(data => { if (data.success) setWeeklyDigest(data); })
-        .catch(() => {});
 
       setAiRecsLoading(true);
       setAiRecommendationsError('');
@@ -1211,9 +1206,7 @@ export default function Dashboard() {
       {tab === 'pulse' && (
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
-          <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} />
-
-          <WeeklyDigest digest={weeklyDigest} />
+          <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
 
           {drivers.length > 0 && (
             <div className="mb-xl">
@@ -1816,6 +1809,18 @@ export default function Dashboard() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* ═══════════ COMMODITY CHART MODAL ═══════════ */}
+      {chartModal && (
+        <Suspense fallback={<div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>Loading chart…</div>}>
+        <CommodityChartModal
+          symbol={chartModal.symbol}
+          label={chartModal.label}
+          unit={chartModal.unit}
+          onClose={() => setChartModal(null)}
+        />
+        </Suspense>
       )}
 
     </div>
