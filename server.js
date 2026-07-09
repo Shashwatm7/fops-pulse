@@ -185,7 +185,7 @@ const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 2 * 60 * 60 * 1
 
 const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
-const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 15);
+const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 6);
 
 // ── Token Usage Tracking ─────────────────────────────────────
 let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
