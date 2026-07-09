@@ -684,10 +684,11 @@ app.get('/api/history', requireAuth, async (req, res) => {
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval });
         const hist = chart.quotes || [];
 
-        // Normalize to USD using the chart's own currency: "USX" means the
-        // contract quotes in US cents. This keeps history consistent with
-        // the live tick normalization in tickPrices.
-        const centsQuoted = chart.meta?.currency === 'USX';
+        // "USX" is Yahoo's own currency tag for cents-denominated futures
+        // (grains, softs, livestock). Yahoo's own UI displays these quotes
+        // RAW (e.g. lean hogs shows "85.875", not "$0.85875") — so we pass
+        // the number through unconverted to match the number every other
+        // source (CME, financial press, Yahoo itself) reports.
         let normalized = hist.map(d => {
             let price = d.close;
             let open = d.open;
@@ -695,12 +696,6 @@ app.get('/api/history', requireAuth, async (req, res) => {
             let low = d.low;
             let volume = d.volume;
 
-            if (centsQuoted) {
-                if (price) price = price / 100;
-                if (open) open = open / 100;
-                if (high) high = high / 100;
-                if (low) low = low / 100;
-            }
             return {
                 time: d.date.toISOString(),
                 price: price ? parseFloat(price.toFixed(2)) : 0,
@@ -1828,21 +1823,17 @@ async function tickPrices() {
                 continue;
             }
             
-            let newPrice = q.regularMarketPrice;
-
-            // Normalize to USD: Yahoo quotes many futures in US cents
-            // (currency "USX") — grains per bushel, softs/livestock per lb.
-            // Driven by the quote's own currency field, not a symbol list.
-            const usxCents = q.currency === 'USX';
-            if (usxCents) {
-                newPrice = newPrice / 100;
-            }
+            // "USX" (US cents) futures — grains, softs, livestock — are shown
+            // RAW, unconverted: this matches how Yahoo's own UI, CME, and
+            // financial press report these quotes (e.g. lean hogs "85.875",
+            // not "$0.85875"). No cents->dollars division.
+            const newPrice = q.regularMarketPrice;
 
             // Same-contract session refs for the anomaly detector — the
             // quote's own previousClose/open cannot span a contract roll,
             // unlike the continuous chart series.
-            state.prevClose = q.regularMarketPreviousClose > 0 ? (usxCents ? q.regularMarketPreviousClose / 100 : q.regularMarketPreviousClose) : null;
-            state.dayOpen = q.regularMarketOpen > 0 ? (usxCents ? q.regularMarketOpen / 100 : q.regularMarketOpen) : null;
+            state.prevClose = q.regularMarketPreviousClose > 0 ? q.regularMarketPreviousClose : null;
+            state.dayOpen = q.regularMarketOpen > 0 ? q.regularMarketOpen : null;
 
             const rounded = +newPrice.toFixed(newPrice < 10 ? 4 : 2);
 
@@ -1881,12 +1872,10 @@ async function tickPrices() {
             try {
                 const period1 = new Date(); period1.setDate(period1.getDate() - 7);
                 const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
-                const cents = chart.meta?.currency === 'USX';
                 const bars = (chart.quotes || []).filter(q => q.close != null);
                 if (bars.length === 0) continue;
-                const norm = v => (cents ? v / 100 : v);
-                const last = norm(bars[bars.length - 1].close);
-                const prevRaw = bars.length > 1 ? norm(bars[bars.length - 2].close) : null;
+                const last = bars[bars.length - 1].close;
+                const prevRaw = bars.length > 1 ? bars[bars.length - 2].close : null;
                 // Continuous-series bars can span a futures contract roll —
                 // the documented reason the quote path uses same-contract
                 // refs. A big bar-to-bar gap here is indistinguishable from a
@@ -1953,17 +1942,15 @@ async function getDailyCloses(symbol) {
         const period1 = new Date();
         period1.setDate(period1.getDate() - 140);
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
-        const cents = chart.meta?.currency === 'USX';
-        const norm = v => (v == null ? null : (cents ? v / 100 : v));
         const todayUtc = new Date().toISOString().slice(0, 10);
         const closes = [];
         let todayOpen = null;
         for (const q of chart.quotes || []) {
             if (!q.date) continue;
             if (q.date.toISOString().slice(0, 10) === todayUtc) {
-                todayOpen = norm(q.open); // today's session open feeds the contract-roll guard
+                todayOpen = q.open ?? null; // today's session open feeds the contract-roll guard
             } else if (q.close != null) {
-                closes.push(norm(q.close)); // completed days only
+                closes.push(q.close); // completed days only
             }
         }
         dailyCloseCache[symbol] = { closes, todayOpen, fetchedDate: todayUtc };
@@ -2987,10 +2974,9 @@ async function getPrecedentAftermath(pastEvent, symbol) {
         const period1 = new Date(pastEvent.date); period1.setDate(period1.getDate() - 10);
         const period2 = new Date(pastEvent.date); period2.setDate(period2.getDate() + 100);
         const chart = await yahooFinance.chart(yTicker, { period1, period2, interval: '1d' });
-        const cents = chart.meta?.currency === 'USX';
         const bars = (chart.quotes || [])
             .filter(q => q.close != null && q.date)
-            .map(q => ({ date: q.date, close: cents ? q.close / 100 : q.close }));
+            .map(q => ({ date: q.date, close: q.close }));
         const aftermath = computeAftermath(bars, pastEvent.date);
         precedentAftermathCache[cacheKey] = aftermath;
         return aftermath;
@@ -3013,10 +2999,9 @@ async function getLongHistory(symbol) {
         const period1 = new Date();
         period1.setFullYear(period1.getFullYear() - 15);
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
-        const cents = chart.meta?.currency === 'USX';
         const bars = (chart.quotes || [])
             .filter(q => q.close != null && q.date)
-            .map(q => ({ date: q.date, close: cents ? q.close / 100 : q.close }));
+            .map(q => ({ date: q.date, close: q.close }));
         longHistoryCache[symbol] = { bars, fetchedDate: today };
         return bars;
     } catch (e) {
