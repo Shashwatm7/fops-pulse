@@ -761,6 +761,20 @@ export default function Dashboard() {
       .catch(() => {});
   }, [tab, user]);
 
+  // Keep the Morning Brief's tracked-commodity prices fresh while the
+  // Command Center is open. Server prices re-fetch from Yahoo every 15 min;
+  // a 60s poll picks changes up without hammering anything.
+  useEffect(() => {
+    if (tab !== 'pulse' || !user) return;
+    const id = setInterval(() => {
+      fetch(`${API_BASE}/morning-brief`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => { if (d.success) setMorningBrief(d); })
+        .catch(() => {});
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, [tab, user]);
+
   // Match visible alert cards against stored AI labels (dates, figures,
   // action notes) so alerted articles carry the same intelligence as the
   // labeled-articles panel.

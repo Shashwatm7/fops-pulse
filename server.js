@@ -1886,7 +1886,16 @@ async function tickPrices() {
                 if (bars.length === 0) continue;
                 const norm = v => (cents ? v / 100 : v);
                 const last = norm(bars[bars.length - 1].close);
-                const prev = bars.length > 1 ? norm(bars[bars.length - 2].close) : null;
+                const prevRaw = bars.length > 1 ? norm(bars[bars.length - 2].close) : null;
+                // Continuous-series bars can span a futures contract roll —
+                // the documented reason the quote path uses same-contract
+                // refs. A big bar-to-bar gap here is indistinguishable from a
+                // roll (oats "jumped" +13.8% on a roll day while the actual
+                // contract fell), so treat prev as unverifiable rather than
+                // report a fake move. Downstream honestly shows no % and the
+                // anomaly detector suppresses no-prevClose jumps.
+                const gapPct = prevRaw > 0 ? Math.abs((last - prevRaw) / prevRaw) * 100 : null;
+                const prev = gapPct != null && gapPct <= 7 ? prevRaw : null;
                 const rounded = +last.toFixed(last < 10 ? 4 : 2);
                 if (!state.initializedFromYahoo) {
                     state.base = rounded; state.open = rounded; state.high = rounded; state.low = rounded;
@@ -2922,19 +2931,23 @@ app.get('/api/morning-brief', requireAuth, async (req, res) => {
         const priceMovers = tracked
             .map(symbol => {
                 const state = livePrices[symbol];
-                if (!state || !(state.current > 0) || !(state.prevClose > 0)) return null;
-                const changePct = ((state.current - state.prevClose) / state.prevClose) * 100;
+                if (!state || !(state.current > 0)) return null;
+                // prevClose can be legitimately unknown (chart-fallback path
+                // refuses cross-contract refs) — list the real price with a
+                // null changePct instead of hiding the commodity or faking %.
+                const hasPrev = state.prevClose > 0;
+                const changePct = hasPrev ? ((state.current - state.prevClose) / state.prevClose) * 100 : null;
                 return {
                     symbol,
                     label: symbol.replace(/_/g, ' '),
                     price: state.current,
-                    prevClose: state.prevClose,
-                    changePct: +changePct.toFixed(2),
+                    prevClose: hasPrev ? state.prevClose : null,
+                    changePct: hasPrev ? +changePct.toFixed(2) : null,
                     unit: COMMODITY_UNITS[symbol] || 'USD',
                 };
             })
             .filter(Boolean)
-            .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+            .sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0));
 
         res.json({
             success: true,
