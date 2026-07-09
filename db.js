@@ -183,30 +183,6 @@ export async function getPriceHistory(symbol, fromDate, toDate, limit = 1000) {
   return rows;
 }
 
-// First vs last recorded price for a symbol over the last N days, from our
-// own stored ticks (real recorded prices, not simulated). Returns null when
-// there aren't at least 2 ticks in the window to form a change.
-export async function getPriceChangeOverDays(symbol, days = 7) {
-  const { rows } = await pool.query(
-    `SELECT (array_agg(price ORDER BY recorded_at ASC))[1]  AS first_price,
-            (array_agg(price ORDER BY recorded_at DESC))[1] AS last_price,
-            min(recorded_at) AS first_at, max(recorded_at) AS last_at,
-            count(*) AS n
-     FROM price_ticks
-     WHERE symbol = $1 AND recorded_at >= NOW() - ($2 || ' days')::interval`,
-    [symbol, days]
-  );
-  const r = rows[0];
-  if (!r || Number(r.n) < 2 || !(r.first_price > 0)) return null;
-  return {
-    firstPrice: Number(r.first_price),
-    lastPrice: Number(r.last_price),
-    firstAt: r.first_at,
-    lastAt: r.last_at,
-    ticks: Number(r.n),
-  };
-}
-
 export async function insertWeatherSnapshot(regionName, lat, lon, tempC, precipMm, humidity, windKph, condition) {
   return pool.query(
     `INSERT INTO weather_snapshots (region_name, lat, lon, temp_c, precip_mm, humidity, wind_kph, condition)
