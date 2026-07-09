@@ -1790,19 +1790,26 @@ async function tickPrices() {
         const querySymbols = Object.values(YAHOO_SYMBOLS);
         let quotes = [];
         
-        // Fetch in small chunks, fallback to individual if a chunk fails (e.g. due to schema validation on one symbol)
+        // Fetch in small chunks, fallback to individual if a chunk fails.
+        // validateResult:false — some symbols (e.g. CT=F cotton) fail the
+        // library's quote schema; we only need regularMarketPrice/prevClose
+        // and guard them ourselves, so don't let validation throw away a
+        // perfectly usable quote.
         for (let i = 0; i < querySymbols.length; i += 5) {
             const chunk = querySymbols.slice(i, i + 5);
             try {
-                const res = await yahooFinance.quote(chunk);
+                const res = await yahooFinance.quote(chunk, {}, { validateResult: false });
                 quotes.push(...res);
             } catch (e) {
-                // Fallback to individual
+                // Chunk died (Yahoo intermittently returns an HTML block page
+                // for the batched quote URL) — retry individually, spaced out
+                // so the burst doesn't trip the same block.
                 for (const sym of chunk) {
                     try {
-                        const r = await yahooFinance.quote(sym);
+                        const r = await yahooFinance.quote(sym, {}, { validateResult: false });
                         quotes.push(r);
                     } catch (e2) {}
+                    await new Promise(r => setTimeout(r, 250));
                 }
             }
         }
@@ -1860,6 +1867,43 @@ async function tickPrices() {
                 priceHistory[symbol].push({ time: now, price: rounded });
                 if (priceHistory[symbol].length > 200) priceHistory[symbol].shift();
             }
+        }
+
+        // Chart-endpoint fallback for anything still unpriced: the chart API
+        // is served from a different, more permissive endpoint than quote, so
+        // it usually works when the quote path is blocked or schema-broken.
+        // Uses the last two real daily closes (current + prevClose). Runs at
+        // most once per 15-min tick for only the missing symbols.
+        const unpriced = Object.entries(livePrices)
+            .filter(([symbol, s]) => YAHOO_SYMBOLS[symbol] && !(s.current > 0));
+        for (const [symbol, state] of unpriced) {
+            const yTicker = YAHOO_SYMBOLS[symbol];
+            try {
+                const period1 = new Date(); period1.setDate(period1.getDate() - 7);
+                const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
+                const cents = chart.meta?.currency === 'USX';
+                const bars = (chart.quotes || []).filter(q => q.close != null);
+                if (bars.length === 0) continue;
+                const norm = v => (cents ? v / 100 : v);
+                const last = norm(bars[bars.length - 1].close);
+                const prev = bars.length > 1 ? norm(bars[bars.length - 2].close) : null;
+                const rounded = +last.toFixed(last < 10 ? 4 : 2);
+                if (!state.initializedFromYahoo) {
+                    state.base = rounded; state.open = rounded; state.high = rounded; state.low = rounded;
+                    priceHistory[symbol] = [];
+                    state.initializedFromYahoo = true;
+                }
+                state.current = rounded;
+                state.prevClose = prev;
+                state.change = prev ? +(rounded - prev).toFixed(4) : 0;
+                state.changePct = prev > 0 ? +(((rounded - prev) / prev) * 100).toFixed(3) : 0;
+                state.high = Math.max(state.high, rounded);
+                state.low = Math.min(state.low, rounded);
+                console.log(`[TICK PRICES] ${symbol} priced via chart fallback: ${rounded}`);
+            } catch (e) {
+                console.log(`[TICK PRICES] chart fallback failed for ${symbol}: ${String(e.message).slice(0, 80)}`);
+            }
+            await new Promise(r => setTimeout(r, 200));
         }
 
         // --- PILLAR 2: Archive price ticks to PostgreSQL time-series ---
