@@ -86,10 +86,10 @@ Return EXACTLY this JSON shape:
     "where": "geography affected — specific country/port/route, not just 'the region'",
     "when": "is this happening now or forecast — with the actual date/timeframe if stated",
     "duration": "how long this likely lasts, grounded in what the article says (e.g. contract length, season, distance/speed if a shipping delay) — not a generic guess",
-    "commodities_affected": [only items from the distributor's commodity list],
-    "routes_affected": [only items from the distributor's route list],
-    "ports_affected": [only items from the distributor's port list],
-    "supplier_countries": [affected supplier countries],
+    "commodities_affected": [ONLY commodities the article explicitly names or that are unmistakably and directly affected. NOT the whole list. A broad macro story is not grounds to list everything — leave empty if nothing specific is named],
+    "routes_affected": [ONLY routes the article explicitly names or directly implicates — empty if none named],
+    "ports_affected": [ONLY ports the article explicitly names or directly implicates — empty if none named],
+    "supplier_countries": [ONLY supplier countries the article explicitly names — empty if none named],
     "key_dates": ["specific dates or timeframes stated in the article, each with what happens then, e.g. 'Aug 1: tariff takes effect'"],
     "key_figures": ["specific numbers stated in the article — prices, percentages, volumes — each with its meaning, e.g. 'wheat -4.2% this week'"],
     "urgency": "immediate" | "this_week" | "monitor" | "informational",
@@ -98,7 +98,7 @@ Return EXACTLY this JSON shape:
   }
 }
 
-Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. Only list commodities/routes/ports that appear in the distributor's profile above. key_dates and key_figures must only contain values explicitly stated in the article — use empty arrays if none, never invent numbers or dates. Do not use generic filler ("could impact the market", "monitor the situation", "remains to be seen") anywhere in the output — every sentence must carry a specific fact from this article.`;
+Rules: "relevant" is 1 only if the article genuinely affects this distributor's supply, demand, price, trade, weather, or logistics. Marketing, sports, lifestyle are 0. severity reflects business impact to THIS distributor. confidence reflects your certainty. For commodities_affected/routes_affected/ports_affected/supplier_countries: list an item ONLY if the article explicitly names it or unambiguously and directly implicates it. A general macro story (food inflation, regional tension, currency moves) is NOT grounds to list every item in the profile — when nothing specific is named, return an empty array. Listing the entire profile list is wrong. key_dates and key_figures must only contain values explicitly stated in the article — use empty arrays if none, never invent numbers or dates. Do not use generic filler ("could impact the market", "monitor the situation", "remains to be seen") anywhere in the output — every sentence must carry a specific fact from this article.`;
 }
 
 // Cheap, zero-LLM-cost entity extraction: regex-match the customer's own
@@ -174,6 +174,32 @@ function validate(obj) {
     return true;
 }
 
+// Defensive clamp against "macro dump": when a broad story makes the model
+// list most/all of the profile's commodities/ports/routes, that's noise, not
+// signal. If an affected-list covers >=70% of the corresponding profile list
+// (and that list is non-trivial), blank it — the article named nothing
+// specific. Also drops any hallucinated item not in the profile.
+function clampAffected(insights, customer) {
+    if (!insights || !customer) return insights;
+    const rules = [
+        ['commodities_affected', customer.commodities],
+        ['routes_affected', customer.key_routes],
+        ['ports_affected', customer.key_ports],
+        ['supplier_countries', customer.supplier_countries],
+    ];
+    for (const [field, profileList] of rules) {
+        const got = Array.isArray(insights[field]) ? insights[field] : null;
+        const profile = Array.isArray(profileList) ? profileList : [];
+        if (!got || profile.length === 0) continue;
+        const lower = new Set(profile.map(x => String(x).toLowerCase()));
+        const inProfile = got.filter(x => lower.has(String(x).toLowerCase()));
+        insights[field] = (profile.length >= 4 && inProfile.length >= Math.ceil(profile.length * 0.7))
+            ? [] // covers most of the catalog → macro dump, not specific
+            : inProfile;
+    }
+    return insights;
+}
+
 /**
  * Label one article snippet.
  * @returns {Promise<{result: object|null, needsReview: boolean, error?: string}>}
@@ -189,7 +215,9 @@ export async function label(snippet, customer = null) {
         // 1000: key_dates/key_figures arrays plus the now-longer "what" field
         // need headroom beyond the original 700 or the JSON truncates mid-field.
         const raw = await client(SYSTEM_PROMPT, user, 1000);
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed?.insights) parsed.insights = clampAffected(parsed.insights, customer);
+        return parsed;
     };
 
     for (let tries = 0; tries < 2; tries++) {
