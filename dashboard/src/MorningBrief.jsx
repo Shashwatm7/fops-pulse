@@ -92,8 +92,9 @@ export default function MorningBrief({ brief, username, onViewAlerts, onSelectCo
           {priceMovers.length === 0 ? (
             <div style={emptyStyle}>No live price data for your tracked commodities right now.</div>
           ) : priceMovers.map(m => {
+            const noPrev = m.changePct == null;
             const up = m.changePct > 0, flat = m.changePct === 0;
-            const col = flat ? 'var(--text-dim)' : up ? '#34d399' : '#fb7185';
+            const col = noPrev || flat ? 'var(--text-dim)' : up ? '#34d399' : '#fb7185';
             return (
               <div
                 key={m.symbol}
@@ -108,8 +109,8 @@ export default function MorningBrief({ brief, username, onViewAlerts, onSelectCo
                 </span>
                 <span style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '8px', fontFamily: 'var(--font-mono)' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{fmtPrice(m.price)}</span>
-                  <span style={{ color: col, fontWeight: 600, minWidth: '58px', textAlign: 'right' }}>
-                    {flat ? '0.00%' : `${up ? '▲' : '▼'} ${Math.abs(m.changePct).toFixed(2)}%`}
+                  <span style={{ color: col, fontWeight: 600, minWidth: '58px', textAlign: 'right' }} title={noPrev ? 'Previous close unavailable (possible contract roll) — change not shown rather than guessed' : undefined}>
+                    {noPrev ? '—' : flat ? '0.00%' : `${up ? '▲' : '▼'} ${Math.abs(m.changePct).toFixed(2)}%`}
                   </span>
                 </span>
               </div>
