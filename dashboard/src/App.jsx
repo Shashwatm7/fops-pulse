@@ -279,7 +279,7 @@ export default function Dashboard() {
   const [recentInsights, setRecentInsights] = useState([]);
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
-  const [alertLimit, setAlertLimit] = useState(5);
+  const [alertLimit, setAlertLimit] = useState(6);
   const [newsLimit, setNewsLimit] = useState(10);
   const [insightLimit, setInsightLimit] = useState(5);
   const [rescanning, setRescanning] = useState(false);
@@ -1258,9 +1258,8 @@ export default function Dashboard() {
             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               Show
               <select value={alertLimit} onChange={e => setAlertLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={20}>20</option>
+                <option value={3}>3</option>
+                <option value={6}>6</option>
                 <option value="all">All</option>
               </select>
             </label>
@@ -1475,12 +1474,7 @@ export default function Dashboard() {
                 const d = insight?.detail || {};
                 return (
                 <div key={i} className={`intel-card mb-sm${insight ? ' has-insight' : ''}`} style={{ animationDelay: `${i * 0.05}s`, position: 'relative' }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                  <span
-                    onClick={() => openArticleSummary(a)}
-                    title="Click for an AI summary"
-                    style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none', cursor: 'pointer' }}
-                  >{a.title}</span>{' '}
-                  <a href={a.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Open original article" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '12px' }}>↗</a>
+                  <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 500, color: 'var(--accent-cyan)', textDecoration: 'none' }}>{a.title}</a>
                   {insight && (
                     <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[insight.severity] || 'var(--text-muted)', border: `1px solid ${sevColor[insight.severity] || 'var(--text-muted)'}`, borderRadius: '4px', padding: '1px 6px' }}>
                       ✨ AI INSIGHT{insight.severity ? ` · ${insight.severity.toUpperCase()}` : ''}
