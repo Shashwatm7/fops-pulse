@@ -114,7 +114,7 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
       });
       const data = await res.json();
       if (data.success) {
-        onSave(data.profile);
+        onSave(data.profile, data.rescan);
       }
     } catch(e) {
       console.error(e);

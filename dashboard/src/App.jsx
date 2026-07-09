@@ -282,6 +282,7 @@ export default function Dashboard() {
   const [alertLimit, setAlertLimit] = useState(5);
   const [newsLimit, setNewsLimit] = useState(10);
   const [insightLimit, setInsightLimit] = useState(5);
+  const [rescanning, setRescanning] = useState(false);
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
   const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
   const [weather, setWeather] = useState([]);
@@ -793,6 +794,46 @@ export default function Dashboard() {
       .catch(() => setArticleSummary({ article, loading: false, data: null, error: 'Network error' }));
   };
 
+  const refetchInsights = () => {
+    fetch(`${API_BASE}/insights/recent`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.success) setRecentInsights(d.insights || []); })
+      .catch(() => {});
+  };
+
+  // Save from Settings. On a material change the backend hides old alerts/
+  // labels and kicks a fresh scan; we clear the stale view immediately, then
+  // poll scan-status and refetch once the new-profile results land.
+  const handleProfileSave = (p, rescan) => {
+    setProfile(p);
+    setShowSettings(false);
+    if (rescan) {
+      setAnalysis(prev => ({ ...prev, alerts: [] }));
+      setRecentInsights([]);
+      setAlertInsights({ byUrl: {}, byTitle: {} });
+      setRescanning(true);
+    }
+    refresh();
+    if (!rescan) return;
+    const startedAt = Date.now();
+    const poll = () => {
+      if (Date.now() - startedAt > 8 * 60 * 1000) { setRescanning(false); return; } // safety cap
+      fetch(`${API_BASE}/scan-status`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && !d.running) {
+            setRescanning(false);
+            refresh();
+            refetchInsights();
+          } else {
+            setTimeout(poll, 3000);
+          }
+        })
+        .catch(() => setTimeout(poll, 3000));
+    };
+    setTimeout(poll, 3000);
+  };
+
   // ── Fetch stored labeling insights for the current news feed (hover cards) ──
   useEffect(() => {
     if (!news || news.length === 0) { setNewsInsights({ byUrl: {}, byTitle: {} }); return; }
@@ -962,7 +1003,7 @@ export default function Dashboard() {
   if (!user) return <LoginPage onLogin={({ user: u, profile: p }) => { setUser(u); setProfile(p); }} />;
   if (!user.is_onboarded) return <OnboardingWizard user={user} onComplete={(p) => { setProfile(p); setUser({...user, is_onboarded: true}); }} />;
   if (showPipelineAnalytics) return <PipelineAnalyticsPage onBack={() => setShowPipelineAnalytics(false)} />;
-  if (showSettings) return <SettingsPage user={user} profile={profile} onSave={(p) => { setProfile(p); setShowSettings(false); refresh(); }} onCancel={() => setShowSettings(false)} />;
+  if (showSettings) return <SettingsPage user={user} profile={profile} onSave={handleProfileSave} onCancel={() => setShowSettings(false)} />;
   if (showAdmin && user.is_admin) return <AdminPage onBack={() => setShowAdmin(false)} />;
 
   const handlePredictYield = async (region) => {
@@ -1207,6 +1248,11 @@ export default function Dashboard() {
       {/* ═══════════ ALERTS ═══════════ */}
       {tab === 'alerts' && (
         <div className={`tab-content enter-${tabDirection}`} key="alerts">
+          {rescanning && (
+            <div className="intel-card" style={{ marginBottom: '12px', padding: '12px 16px', color: '#fbbf24', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(251,191,36,0.3)' }}>
+              <span style={{ fontSize: '15px' }}>⟳</span> Rescanning with your new settings — alerts and labeled articles will refresh automatically when it finishes.
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <div className="section-label" style={{ margin: 0 }}>Risk Alerts ({alerts.length})</div>
             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
