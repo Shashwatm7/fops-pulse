@@ -3,19 +3,35 @@
  * Hard rejections for articles that don't meet minimum basic criteria.
  * Very fast boolean checks to save compute down the line.
  */
+
+// Helper to check for exact word match to avoid substring false positives (e.g., 'trademark' matching 'trade')
+const hasExactTerm = (fullText, term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(fullText);
+};
+
+/**
+ * Masks metaphor phrases so commodity words inside them can't produce false
+ * matches: "SpaceX supply chain gold rush" must not count as a GOLD mention,
+ * but a real bullion article that ALSO says "gold rush" still matches on its
+ * other "gold" occurrences. Masking (not hard-excluding) keeps that recall.
+ */
+export function maskPhrases(text, phrases) {
+    if (!phrases || phrases.length === 0) return text;
+    let masked = text;
+    for (const p of phrases) {
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        masked = masked.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' § ');
+    }
+    return masked;
+}
+
 export function applyRuleEngine(normArticle, profile) {
     const text = normArticle.fullTextNorm;
     const matchData = {
         commodityMatches: [],
         businessMatches: [],
         regionMatches: []
-    };
-
-    // Helper to check for exact word match to avoid substring false positives (e.g., 'trademark' matching 'trade')
-    const hasExactTerm = (fullText, term) => {
-        // Escape special regex chars just in case, though mostly they are words
-        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\b`, 'i').test(fullText);
     };
 
     // 1. Must NOT have excluded contexts
@@ -28,8 +44,11 @@ export function applyRuleEngine(normArticle, profile) {
     const businessMatch = profile.businessTerms.filter(term => hasExactTerm(text, term));
     matchData.businessMatches = businessMatch;
 
-    // 3. Commodity terms (Primary OR Related)
-    const commodityMatch = [...profile.primaryTerms, ...profile.relatedTerms].filter(term => hasExactTerm(text, term));
+    // 3. Commodity terms (Primary OR Related) — matched against the
+    // metaphor-masked text so "gold rush"/"corn maze" don't count as
+    // commodity mentions.
+    const commodityText = maskPhrases(text, profile.maskedPhrases);
+    const commodityMatch = [...profile.primaryTerms, ...profile.relatedTerms].filter(term => hasExactTerm(commodityText, term));
     matchData.commodityMatches = commodityMatch;
 
     if (commodityMatch.length === 0 && profile.primaryTerms.length > 0) {
@@ -45,7 +64,6 @@ export function applyRuleEngine(normArticle, profile) {
             return { passed: false, reason: 'No business/economic terms found', matchData };
         }
     }
-    matchData.businessMatches = businessMatch;
 
     return { passed: true, reason: 'Passed basic rules', matchData };
 }

@@ -4,7 +4,6 @@ import { applyRuleEngine } from './stages/3_rule_engine.js';
 import { matchRegion } from './stages/4_region_matcher.js';
 import { calculateRelevanceScore } from './stages/5_relevance_scorer.js';
 import { applySemanticFilter } from './stages/6_semantic_filter.js';
-import { applyMlClassifier } from './stages/6.5_ml_classifier.js';
 import { classifyPriority } from './stages/8_priority_classifier.js';
 
 export class NewsPipeline {
@@ -14,32 +13,58 @@ export class NewsPipeline {
         this.scoreThreshold = config.scoreThreshold || 60;
         this.llmThresholdLow = config.llmThresholdLow || 40;
         this.llmThresholdHigh = config.llmThresholdHigh || 60;
+        // 'off' lets tests exercise the deterministic stages without pulling
+        // the local embedding model into CI.
+        this.semanticEnabled = config.semantic !== 'off';
+        // Rejection memo: userArticleKey → profile fingerprint of the profile
+        // version that rejected it. Prevents re-LOGGING the same rejection on
+        // every scan (RSS re-fetches the same articles all day) while still
+        // RE-EVALUATING an article the moment the profile changes. This
+        // replaces the old behavior of permanently poisoning the dedup set
+        // with rejected articles — the single biggest false-negative source:
+        // an article wrongly rejected once could never be reconsidered, even
+        // after settings changes or pipeline fixes.
+        this.rejectionMemo = new Map();
+        this.rejectionMemoMax = config.rejectionMemoMax || 5000;
     }
 
     /**
-     * Processes a single article against a user profile
+     * Processes a single article against a user profile.
+     * `userAlertedSet` contains keys of articles the user was actually
+     * ALERTED about (accepted + inserted); this pipeline never mutates it —
+     * ownership lives with the caller, which adds keys only after a
+     * successful alert insert.
      */
     async processArticle(rawArticle, userProfile, userAlertedSet) {
-        // Stage 0 / 9: Deduplication (Moved up to prevent repeating rejected logs)
         const profileId = userProfile.user_id || userProfile.id || userProfile.userId;
         const titleKey = rawArticle.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
         const userArticleKey = `user:${profileId}:${titleKey}`;
-        
-        const doReturn = async (res) => {
-            if (this.auditLogFn) {
+        const fingerprint = userProfile._fingerprint || 'static';
+
+        const doReturn = async (res, { log = true } = {}) => {
+            if (this.auditLogFn && log) {
                 const uid = userProfile.user_id || userProfile.id || userProfile.userId;
                 const stageToLog = res.accepted ? null : res.stage;
                 // auditLogFn returns the inserted audit-log row id so the
                 // labeling system can link training data to it.
-                res.auditLogId = await this.auditLogFn(uid, rawArticle, stageToLog, res.reason || null, res.score || null, res.accepted);
+                res.auditLogId = await this.auditLogFn(uid, rawArticle, stageToLog, res.reason || null, res.score ?? null, res.accepted);
             }
             return res;
         };
 
-        if (userAlertedSet.has(userArticleKey)) {
-             return await doReturn({ accepted: false, reason: 'Duplicate article', stage: 9, score: 0 });
+        // Already alerted for this exact article (this profile) — a real
+        // duplicate. Not audit-logged: it was logged when it was accepted.
+        if (userAlertedSet.has(userArticleKey) || userAlertedSet.has(titleKey)) {
+            return { accepted: false, reason: 'Already alerted', stage: 9, score: 0, duplicate: true };
         }
-        userAlertedSet.add(userArticleKey);
+
+        // Previously rejected under the SAME profile version — same input,
+        // same deterministic pipeline, same outcome. Skip recompute and skip
+        // the duplicate audit row. A changed profile falls through and gets
+        // a fresh evaluation.
+        if (this.rejectionMemo.get(userArticleKey) === fingerprint) {
+            return { accepted: false, reason: 'Previously rejected (unchanged profile)', stage: 9, score: 0, memoized: true };
+        }
 
         // ── Extract Features for DB Analytics ──
         if (!rawArticle.extracted_features) {
@@ -62,7 +87,19 @@ export class NewsPipeline {
             rawArticle.extracted_features = { supply_signals, values };
         }
 
-        // doReturn was moved to the top of processArticle
+        const memoizeRejection = () => {
+            if (this.rejectionMemo.size >= this.rejectionMemoMax) {
+                // FIFO trim: drop the oldest ~10% so a hot scanner never
+                // grows memory unbounded.
+                const drop = Math.ceil(this.rejectionMemoMax / 10);
+                let i = 0;
+                for (const k of this.rejectionMemo.keys()) {
+                    this.rejectionMemo.delete(k);
+                    if (++i >= drop) break;
+                }
+            }
+            this.rejectionMemo.set(userArticleKey, fingerprint);
+        };
 
         // Stage 1
         const article = normalizeArticle(rawArticle);
@@ -74,68 +111,77 @@ export class NewsPipeline {
         const ruleCheck = applyRuleEngine(article, profile);
         if (!ruleCheck.passed) {
             console.log(`[USER-SCANNER] Rejected (Stage 3 - Rules): ${article.title} - ${ruleCheck.reason}`);
+            memoizeRejection();
             return await doReturn({ accepted: false, reason: ruleCheck.reason, stage: 3 });
         }
 
-        // Stage 4
-        const regionCheck = matchRegion(article, profile);
+        // Stage 4 — region is a hard gate only for commodity-less articles;
+        // tracked-commodity news soft-passes and is penalized by the scorer.
+        const regionCheck = matchRegion(article, profile, ruleCheck.matchData);
         if (!regionCheck.passed) {
             console.log(`[USER-SCANNER] Rejected (Stage 4 - Region): ${article.title} - ${regionCheck.reason}`);
+            memoizeRejection();
             return await doReturn({ accepted: false, reason: regionCheck.reason, stage: 4 });
         }
 
         // Stage 5
         const { score, breakdown } = calculateRelevanceScore(article, profile, ruleCheck.matchData);
-        
+
         if (score < this.llmThresholdLow) {
             console.log(`[USER-SCANNER] Rejected (Stage 5 - Low Score ${score}): ${article.title}`);
+            memoizeRejection();
             return await doReturn({ accepted: false, reason: `Score too low (${score})`, stage: 5, score });
         }
 
         let llmResult = null;
 
-        // Stages 6 & 7 (Semantic & LLM for borderline)
-        if (score >= this.llmThresholdLow && score < this.scoreThreshold) {
-            // Stage 6 Semantic
+        // Stage 6: Semantic filter — runs for EVERY candidate, not just
+        // borderline scores. Keyword scoring can be gamed by coincidental
+        // word overlap; the local-embedding similarity check is the last
+        // line of defense against those false positives, and it's free.
+        if (this.semanticEnabled) {
             const semCheck = await applySemanticFilter(article, profile, score);
             if (!semCheck.passed) {
-                console.log(`[USER-SCANNER] Rejected (Stage 6 - Semantic): ${article.title}`);
-                return await doReturn({ accepted: false, reason: 'Failed semantic filter', stage: 6, score });
+                console.log(`[USER-SCANNER] Rejected (Stage 6 - Semantic ${semCheck.similarity}): ${article.title}`);
+                memoizeRejection();
+                return await doReturn({ accepted: false, reason: semCheck.reason || 'Failed semantic filter', stage: 6, score });
             }
-
-            // Stage 6.5 ML TF-IDF Classifier (Spam Filter)
-            const mlCheck = await applyMlClassifier(article);
-            if (!mlCheck.passed) {
-                console.log(`[USER-SCANNER] Rejected (Stage 6.5 - ML Spam Filter): ${article.title}`);
-                return await doReturn({ accepted: false, reason: 'Classified as Spam by ML', stage: 6.5, score });
-            }
-
-            // Stage 7 LLM is disabled (tokens reserved for planner/deep-dive).
-            // Leaving llmResult null so Stage 8 classifies priority purely
-            // from the score — previously this hardcoded impact:'Medium',
-            // which flattened every borderline article (score 25-74) to the
-            // same label regardless of its actual score.
         }
+
+        // Stage 6.5 (frozen TF-IDF spam classifier) is RETIRED as a gate.
+        // The committed model (no training data or trainer in the repo)
+        // hard-rejected verifiably relevant articles — e.g. "Cargill Opens
+        // New Dairy Feed Plant in India" and "Oat Shortages May Dictate
+        // Starter Grain Alternatives" for a Dairy & Livestock / India user —
+        // 34 such kills in the audit log. Its junk-filtering job is now done
+        // by the global excluded contexts (stage 3) + the always-on semantic
+        // filter (stage 6), both of which are inspectable and tunable.
+
+        // Stage 7 LLM is disabled (tokens reserved for planner/deep-dive).
+        // Leaving llmResult null so Stage 8 classifies priority purely
+        // from the score.
 
         // Stage 8
         const priority = classifyPriority(score, llmResult);
         if (priority === 'Ignored') {
             console.log(`[USER-SCANNER] Rejected (Stage 8 - Ignored Priority): ${article.title}`);
+            memoizeRejection();
             return await doReturn({ accepted: false, reason: 'Priority Ignored', stage: 8, score });
         }
-
-        // Stage 9: Deduplication is now handled at the beginning of processArticle
 
         console.log(`[USER-SCANNER] Accepted! Score: ${score}, Priority: ${priority}. Title: ${article.title}`);
 
         return await doReturn({
             accepted: true,
+            // Score included so accepted audit rows stop logging null.
+            score,
             article: {
                 ...rawArticle,
                 priority,
                 relevanceScore: score,
                 breakdown,
                 matchedRegions: regionCheck.regionMatches,
+                titleKey,
                 llmReason: llmResult ? llmResult.reason : null
             },
             stage: 9
