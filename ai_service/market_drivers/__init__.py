@@ -1,3 +1,0 @@
-"""
-Market Drivers Pipeline Module
-"""

@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-httpx
-scikit-learn
-python-dotenv
-pydantic
-pandas
