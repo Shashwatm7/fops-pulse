@@ -11,6 +11,7 @@ import pgSession from 'connect-pg-simple';
 import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
+import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
@@ -2249,14 +2250,40 @@ const GEOPOLITICAL_TRIGGERS = [
   { pattern: /(pipeline|refinery).{0,30}(attack|explo|fire|shut|sabotag)/i, severity: 'HIGH', category: 'Energy Infrastructure', impact: 'Pipeline or refinery disruption creates immediate regional energy shortages affecting cold chain logistics.' },
 ];
 
-// Track already-alerted articles to avoid duplicates
+// Track already-ALERTED articles to avoid duplicate alerts. This set must
+// contain only articles the user was actually alerted about — never rejected
+// ones. The old pipeline added every PROCESSED article here (including
+// rejections), which permanently killed wrongly-rejected articles: they
+// could never be reconsidered even after profile changes or filter fixes.
 let alertedArticles = new Set();
 const ALERTED_FILE = path.join(process.cwd(), 'alerted_articles.json');
 try {
     if (fs.existsSync(ALERTED_FILE)) {
-        alertedArticles = new Set(JSON.parse(fs.readFileSync(ALERTED_FILE, 'utf8')));
+        const raw = JSON.parse(fs.readFileSync(ALERTED_FILE, 'utf8'));
+        // De-poison legacy files: drop all per-user keys (they include
+        // rejected articles). Genuinely-alerted per-user keys are re-seeded
+        // from the alerts table below — the DB is the source of truth.
+        alertedArticles = new Set(raw.filter(k => !String(k).startsWith('user:')));
     }
 } catch (e) { console.error('Failed to load alerted articles from disk', e.message); }
+
+// Rebuild per-user alerted keys from the DB (dedup_key 'profile:<titleKey>'
+// rows carry user_id). Survives restarts AND Render's ephemeral disk, which
+// the JSON file never did.
+async function seedAlertedArticlesFromDb() {
+    try {
+        const { rows } = await pool.query(
+            `SELECT user_id, dedup_key FROM alerts WHERE source = 'PROFILE_NEWS' AND dedup_key LIKE 'profile:%'`
+        );
+        for (const r of rows) {
+            alertedArticles.add(`user:${r.user_id}:${r.dedup_key.slice('profile:'.length)}`);
+        }
+        console.log(`[USER-SCANNER] Seeded ${rows.length} alerted-article keys from DB`);
+    } catch (e) {
+        console.error('[USER-SCANNER] Failed to seed alerted articles from DB:', e.message);
+    }
+}
+seedAlertedArticlesFromDb();
 
 function saveAlertedArticles() {
     try {
@@ -2642,12 +2669,20 @@ async function scanSingleUser(user, pipeline) {
     const targets = [...(profile.commodities || []), profile.focus_product].filter(Boolean);
     const regions = [...(profile.regions || []), profile.focus_region].filter(Boolean);
 
-    // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries.
+    // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries,
+    // quoting multi-word phrases so Google matches "live cattle" as a phrase,
+    // not articles containing "live" and "cattle" anywhere.
     // Commodity queries get the same region pinning as keyword queries:
     // "SOYBEANS supply chain" unpinned returns whichever country dominates
     // that commodity's news cycle, not the user's market.
-    const commQueries = [...new Set(targets)].map(c => `${String(c).replace(/_/g, ' ')} supply chain OR logistics${regionTarget}`);
-    const regQueries = [...new Set(regions)].map(r => `${r} supply chain OR logistics`);
+    const asQueryTerm = (s) => {
+        const phrase = String(s).replace(/_/g, ' ').trim();
+        return phrase.includes(' ') ? `"${phrase}"` : phrase;
+    };
+    const commQueries = [...new Set(targets)].map(c => `${asQueryTerm(c)} supply chain OR logistics${regionTarget}`);
+    // Micro-regions ("Saudi Arabia Al-Hasa") make useless search terms — query
+    // by their canonical country/region instead.
+    const regQueries = [...new Set(regions.map(r => canonicalRegionName(r)))].map(r => `${r} supply chain OR logistics`);
 
     // Combine all sources into a single search pool
     const combinedPool = [...new Set([...customKeywords, ...commQueries, ...regQueries])];
@@ -2696,73 +2731,105 @@ async function scanSingleUser(user, pipeline) {
     console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles from RSS for user ${user.id}`);
     stats.fetched = allArticles.length;
 
-    const triggeredAlerts = [];
-    
-    // 2. Process through Pipeline
-    for (const rawArticle of allArticles) {
-      if (triggeredAlerts.length >= MAX_USER_SCANNER_ALERTS) break;
+    // Profile fingerprint: lets the pipeline's rejection memo distinguish
+    // "same article, same profile" (skip) from "same article, profile
+    // changed" (re-evaluate). Covers every field that affects relevance.
+    profile._fingerprint = crypto.createHash('sha256').update(JSON.stringify({
+      c: profile.commodities || [], r: profile.regions || [],
+      fp: profile.focus_product || '', fr: profile.focus_region || '',
+      fc: profile.focus_countries || [], k: profile.news_keywords || [],
+      b: profile.custom_blocklist || [], s: profile.ml_seeds || [],
+    })).digest('hex').slice(0, 16);
 
+    // Within-scan dedupe: the same story often comes back from several
+    // queries; evaluate each title once.
+    const seenThisScan = new Set();
+    const uniqueArticles = allArticles.filter(a => {
+      const k = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
+      if (seenThisScan.has(k)) return false;
+      seenThisScan.add(k);
+      return true;
+    });
+
+    // 2. Evaluate EVERY article, then rank by relevance and alert the top N.
+    // The old loop alerted the first N accepted in arrival order, so a
+    // Critical article fetched late lost its slot to earlier Low ones.
+    const acceptedArticles = [];
+    for (const rawArticle of uniqueArticles) {
       const result = await pipeline.processArticle(rawArticle, profile, alertedArticles);
-
       if (result.accepted) {
-        const a = result.article;
         stats.accepted++;
-
-        // Extract insights locally to save LLM tokens
-        const extractedData = await fetchAndExtractArticle(a.url);
-        let nlpDescription = a.description;
-        let entities = null;
-        
-        if (extractedData) {
-            nlpDescription = `NLP Summary: ${extractedData.summary}`;
-            entities = extractedData.entities;
-        }
-
-        // Save the alert globally so we don't alert again
-        const titleKey = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
-        alertedArticles.add(titleKey);
-
-        const alertReason = a.llmReason || `Score: ${a.relevanceScore}. Commodity Match: ${a.breakdown.commodityScore > 0 ? 'Yes' : 'No'}. Region Match: ${a.matchedRegions.join(', ')}`;
-
-        triggeredAlerts.push({
-          id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-          severity: a.priority.toUpperCase(),
-          category: 'Profile Match',
-          title: '🎯 Profile Alert: ' + a.title,
-          source: a.source,
-          url: a.url,
-          timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
-          reason: alertReason,
-          detectedAt: new Date().toISOString(),
-          description: nlpDescription,
-          entities: entities
-        });
-
-        // Persist to the unified alert store (survives restarts; deduped by DB)
-        await insertAlert(user.id, {
-          source: 'PROFILE_NEWS',
-          category: 'Profile Match',
-          severity: severityFromPriority(a.priority),
-          title: '🎯 Profile Alert: ' + a.title.slice(0, 160),
-          reason: alertReason,
-          url: a.url,
-          relevanceScore: a.relevanceScore,
-          payload: { source: a.source, entities, description: nlpDescription },
-          dedupKey: `profile:${titleKey}`,
-        });
-
-        // Ingestion is intentionally 100% LLM-free: stages 1-9 above are
-        // regex/arithmetic/local-embedding only, and no Groq call happens
-        // here regardless of ENABLE_ARTICLE_LABELING. The AI Intelligence
-        // panel/AI-label blocks that this used to feed are now historical
-        // only (existing rows stay queryable). The only remaining LLM call
-        // in the app is the on-demand "AI Summary" click, which is
-        // user-triggered and outside the scan/ingestion path entirely.
-
+        acceptedArticles.push(result.article);
       }
     }
+    acceptedArticles.sort((x, y) => y.relevanceScore - x.relevanceScore);
+    const toAlert = acceptedArticles.slice(0, MAX_USER_SCANNER_ALERTS);
 
-    // Save the Set to disk so both accepted and rejected duplicate keys are persisted
+    const triggeredAlerts = [];
+    for (const a of toAlert) {
+      const titleKey = a.titleKey || a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
+      const alertReason = a.llmReason || `Score: ${a.relevanceScore}. Commodity Match: ${a.breakdown.commodityScore > 0 ? 'Yes' : 'No'}. Region Match: ${a.matchedRegions.length ? a.matchedRegions.join(', ') : 'None (tracked-commodity match)'}`;
+
+      // Persist FIRST (the DB unique index is the durable dedup guard); only
+      // a genuinely new row triggers the in-app card + email.
+      const inserted = await insertAlert(user.id, {
+        source: 'PROFILE_NEWS',
+        category: 'Profile Match',
+        severity: severityFromPriority(a.priority),
+        title: '🎯 Profile Alert: ' + a.title.slice(0, 160),
+        reason: alertReason,
+        url: a.url,
+        relevanceScore: a.relevanceScore,
+        payload: { source: a.source, entities: null, description: a.description },
+        dedupKey: `profile:${titleKey}`,
+      });
+      if (!inserted) continue; // already alerted in a previous scan/restart
+
+      // Mark as alerted ONLY now — accepted-but-capped articles stay
+      // eligible to compete again next scan, and rejected articles are
+      // never poisoned into this set (they were, historically — that made
+      // every wrong rejection permanent).
+      alertedArticles.add(`user:${user.id}:${titleKey}`);
+      alertedArticles.add(titleKey);
+
+      // Extract insights locally (LLM-free) — only for articles actually
+      // alerted, so we don't fetch full text for capped ones.
+      const extractedData = await fetchAndExtractArticle(a.url);
+      let nlpDescription = a.description;
+      let entities = null;
+      if (extractedData) {
+        nlpDescription = `NLP Summary: ${extractedData.summary}`;
+        entities = extractedData.entities;
+        await pool.query(
+          `UPDATE alerts SET payload = $1 WHERE user_id = $2 AND dedup_key = $3`,
+          [JSON.stringify({ source: a.source, entities, description: nlpDescription }), user.id, `profile:${titleKey}`]
+        ).catch(() => {});
+      }
+
+      triggeredAlerts.push({
+        id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        severity: a.priority.toUpperCase(),
+        category: 'Profile Match',
+        title: '🎯 Profile Alert: ' + a.title,
+        source: a.source,
+        url: a.url,
+        timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
+        reason: alertReason,
+        detectedAt: new Date().toISOString(),
+        description: nlpDescription,
+        entities: entities
+      });
+
+      // Ingestion is intentionally 100% LLM-free: stages 1-9 above are
+      // regex/arithmetic/local-embedding only, and no Groq call happens
+      // here regardless of ENABLE_ARTICLE_LABELING. The only remaining LLM
+      // call in the app is the on-demand "AI Summary" click, which is
+      // user-triggered and outside the scan/ingestion path entirely.
+    }
+    stats.alerted = triggeredAlerts.length;
+
+    // Persist the alerted set (accepted keys only — rejections are never
+    // written here anymore).
     saveAlertedArticles();
 
     // 3. Dispatch Alerts

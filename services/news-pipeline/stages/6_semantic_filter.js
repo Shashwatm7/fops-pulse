@@ -24,7 +24,16 @@ function cosine(a, b) {
 }
 
 async function getSeedVectors(seeds) {
-    const key = seeds.length + ':' + seeds[0]?.slice(0, 24);
+    // Cheap FNV-style hash over ALL seed content — the old key
+    // (count + first-24-chars) collided across users whose profiles share a
+    // first commodity, silently reusing another user's seed vectors.
+    let h = 2166136261;
+    const joined = seeds.join('|');
+    for (let i = 0; i < joined.length; i++) {
+        h ^= joined.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    const key = seeds.length + ':' + (h >>> 0).toString(36);
     if (seedCache.has(key)) return seedCache.get(key);
     const vecs = [];
     for (const s of seeds) {
