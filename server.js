@@ -1198,11 +1198,17 @@ app.get('/api/news', requireAuth, async (req, res) => {
                     newsDataQuery = `"${focusProduct}"`.substring(0, 100);
                 }
 
+                // NewsData.io hard-caps `country` at 5 codes per query —
+                // templates like grains_global carry 8, which made every
+                // backup query fail with FilterLimitExceed. Keep the first 5.
+                const countryCodes = String(req.userProfile?.news_country_codes || 'ae,sa,eg,qa,kw')
+                    .split(',').map(c => c.trim()).filter(Boolean).slice(0, 5).join(',');
+
                 const { data } = await axios.get('https://newsdata.io/api/1/news', {
                     params: {
                         apikey: NEWS_KEY,
                         q: newsDataQuery,
-                        country: req.userProfile?.news_country_codes || 'ae,sa,eg,qa,kw',
+                        country: countryCodes,
                         language: 'en',
                         size: 10,
                     },
