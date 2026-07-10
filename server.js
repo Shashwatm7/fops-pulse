@@ -18,6 +18,7 @@ import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './se
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
 import { summarizeArticle, extractLocalEntities } from './services/labeling/labelingService.js';
+import { buildPlannerPrompt } from './services/planner/plannerService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { runHybridAnalysis } from './algorithms.js';
@@ -129,16 +130,6 @@ app.use('/api/auth', authRouter);
 
 // NOTE: never add endpoints that echo process.env values — a debug route
 // here once returned the raw GROQ_API_KEY unauthenticated.
-app.get('/api/debug-python', requireAuth, async (req, res) => {
-    try {
-        const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
-        const pythonHealth = await axios.get(`${aiBaseUrl}/health`, { timeout: 5000 });
-        res.json({ python_service: 'RUNNING', health: { status: pythonHealth.data?.status, service: pythonHealth.data?.service } });
-    } catch (err) {
-        res.json({ python_service: 'DOWN', error: err.message });
-    }
-});
-
 app.get('/api/token-usage', requireAuth, (req, res) => {
     res.json(tokenUsage);
 });
@@ -1664,21 +1655,25 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
             }
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
-        console.log('[AI PLANNER] Proxying request to Python FastAPI Microservice...');
-        const aiBaseUrl = process.env.AI_SERVICE_URL ? process.env.AI_SERVICE_URL.replace(/\/$/, '') : 'http://127.0.0.1:8000';
-        
-        // Pass API keys from Node env to Python (Docker env sharing can be unreliable)
-        payload._groq_api_key = process.env.GROQ_API_KEY;
-        payload._gemini_api_key = process.env.GEMINI_API_KEY;
-        
-        const pythonRes = await axios.post(`${aiBaseUrl}/api/analyze-planner`, payload, { timeout: 45000 });
-        
-        if (pythonRes.data.success) {
-            global.aiPlannerCache[cacheKey] = { data: pythonRes.data.recommendations, timestamp: Date.now() };
-            return res.json({ success: true, recommendations: pythonRes.data.recommendations });
-        } else {
-            throw new Error(pythonRes.data.error || 'Python microservice returned an error');
+        console.log('[AI PLANNER] Generating recommendations in-process (Node)...');
+
+        // Ported from the old Python FastAPI microservice: plannerService builds
+        // the (systemPrompt, contextBundle) pair with pure regex/string logic,
+        // and callGroq() runs the LLM with the shared Groq 70B → Gemini → Groq 8B
+        // failover chain (same model, temperature, and json_mode as before).
+        const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
+        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.35);
+
+        let parsed;
+        try {
+            parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch (parseErr) {
+            throw new Error(`Planner LLM returned non-JSON output: ${parseErr.message}`);
         }
+        const recommendations = parsed?.recommendations || [];
+
+        global.aiPlannerCache[cacheKey] = { data: recommendations, timestamp: Date.now() };
+        return res.json({ success: true, recommendations });
 
     } catch (err) {
         const errorDetail = err.response?.data?.error || err.message;

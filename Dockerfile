@@ -1,21 +1,11 @@
-FROM python:3.10-slim
+FROM node:22-slim
 
-# Install system dependencies including curl
+# curl for healthchecks/debugging; build-essential for any native npm deps
 RUN apt-get update && apt-get install -y curl build-essential && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js 22
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
-# Copy AI requirements and install Python dependencies
-COPY ai_service/requirements.txt ./ai_service/
-RUN pip install --no-cache-dir -r ai_service/requirements.txt
-
-# Copy package.json and install Node dependencies
+# Install Node dependencies
 COPY package*.json ./
 RUN npm install
 
@@ -29,8 +19,5 @@ COPY . .
 # Build frontend
 RUN npm run build
 
-# Ensure startup script is executable
-RUN chmod +x start.sh
-
-# Start both services
-CMD ["./start.sh"]
+# Single Node process: migrate then start the server (see package.json "start")
+CMD ["npm", "start"]
