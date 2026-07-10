@@ -125,7 +125,10 @@ const BANNED_PHRASES = [
 
 // Bump when the prompt/output shape changes so the URL cache regenerates
 // instead of serving summaries written by an older, thinner prompt.
-export const SUMMARY_VERSION = 'v2';
+// v3: anti-hallucination — Google News URLs now resolve to real article
+// bodies, the no-body case forbids figures, and key_figures are grounded
+// against the actual input before being returned.
+export const SUMMARY_VERSION = 'v3';
 
 // Static instructions + output schema live in the SYSTEM prompt: it is
 // identical on every call, so Groq's automatic prompt caching can reuse it as
@@ -144,14 +147,20 @@ Return ONLY valid JSON (no markdown, no backticks) in EXACTLY this shape:
   "key_figures": ["the 2-5 hardest data points from the article verbatim: e.g. '+18% FCOJ futures', 'harvest down to 3.2M tonnes', 'Q3 2026'. Empty array if the article states none — never invent."]
 }
 
-Ground every field strictly in the supplied article text and entity list; never invent numbers, dates, or affected entities. Banned phrases (and close paraphrases): ${BANNED_PHRASES.join('; ')}.`;
+Ground every field strictly in the supplied article text and entity list; never invent numbers, dates, or affected entities. CRITICAL: if the article body is marked as unavailable, you MUST NOT state ANY figure, percentage, date, volume, or named detail that is not literally present in the title — key_figures MUST be an empty array, and the summary must say the full article text could not be retrieved. A wrong number in a procurement brief causes real purchasing mistakes; "no data" is always the correct answer over an invented one. Banned phrases (and close paraphrases): ${BANNED_PHRASES.join('; ')}.`;
+
+// Shared between the prompt and the grounding filter so figures are checked
+// against exactly the content the model saw.
+function summaryContent(article, bodyText) {
+    if (bodyText && bodyText.length > 120) return bodyText;
+    const snippet = (article.description || '').slice(0, 800);
+    if (snippet.trim().length >= 40) return snippet;
+    return 'UNAVAILABLE — the full article text could not be retrieved. Only the title above is known. Do not state any figures; key_figures must be [].';
+}
 
 function summaryPrompt(article, entities, customer, bodyText) {
     const j = (v) => (v && v.length ? v.join(', ') : 'none detected');
-    // Prefer real stripped article body; fall back to the RSS snippet.
-    const content = (bodyText && bodyText.length > 120)
-        ? bodyText
-        : (article.description || '').slice(0, 800) || '(no body text could be retrieved — summarize only what the title implies and state that figures are unavailable)';
+    const content = summaryContent(article, bodyText);
     return `Distributor: ${customer?.company || 'general food-service importer'} (${customer?.region || 'GCC'})
 
 Title: ${article.title}
@@ -169,6 +178,21 @@ Routes: ${j(entities.routes)}
 Supplier countries: ${j(entities.supplier_countries)}`;
 }
 
+// Grounding filter: a key_figure survives only if every digit-group in it
+// (e.g. "19.1", "2026", "18") literally appears in the text the model was
+// given. Small LLMs under a "produce hard figures" instruction will invent
+// numbers when the input has none — this makes invented figures impossible
+// to surface, regardless of what the model returns. Exported for tests.
+export function groundKeyFigures(figures, sourceText) {
+    if (!Array.isArray(figures)) return [];
+    const src = String(sourceText || '');
+    return figures.filter(f => {
+        const groups = String(f).match(/\d+(?:\.\d+)?/g);
+        if (!groups || groups.length === 0) return false; // a "figure" with no number isn't one
+        return groups.every(g => src.includes(g));
+    });
+}
+
 /**
  * On-demand click-to-summarize for a single article. Distinct from label()
  * above: no training/category output, meant to be cached by caller
@@ -181,7 +205,10 @@ export async function summarizeArticle(article, entities, customer = null, bodyT
     const client = makeClient();
     const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer, bodyText), 700);
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.key_figures)) parsed.key_figures = [];
+    // Never let an invented number reach the user: figures must literally
+    // appear in what the model was shown (title + body/snippet).
+    const shown = `${article.title || ''}\n${summaryContent(article, bodyText)}`;
+    parsed.key_figures = groundKeyFigures(parsed.key_figures, shown);
     return parsed;
 }
 

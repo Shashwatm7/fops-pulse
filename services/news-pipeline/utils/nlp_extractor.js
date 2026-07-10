@@ -3,18 +3,68 @@ import * as cheerio from 'cheerio';
 import nlp from 'compromise';
 import natural from 'natural';
 
+// ── Google News redirect resolution ──
+// RSS <link>s are news.google.com/rss/articles/CBMi... wrappers, NOT the real
+// article URL. Fetching them returns a JS redirect shell with no article
+// text — which is how summaries ended up hallucinated: the model got a title
+// and no body. The article ID is encrypted (the old base64 trick died in
+// 2024), so we use Google's own batchexecute RPC: scrape the signature +
+// timestamp off the wrapper page, then ask DotsSplashUi for the target URL.
+const resolvedUrlCache = new Map(); // googleUrl -> realUrl|null
+const RESOLVE_CACHE_MAX = 500;
+
+export async function resolveGoogleNewsUrl(url) {
+    if (!/news\.google\.com\/rss\/articles\//.test(url || '')) return url; // not a wrapper
+    if (resolvedUrlCache.has(url)) return resolvedUrlCache.get(url);
+    let resolved = null;
+    try {
+        const { data: html } = await axios.get(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            timeout: 6000,
+        });
+        const sg = html.match(/data-n-a-sg="([^"]+)"/)?.[1];
+        const ts = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
+        const id = url.match(/articles\/([^?]+)/)?.[1];
+        if (sg && ts && id) {
+            const inner = JSON.stringify([
+                'garturlreq',
+                [['en-US', 'US', ['FINANCE_TOP_INDICES', 'WEB_TEST_1_0_0'], null, null, 1, 1, 'US:en', null, 180, null, null, null, null, null, 0, null, null, [1608992183, 723341000]], 'en-US', 'US', 1, [2, 3, 4, 8], 1, 0, '655000234', 0, 0, null, 0],
+                id, Number(ts), sg,
+            ]);
+            const freq = JSON.stringify([[['Fbv4je', inner, null, 'generic']]]);
+            const { data: resp } = await axios.post(
+                'https://news.google.com/_/DotsSplashUi/data/batchexecute',
+                'f.req=' + encodeURIComponent(freq),
+                { headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'User-Agent': 'Mozilla/5.0' }, timeout: 6000 }
+            );
+            const candidates = (String(resp).match(/https?:\/\/[^"\\]+/g) || []).filter(u => !u.includes('google.com'));
+            resolved = candidates[0] || null;
+        }
+    } catch (err) {
+        console.error('Google News URL resolution failed:', err.message);
+    }
+    if (resolvedUrlCache.size >= RESOLVE_CACHE_MAX) {
+        resolvedUrlCache.delete(resolvedUrlCache.keys().next().value); // drop oldest
+    }
+    resolvedUrlCache.set(url, resolved);
+    return resolved; // null → caller knows the real article is unreachable
+}
+
 /**
  * Fetch an article and STRIP it to clean body text (paragraph text only, no
  * nav/ads/markup), capped at maxChars. This is the token-bounded "input" for
  * on-demand summarization: we send the model real article content instead of
  * the thin RSS snippet, but never the whole raw page — the cap keeps input
  * tokens predictable. Free and local (no LLM). Returns null on failure so the
- * caller can fall back to the snippet.
+ * caller can fall back to the snippet. Google News wrapper URLs are resolved
+ * to the real article first — the wrapper itself contains no article text.
  * @returns {Promise<{text: string, entities: object}|null>}
  */
 export async function fetchArticleText(url, maxChars = 3000) {
     try {
-        const { data: html } = await axios.get(url, {
+        const realUrl = await resolveGoogleNewsUrl(url);
+        if (!realUrl) return null; // unresolvable wrapper → no body available
+        const { data: html } = await axios.get(realUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
             timeout: 6000,
             maxContentLength: 5 * 1024 * 1024, // don't slurp giant pages
@@ -52,8 +102,11 @@ export async function fetchArticleText(url, maxChars = 3000) {
 
 export async function fetchAndExtractArticle(url) {
     try {
+        // 0. Google News wrappers hold no article text — resolve to the real URL.
+        const realUrl = await resolveGoogleNewsUrl(url);
+        if (!realUrl) return null;
         // 1. Fetch HTML
-        const { data: html } = await axios.get(url, {
+        const { data: html } = await axios.get(realUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
             timeout: 5000
         });

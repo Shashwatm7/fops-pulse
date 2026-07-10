@@ -3314,14 +3314,28 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
         // Strip the real article body (paragraph text, capped ~3000 chars) so
         // the model summarizes actual content, not the thin RSS snippet. Free
         // and local; falls back to the snippet if the fetch fails (paywall/JS).
+        // Google News wrapper URLs are resolved to the real article inside.
         const stripped = await fetchArticleText(url, 3000);
         const bodyText = stripped?.text || null;
 
+        // The client sends whatever the alert card had as "description" — for
+        // news alerts that can be Google's RSS link-soup (<a href=...>) or the
+        // scanner's score-talk reason ("Score: 70. Commodity Match..."). Neither
+        // is article content; feeding them to the model produces summaries of
+        // junk. Keep only text that reads like a real snippet.
+        const cleanDesc = (() => {
+            let d = String(description || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!d || d.length < 40) return null;
+            if (/news\.google\.com/i.test(d)) return null;      // RSS link soup
+            if (/^Score:\s*\d+/i.test(d)) return null;          // scanner reason text
+            return d;
+        })();
+
         // Entities come from the customer profile match on title+body, enriched
         // with anything the local NLP pass pulled out of the fetched article.
-        const entities = extractLocalEntities(`${title} ${bodyText || description || ''}`, customer);
+        const entities = extractLocalEntities(`${title} ${bodyText || cleanDesc || ''}`, customer);
 
-        const result = await summarizeArticle({ title, description, source }, entities, customer, bodyText);
+        const result = await summarizeArticle({ title, description: cleanDesc, source }, entities, customer, bodyText);
 
         await saveArticleSummaryCache(url, title, {
             summary: result.summary, impact: result.impact, action_note: result.action_note,
