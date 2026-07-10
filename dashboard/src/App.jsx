@@ -1789,6 +1789,13 @@ export default function Dashboard() {
                     </span>
                   )}
                   <div style={{ marginBottom: '10px' }}>{isLabeled ? (detail.what || d.headline) : d.summary}</div>
+                  {!isLabeled && d.key_figures?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
+                      {d.key_figures.map((kf, j) => (
+                        <span key={`kf-${j}`} style={{ fontSize: '11px', fontWeight: 600, background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 7px', borderRadius: '4px' }}>📊 {kf}</span>
+                      ))}
+                    </div>
+                  )}
                   {(isLabeled ? detail.action_note : d.impact) && (
                     <div style={{ marginBottom: '10px', color: '#67e8f9' }}>
                       <b style={{ color: 'var(--text-muted)' }}>Impact:</b> {isLabeled ? detail.action_note : d.impact}

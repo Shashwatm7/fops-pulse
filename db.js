@@ -692,15 +692,15 @@ export async function getArticleSummaryCache(articleUrl) {
   return rows[0] || null;
 }
 
-export async function saveArticleSummaryCache(articleUrl, articleTitle, { summary, impact, action_note, entities, model }) {
+export async function saveArticleSummaryCache(articleUrl, articleTitle, { summary, impact, action_note, entities, key_figures, model }) {
   const { rows } = await pool.query(
-    `INSERT INTO article_summary_cache (article_url, article_title, summary, impact, action_note, entities_json, model)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO article_summary_cache (article_url, article_title, summary, impact, action_note, entities_json, key_figures_json, model)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (article_url) DO UPDATE SET
        summary = EXCLUDED.summary, impact = EXCLUDED.impact, action_note = EXCLUDED.action_note,
-       entities_json = EXCLUDED.entities_json, model = EXCLUDED.model
+       entities_json = EXCLUDED.entities_json, key_figures_json = EXCLUDED.key_figures_json, model = EXCLUDED.model
      RETURNING *`,
-    [articleUrl, articleTitle, summary, impact, action_note || null, JSON.stringify(entities || {}), model]
+    [articleUrl, articleTitle, summary, impact, action_note || null, JSON.stringify(entities || {}), JSON.stringify(key_figures || []), model]
   );
   return rows[0];
 }
