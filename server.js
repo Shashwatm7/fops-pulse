@@ -61,6 +61,17 @@ const COMMODITY_UNITS = Object.fromEntries(
     ALL_COMMODITIES.map(c => [c.key, c.unit])
 );
 
+// Yahoo quotes CME/ICE grain, soft, and livestock futures in US cents; we
+// display everything in DOLLARS, so these symbols get their raw quote divided
+// by 100. Single source of truth = the `centsQuoted` flag in ALL_COMMODITIES.
+// toDollars() is applied at every point a raw Yahoo value becomes user-facing
+// or stored in livePrices, so the whole app is consistently in dollars.
+const CENTS_SYMBOLS = new Set(
+    ALL_COMMODITIES.filter(c => c.centsQuoted).map(c => c.key)
+);
+const toDollars = (symbol, v) =>
+    (v != null && Number.isFinite(v) && CENTS_SYMBOLS.has(symbol)) ? v / 100 : v;
+
 const COMMODITY_DATA = {
     BRENT_CRUDE:  { price: '0', unit: 'USD/bbl', producers: ['Saudi Arabia', 'USA', 'Russia', 'UAE', 'Oman'], regions: [], currencies: ['USD', 'SAR', 'AED', 'OMR'] }
 };
@@ -675,24 +686,23 @@ app.get('/api/history', requireAuth, async (req, res) => {
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval });
         const hist = chart.quotes || [];
 
-        // "USX" is Yahoo's own currency tag for cents-denominated futures
-        // (grains, softs, livestock). Yahoo's own UI displays these quotes
-        // RAW (e.g. lean hogs shows "85.875", not "$0.85875") — so we pass
-        // the number through unconverted to match the number every other
-        // source (CME, financial press, Yahoo itself) reports.
+        // Display in dollars: cents-quoted futures (grains, softs, livestock)
+        // are divided by 100 so the chart matches the dollar prices shown
+        // everywhere else. Dollar-quoted symbols pass through unchanged.
+        const sym = symbol.toUpperCase();
         let normalized = hist.map(d => {
-            let price = d.close;
-            let open = d.open;
-            let high = d.high;
-            let low = d.low;
-            let volume = d.volume;
+            const price = toDollars(sym, d.close);
+            const open = toDollars(sym, d.open);
+            const high = toDollars(sym, d.high);
+            const low = toDollars(sym, d.low);
+            const volume = d.volume;
 
             return {
                 time: d.date.toISOString(),
-                price: price ? parseFloat(price.toFixed(2)) : 0,
-                open: open ? parseFloat(open.toFixed(2)) : null,
-                high: high ? parseFloat(high.toFixed(2)) : null,
-                low: low ? parseFloat(low.toFixed(2)) : null,
+                price: price ? parseFloat(price.toFixed(4)) : 0,
+                open: open ? parseFloat(open.toFixed(4)) : null,
+                high: high ? parseFloat(high.toFixed(4)) : null,
+                low: low ? parseFloat(low.toFixed(4)) : null,
                 volume: volume || 0
             };
         }).filter(d => d.price > 0).sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -1818,17 +1828,17 @@ async function tickPrices() {
                 continue;
             }
             
-            // "USX" (US cents) futures — grains, softs, livestock — are shown
-            // RAW, unconverted: this matches how Yahoo's own UI, CME, and
-            // financial press report these quotes (e.g. lean hogs "85.875",
-            // not "$0.85875"). No cents->dollars division.
-            const newPrice = q.regularMarketPrice;
+            // Display everything in dollars: "USX" (US cents) futures — grains,
+            // softs, livestock — are divided by 100 (corn 455 -> $4.55/bu, lean
+            // hogs 85.9 -> $0.86/lb). toDollars() is a no-op for symbols Yahoo
+            // already quotes in dollars (metals, energy, cwt/ton contracts).
+            const newPrice = toDollars(symbol, q.regularMarketPrice);
 
             // Same-contract session refs for the anomaly detector — the
             // quote's own previousClose/open cannot span a contract roll,
             // unlike the continuous chart series.
-            state.prevClose = q.regularMarketPreviousClose > 0 ? q.regularMarketPreviousClose : null;
-            state.dayOpen = q.regularMarketOpen > 0 ? q.regularMarketOpen : null;
+            state.prevClose = q.regularMarketPreviousClose > 0 ? toDollars(symbol, q.regularMarketPreviousClose) : null;
+            state.dayOpen = q.regularMarketOpen > 0 ? toDollars(symbol, q.regularMarketOpen) : null;
 
             const rounded = +newPrice.toFixed(newPrice < 10 ? 4 : 2);
 
@@ -1869,8 +1879,8 @@ async function tickPrices() {
                 const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
                 const bars = (chart.quotes || []).filter(q => q.close != null);
                 if (bars.length === 0) continue;
-                const last = bars[bars.length - 1].close;
-                const prevRaw = bars.length > 1 ? bars[bars.length - 2].close : null;
+                const last = toDollars(symbol, bars[bars.length - 1].close);
+                const prevRaw = bars.length > 1 ? toDollars(symbol, bars[bars.length - 2].close) : null;
                 // Continuous-series bars can span a futures contract roll —
                 // the documented reason the quote path uses same-contract
                 // refs. A big bar-to-bar gap here is indistinguishable from a
@@ -1942,10 +1952,12 @@ async function getDailyCloses(symbol) {
         let todayOpen = null;
         for (const q of chart.quotes || []) {
             if (!q.date) continue;
+            // Convert to dollars so these line up with state.current /
+            // state.prevClose (also dollars) in analyzePriceSeries.
             if (q.date.toISOString().slice(0, 10) === todayUtc) {
-                todayOpen = q.open ?? null; // today's session open feeds the contract-roll guard
+                todayOpen = q.open != null ? toDollars(symbol, q.open) : null; // today's session open feeds the contract-roll guard
             } else if (q.close != null) {
-                closes.push(q.close); // completed days only
+                closes.push(toDollars(symbol, q.close)); // completed days only
             }
         }
         dailyCloseCache[symbol] = { closes, todayOpen, fetchedDate: todayUtc };
@@ -3035,7 +3047,7 @@ async function getPrecedentAftermath(pastEvent, symbol) {
         const chart = await yahooFinance.chart(yTicker, { period1, period2, interval: '1d' });
         const bars = (chart.quotes || [])
             .filter(q => q.close != null && q.date)
-            .map(q => ({ date: q.date, close: q.close }));
+            .map(q => ({ date: q.date, close: toDollars(symbol, q.close) }));
         const aftermath = computeAftermath(bars, pastEvent.date);
         precedentAftermathCache[cacheKey] = aftermath;
         return aftermath;
@@ -3060,7 +3072,7 @@ async function getLongHistory(symbol) {
         const chart = await yahooFinance.chart(yTicker, { period1, period2: new Date(), interval: '1d' });
         const bars = (chart.quotes || [])
             .filter(q => q.close != null && q.date)
-            .map(q => ({ date: q.date, close: q.close }));
+            .map(q => ({ date: q.date, close: toDollars(symbol, q.close) }));
         longHistoryCache[symbol] = { bars, fetchedDate: today };
         return bars;
     } catch (e) {
