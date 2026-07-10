@@ -3337,11 +3337,18 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
 
         const result = await summarizeArticle({ title, description: cleanDesc, source }, entities, customer, bodyText);
 
-        await saveArticleSummaryCache(url, title, {
-            summary: result.summary, impact: result.impact, action_note: result.action_note,
-            key_figures: result.key_figures, entities, model: versionedModel,
-        });
-        res.json({ success: true, source: 'generated', insight: { ...result, entities } });
+        // Cache ONLY summaries built from a real article body. A fetch failure
+        // can be transient (deploy lag, temporary block, proxy hiccup) — caching
+        // its "text unavailable" summary would serve that failure forever and
+        // block every future retry. No-body summaries stay uncached so the next
+        // click re-attempts the fetch.
+        if (bodyText) {
+            await saveArticleSummaryCache(url, title, {
+                summary: result.summary, impact: result.impact, action_note: result.action_note,
+                key_figures: result.key_figures, entities, model: versionedModel,
+            });
+        }
+        res.json({ success: true, source: 'generated', insight: { ...result, entities }, bodyAvailable: !!bodyText });
     } catch (err) {
         console.error('Article summary error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to generate summary' });
