@@ -9,24 +9,24 @@
 // Removed: POULTRY (no liquid broiler futures — only a Tyson stock proxy),
 // COTTON (CT=F fails yahoo-finance2 schema validation, unfetchable).
 export const ALL_COMMODITIES = [
-  // NOTE: `unit` matches Yahoo's RAW quote convention for each contract, since
-  // prices are displayed unconverted. CME/ICE grain, soft, and livestock
-  // futures quote in US CENTS (e.g. corn 455 = 455¢/bu = $4.55/bu); metals,
-  // energy, cwt- and ton-priced contracts quote in dollars. Keep these in sync
-  // with what the ticker actually returns or the displayed unit will lie.
-  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZW=F' },
-  { key: 'CORN', label: 'Corn', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZC=F' },
-  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZS=F' },
+  // Prices are displayed in DOLLARS across the board. Yahoo quotes CME/ICE
+  // grain, soft, and livestock futures in US CENTS (corn 455 = $4.55/bu; lean
+  // hogs 85.9 = $0.86/lb), so those carry `centsQuoted: true` and the server
+  // divides the raw quote by 100 before display. `unit` is the final displayed
+  // unit — always dollar-denominated ($/bu, $/lb, $/cwt, $/ton, $/oz, ...).
+  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: '$/bu', yahooSymbol: 'ZW=F', centsQuoted: true },
+  { key: 'CORN', label: 'Corn', category: 'Grains', unit: '$/bu', yahooSymbol: 'ZC=F', centsQuoted: true },
+  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: '$/bu', yahooSymbol: 'ZS=F', centsQuoted: true },
   { key: 'RICE', label: 'Rice', category: 'Grains', unit: '$/cwt', yahooSymbol: 'ZR=F' },
-  { key: 'OATS', label: 'Oats', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZO=F' },
-  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'SB=F' },
-  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'KC=F' },
+  { key: 'OATS', label: 'Oats', category: 'Grains', unit: '$/bu', yahooSymbol: 'ZO=F', centsQuoted: true },
+  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: '$/lb', yahooSymbol: 'SB=F', centsQuoted: true },
+  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: '$/lb', yahooSymbol: 'KC=F', centsQuoted: true },
   { key: 'COCOA', label: 'Cocoa', category: 'Soft Commodities', unit: '$/ton', yahooSymbol: 'CC=F' },
-  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'GF=F' },
-  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'HE=F' },
-  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'LE=F' },
+  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: '$/lb', yahooSymbol: 'GF=F', centsQuoted: true },
+  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: '$/lb', yahooSymbol: 'HE=F', centsQuoted: true },
+  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: '$/lb', yahooSymbol: 'LE=F', centsQuoted: true },
   { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: '$/cwt', yahooSymbol: 'DC=F' },
-  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'OJ=F' },
+  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: '$/lb', yahooSymbol: 'OJ=F', centsQuoted: true },
   { key: 'COPPER', label: 'Copper', category: 'Metals', unit: '$/lb', yahooSymbol: 'HG=F' },
   { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: '$/ton', yahooSymbol: 'ALI=F' },
   { key: 'GOLD', label: 'Gold', category: 'Metals', unit: '$/oz', yahooSymbol: 'GC=F' },
