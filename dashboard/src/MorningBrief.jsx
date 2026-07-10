@@ -31,9 +31,23 @@ function BriefSkeleton() {
 export default function MorningBrief({ brief, username, onViewAlerts, onSelectCommodity }) {
   if (!brief) return <BriefSkeleton />;
 
-  const alerts = (brief.newAlerts || []).slice(0, 5);
+  // Show a MIX of commodity (price) and news alerts, not just whichever type
+  // fired most. Target ratio 2 commodity : 3 news out of 5 shown; if one
+  // bucket is short, backfill from the other. Keep the DB triage order
+  // (severity, then recency) among the chosen rows.
+  const allAlerts = brief.newAlerts || [];
+  const priceAll = allAlerts.filter(a => a.source === 'PRICE');
+  const newsAll = allAlerts.filter(a => a.source !== 'PRICE'); // PROFILE_NEWS etc.
+  const SHOW = 5;
+  const chosen = [...newsAll.slice(0, 3), ...priceAll.slice(0, 2)];
+  if (chosen.length < SHOW) {
+    const rest = [...newsAll.slice(3), ...priceAll.slice(2)];
+    chosen.push(...rest.slice(0, SHOW - chosen.length));
+  }
+  const triageOrder = new Map(allAlerts.map((a, i) => [a.id, i]));
+  const alerts = chosen.sort((a, b) => triageOrder.get(a.id) - triageOrder.get(b.id));
   const counts = brief.alertCounts || {};
-  const totalAlerts = (brief.newAlerts || []).length;
+  const totalAlerts = allAlerts.length;
   const priceMovers = brief.priceMovers || [];
 
   const fmtPrice = (p) => (p >= 100 ? p.toFixed(0) : p >= 1 ? p.toFixed(2) : p.toFixed(4));
@@ -108,7 +122,10 @@ export default function MorningBrief({ brief, username, onViewAlerts, onSelectCo
                   <span style={{ color: 'var(--text-dim)', marginRight: '6px' }}>📈</span>{m.label.toLowerCase()}
                 </span>
                 <span style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '8px', fontFamily: 'var(--font-mono)' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{fmtPrice(m.price)}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {fmtPrice(m.price)}
+                    {m.unit && <span style={{ color: 'var(--text-dim)', fontSize: '11px', marginLeft: '4px' }}>{m.unit}</span>}
+                  </span>
                   <span style={{ color: col, fontWeight: 600, minWidth: '58px', textAlign: 'right' }} title={noPrev ? 'Previous close unavailable (possible contract roll) — change not shown rather than guessed' : undefined}>
                     {noPrev ? '—' : flat ? '0.00%' : `${up ? '▲' : '▼'} ${Math.abs(m.changePct).toFixed(2)}%`}
                   </span>

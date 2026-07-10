@@ -9,27 +9,32 @@
 // Removed: POULTRY (no liquid broiler futures — only a Tyson stock proxy),
 // COTTON (CT=F fails yahoo-finance2 schema validation, unfetchable).
 export const ALL_COMMODITIES = [
-  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZW=F' },
-  { key: 'CORN', label: 'Corn', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZC=F' },
-  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZS=F' },
-  { key: 'RICE', label: 'Rice', category: 'Grains', unit: 'USD/cwt', yahooSymbol: 'ZR=F' },
-  { key: 'OATS', label: 'Oats', category: 'Grains', unit: 'USD/bushel', yahooSymbol: 'ZO=F' },
-  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'SB=F' },
-  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'KC=F' },
-  { key: 'COCOA', label: 'Cocoa', category: 'Soft Commodities', unit: 'USD/ton', yahooSymbol: 'CC=F' },
-  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'GF=F' },
-  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'HE=F' },
-  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: 'USD/lb', yahooSymbol: 'LE=F' },
-  { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: 'USD/cwt', yahooSymbol: 'DC=F' },
-  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: 'USD/lb', yahooSymbol: 'OJ=F' },
-  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: 'USD/lb', yahooSymbol: 'HG=F' },
-  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: 'USD/ton', yahooSymbol: 'ALI=F' },
-  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'GC=F' },
-  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'SI=F' },
-  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: 'USD/oz', yahooSymbol: 'PL=F' },
-  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: 'USD/1000bf', yahooSymbol: 'LBR=F' },
-  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: 'USD/barrel', yahooSymbol: 'BZ=F' },
-  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: 'USD/MMBtu', yahooSymbol: 'NG=F' },
+  // NOTE: `unit` matches Yahoo's RAW quote convention for each contract, since
+  // prices are displayed unconverted. CME/ICE grain, soft, and livestock
+  // futures quote in US CENTS (e.g. corn 455 = 455¢/bu = $4.55/bu); metals,
+  // energy, cwt- and ton-priced contracts quote in dollars. Keep these in sync
+  // with what the ticker actually returns or the displayed unit will lie.
+  { key: 'WHEAT', label: 'Wheat', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZW=F' },
+  { key: 'CORN', label: 'Corn', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZC=F' },
+  { key: 'SOYBEANS', label: 'Soybeans', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZS=F' },
+  { key: 'RICE', label: 'Rice', category: 'Grains', unit: '$/cwt', yahooSymbol: 'ZR=F' },
+  { key: 'OATS', label: 'Oats', category: 'Grains', unit: '¢/bu', yahooSymbol: 'ZO=F' },
+  { key: 'SUGAR', label: 'Sugar', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'SB=F' },
+  { key: 'COFFEE', label: 'Coffee', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'KC=F' },
+  { key: 'COCOA', label: 'Cocoa', category: 'Soft Commodities', unit: '$/ton', yahooSymbol: 'CC=F' },
+  { key: 'FEEDER_CATTLE', label: 'Feeder Cattle', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'GF=F' },
+  { key: 'LEAN_HOGS', label: 'Lean Hogs', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'HE=F' },
+  { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: '¢/lb', yahooSymbol: 'LE=F' },
+  { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: '$/cwt', yahooSymbol: 'DC=F' },
+  { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: '¢/lb', yahooSymbol: 'OJ=F' },
+  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: '$/lb', yahooSymbol: 'HG=F' },
+  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: '$/ton', yahooSymbol: 'ALI=F' },
+  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: '$/oz', yahooSymbol: 'GC=F' },
+  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: '$/oz', yahooSymbol: 'SI=F' },
+  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: '$/oz', yahooSymbol: 'PL=F' },
+  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: '$/1000bf', yahooSymbol: 'LBR=F' },
+  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: '$/bbl', yahooSymbol: 'BZ=F' },
+  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: '$/MMBtu', yahooSymbol: 'NG=F' },
 ];
 
 export const ALL_REGIONS = [
