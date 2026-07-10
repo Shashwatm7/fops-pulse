@@ -33,7 +33,8 @@ async function runMigrations() {
       'migrations/015_article_summary_cache.sql',
       'migrations/016_clear_stale_summary_cache.sql',
       'migrations/017_settings_changed_at.sql',
-      'migrations/018_summary_key_figures.sql'
+      'migrations/018_summary_key_figures.sql',
+      'migrations/019_bust_hallucinated_summaries.sql'
     ];
     let failures = 0;
     for (const file of migrationFiles) {
