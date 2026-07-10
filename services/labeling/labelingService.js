@@ -117,50 +117,72 @@ export function extractLocalEntities(text, customer) {
     };
 }
 
-const SUMMARY_SYSTEM_PROMPT =
-    'You are a supply chain intelligence analyst for a food-service distributor. You write for planners who already know the industry — every sentence must carry a fact (a number, a date, a name, a place) they did not already know from the headline. Return ONLY valid JSON. No explanation, no markdown, no backticks.';
-
 const BANNED_PHRASES = [
     'could impact the market', 'may affect prices', 'monitor the situation',
     'keep an eye on', 'stay informed', 'could have implications',
     'it is important to', 'in the coming days/weeks', 'remains to be seen',
 ];
 
-function summaryPrompt(article, entities, customer) {
+// Bump when the prompt/output shape changes so the URL cache regenerates
+// instead of serving summaries written by an older, thinner prompt.
+export const SUMMARY_VERSION = 'v2';
+
+// Static instructions + output schema live in the SYSTEM prompt: it is
+// identical on every call, so Groq's automatic prompt caching can reuse it as
+// a cached prefix (the dynamic article goes in the user message). This is the
+// token-saving structure — static-before-dynamic.
+const SUMMARY_SYSTEM_PROMPT =
+    `You are a supply chain intelligence analyst for a food-service distributor in the GCC. You brief demand/supply planners who already know the industry. You are given the stripped body text of ONE news article and must turn it into an actionable, specific brief.
+
+Write for a planner deciding whether this article needs action THIS WEEK. Every sentence must carry a concrete fact from the article — a number, percentage, date, named company/official/port/vessel, volume, or price. Do not restate the headline. Do not add background the article does not contain.
+
+Return ONLY valid JSON (no markdown, no backticks) in EXACTLY this shape:
+{
+  "summary": "3-5 sentences that a planner could act on without opening the article. Lead with what happened and the hardest numbers/dates/names in the text, then the supply-chain consequence. If the article genuinely contains no figures, say so plainly in one sentence rather than padding.",
+  "impact": "1-2 sentences naming the SPECIFIC mechanism for THIS distributor: which commodity/port/route/supplier-country from the provided entity list is affected and how (e.g. 'Red Sea rerouting adds ~10-14 days to Europe-UAE chicken shipments, tightening frozen-poultry cover'). Write 'Limited direct impact' only if genuinely none.",
+  "action_note": "1 concrete action tied to this article (e.g. 'Confirm buffer stock covers a 2-week delay on the affected route before the next PO'), or null if no action is warranted. Never generic advice.",
+  "key_figures": ["the 2-5 hardest data points from the article verbatim: e.g. '+18% FCOJ futures', 'harvest down to 3.2M tonnes', 'Q3 2026'. Empty array if the article states none — never invent."]
+}
+
+Ground every field strictly in the supplied article text and entity list; never invent numbers, dates, or affected entities. Banned phrases (and close paraphrases): ${BANNED_PHRASES.join('; ')}.`;
+
+function summaryPrompt(article, entities, customer, bodyText) {
     const j = (v) => (v && v.length ? v.join(', ') : 'none detected');
+    // Prefer real stripped article body; fall back to the RSS snippet.
+    const content = (bodyText && bodyText.length > 120)
+        ? bodyText
+        : (article.description || '').slice(0, 800) || '(no body text could be retrieved — summarize only what the title implies and state that figures are unavailable)';
     return `Distributor: ${customer?.company || 'general food-service importer'} (${customer?.region || 'GCC'})
-Reader: demand/supply planner deciding whether this article needs action.
 
 Title: ${article.title}
 Source: ${article.source || 'unknown'}
-Snippet: ${(article.description || '').slice(0, 800)}
 
-Entities already matched to this distributor's profile (do not re-derive, just use them):
+Article body (stripped to text):
+"""
+${content}
+"""
+
+Entities already matched to this distributor's profile (use these; do not re-derive):
 Commodities: ${j(entities.commodities)}
 Ports: ${j(entities.ports)}
 Routes: ${j(entities.routes)}
-Supplier countries: ${j(entities.supplier_countries)}
-
-Return EXACTLY this JSON shape:
-{
-  "summary": "2-3 sentences. Pull the concrete facts from the snippet: numbers, percentages, dates, named companies/officials/vessels, volumes. If the snippet has no such facts, say plainly 'No figures given in this report' instead of padding with generic language.",
-  "impact": "1 sentence naming the SPECIFIC mechanism: which commodity/port/route from the entity list is affected and how (e.g. 'Red Sea rerouting adds ~10-14 days to Europe-UAE chicken shipments'), or 'Limited direct impact' if genuinely none.",
-  "action_note": "1 concrete, specific action tied to this article (e.g. 'Confirm buffer stock covers a 2-week delay on the affected route'), or null if no action needed. Never write generic advice like 'monitor the situation' or 'stay informed'."
-}
-
-Banned phrases — do not use any of these or close paraphrases: ${BANNED_PHRASES.join('; ')}.`;
+Supplier countries: ${j(entities.supplier_countries)}`;
 }
 
 /**
  * On-demand click-to-summarize for a single article. Distinct from label()
- * above: no training/category output, smaller max_tokens, meant to be
- * cached by caller (article_summary_cache) rather than run at scan time.
- * @returns {Promise<{summary: string, impact: string, action_note: string|null}>}
+ * above: no training/category output, meant to be cached by caller
+ * (article_summary_cache) rather than run at scan time. Pass bodyText (the
+ * locally-stripped article body from fetchArticleText) so the model has real
+ * content to work with instead of the thin RSS snippet.
+ * @returns {Promise<{summary: string, impact: string, action_note: string|null, key_figures: string[]}>}
  */
-export async function summarizeArticle(article, entities, customer = null) {
+export async function summarizeArticle(article, entities, customer = null, bodyText = null) {
     const client = makeClient();
-    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer), 350);
-    return JSON.parse(raw);
+    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer, bodyText), 700);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.key_figures)) parsed.key_figures = [];
+    return parsed;
 }
 
 function validate(obj) {

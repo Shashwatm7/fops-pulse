@@ -12,13 +12,13 @@ import nlp from 'compromise';
 import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
-import { fetchAndExtractArticle } from './services/news-pipeline/utils/nlp_extractor.js';
+import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
-import { summarizeArticle, extractLocalEntities } from './services/labeling/labelingService.js';
+import { summarizeArticle, extractLocalEntities, SUMMARY_VERSION } from './services/labeling/labelingService.js';
 import { buildPlannerPrompt } from './services/planner/plannerService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
@@ -3274,17 +3274,22 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
         const { url, title, description, source } = req.body || {};
         if (!url || !title) return res.status(400).json({ success: false, error: 'url and title are required' });
 
-        const existing = await getInsightsForArticles(req.session.userId, [{ url, title }]);
-        const labeled = existing.byUrl?.[url] || existing.byTitle?.[(title || '').trim().toLowerCase()];
-        if (labeled) {
-            return res.json({ success: true, source: 'labeled', insight: labeled });
-        }
+        // Note: we deliberately do NOT short-circuit to old article_insights
+        // rows here. Those came from the now-removed scan-time labeler and
+        // described the relevance score, not the article — serving them made
+        // "AI Summary" show generic score-talk. This endpoint always produces
+        // (or serves a cached) real article summary instead.
+        const versionedModel = `${labelingConfig.models[labelingConfig.provider]}|${SUMMARY_VERSION}`;
 
         const cached = await getArticleSummaryCache(url);
-        if (cached) {
+        // Only trust cache written by the current prompt version.
+        if (cached && cached.model === versionedModel) {
             return res.json({
                 success: true, source: 'cache',
-                insight: { summary: cached.summary, impact: cached.impact, action_note: cached.action_note, entities: cached.entities_json },
+                insight: {
+                    summary: cached.summary, impact: cached.impact, action_note: cached.action_note,
+                    key_figures: cached.key_figures_json || [], entities: cached.entities_json,
+                },
             });
         }
 
@@ -3293,10 +3298,23 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
         }
 
         const customer = await getCustomerProfileForUser(req.session.userId);
-        const entities = extractLocalEntities(`${title} ${description || ''}`, customer);
-        const result = await summarizeArticle({ title, description, source }, entities, customer);
 
-        await saveArticleSummaryCache(url, title, { ...result, entities, model: labelingConfig.models[labelingConfig.provider] });
+        // Strip the real article body (paragraph text, capped ~3000 chars) so
+        // the model summarizes actual content, not the thin RSS snippet. Free
+        // and local; falls back to the snippet if the fetch fails (paywall/JS).
+        const stripped = await fetchArticleText(url, 3000);
+        const bodyText = stripped?.text || null;
+
+        // Entities come from the customer profile match on title+body, enriched
+        // with anything the local NLP pass pulled out of the fetched article.
+        const entities = extractLocalEntities(`${title} ${bodyText || description || ''}`, customer);
+
+        const result = await summarizeArticle({ title, description, source }, entities, customer, bodyText);
+
+        await saveArticleSummaryCache(url, title, {
+            summary: result.summary, impact: result.impact, action_note: result.action_note,
+            key_figures: result.key_figures, entities, model: versionedModel,
+        });
         res.json({ success: true, source: 'generated', insight: { ...result, entities } });
     } catch (err) {
         console.error('Article summary error:', err.message);
