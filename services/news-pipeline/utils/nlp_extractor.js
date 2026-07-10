@@ -3,6 +3,26 @@ import * as cheerio from 'cheerio';
 import nlp from 'compromise';
 import natural from 'natural';
 
+// Realistic browser headers for PUBLISHER article fetches. Publisher sites
+// (and CDNs like Cloudflare/PerimeterX) block bare/skeleton UAs far more
+// aggressively from datacenter IPs (Render) than from residential ones — a
+// full header set with a Google News referer raises the success rate there.
+// Do NOT use these on Google's own endpoints: Google 403s the faked
+// Sec-Fetch/Referer combination (verified), while a minimal UA works.
+const GOOGLE_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+};
+const BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://news.google.com/',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'cross-site',
+    'Upgrade-Insecure-Requests': '1',
+};
+
 // ── Google News redirect resolution ──
 // RSS <link>s are news.google.com/rss/articles/CBMi... wrappers, NOT the real
 // article URL. Fetching them returns a JS redirect shell with no article
@@ -19,7 +39,7 @@ export async function resolveGoogleNewsUrl(url) {
     let resolved = null;
     try {
         const { data: html } = await axios.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: GOOGLE_HEADERS,
             timeout: 6000,
         });
         const sg = html.match(/data-n-a-sg="([^"]+)"/)?.[1];
@@ -35,7 +55,7 @@ export async function resolveGoogleNewsUrl(url) {
             const { data: resp } = await axios.post(
                 'https://news.google.com/_/DotsSplashUi/data/batchexecute',
                 'f.req=' + encodeURIComponent(freq),
-                { headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'User-Agent': 'Mozilla/5.0' }, timeout: 6000 }
+                { headers: { ...GOOGLE_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, timeout: 6000 }
             );
             const candidates = (String(resp).match(/https?:\/\/[^"\\]+/g) || []).filter(u => !u.includes('google.com'));
             resolved = candidates[0] || null;
@@ -43,10 +63,14 @@ export async function resolveGoogleNewsUrl(url) {
     } catch (err) {
         console.error('Google News URL resolution failed:', err.message);
     }
-    if (resolvedUrlCache.size >= RESOLVE_CACHE_MAX) {
-        resolvedUrlCache.delete(resolvedUrlCache.keys().next().value); // drop oldest
+    // Cache successes only: a transient Google error must not poison this
+    // URL for the whole process lifetime — the next click can retry.
+    if (resolved) {
+        if (resolvedUrlCache.size >= RESOLVE_CACHE_MAX) {
+            resolvedUrlCache.delete(resolvedUrlCache.keys().next().value); // drop oldest
+        }
+        resolvedUrlCache.set(url, resolved);
     }
-    resolvedUrlCache.set(url, resolved);
     return resolved; // null → caller knows the real article is unreachable
 }
 
@@ -65,7 +89,7 @@ export async function fetchArticleText(url, maxChars = 3000) {
         const realUrl = await resolveGoogleNewsUrl(url);
         if (!realUrl) return null; // unresolvable wrapper → no body available
         const { data: html } = await axios.get(realUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: BROWSER_HEADERS,
             timeout: 6000,
             maxContentLength: 5 * 1024 * 1024, // don't slurp giant pages
         });
@@ -107,7 +131,7 @@ export async function fetchAndExtractArticle(url) {
         if (!realUrl) return null;
         // 1. Fetch HTML
         const { data: html } = await axios.get(realUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: BROWSER_HEADERS,
             timeout: 5000
         });
 
