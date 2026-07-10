@@ -84,10 +84,9 @@ export async function resolveGoogleNewsUrl(url) {
  * to the real article first — the wrapper itself contains no article text.
  * @returns {Promise<{text: string, entities: object}|null>}
  */
-export async function fetchArticleText(url, maxChars = 3000) {
+// Direct fetch + cheerio strip. Returns raw paragraph text or null.
+async function fetchDirectText(realUrl) {
     try {
-        const realUrl = await resolveGoogleNewsUrl(url);
-        if (!realUrl) return null; // unresolvable wrapper → no body available
         const { data: html } = await axios.get(realUrl, {
             headers: BROWSER_HEADERS,
             timeout: 6000,
@@ -101,8 +100,49 @@ export async function fetchArticleText(url, maxChars = 3000) {
             const pText = $(el).text().replace(/\s+/g, ' ').trim();
             if (pText.length > 60) paras.push(pText); // skip captions/boilerplate
         });
-        let text = paras.join('\n').trim();
-        if (text.length < 120) return null; // paywall / JS-only page → let caller fall back
+        const text = paras.join('\n').trim();
+        return text.length >= 120 ? text : null; // paywall / JS-only page
+    } catch (err) {
+        console.error('Direct article fetch failed:', realUrl.slice(0, 80), err.message);
+        return null;
+    }
+}
+
+// Reader-proxy fallback (r.jina.ai) for publishers that block datacenter IPs
+// (Forbes et al. 403 Render's egress while serving residential IPs fine).
+// The proxy fetches from ITS network and returns the page as markdown; we
+// keep only sentence-shaped paragraphs to shed nav/promo chrome. Only public
+// news URLs ever go through it, and only after the direct fetch failed.
+const READER_JUNK = /paid program|subscribe|sign in|my account|newsletter|cookie|all rights reserved|©|forbes daily|breaking|follow (me|us)|read (more|next)|getty|photo by|advertisement|crossword|play now/i;
+async function fetchViaReader(realUrl) {
+    try {
+        const { data } = await axios.get('https://r.jina.ai/' + realUrl, {
+            timeout: 20000,
+            maxContentLength: 5 * 1024 * 1024,
+        });
+        const content = String(data).split(/Markdown Content:/)[1] || String(data);
+        const paras = content
+            .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')          // images
+            .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')        // links → label
+            .split('\n')
+            .map(l => l.replace(/^[#>*\-=\s]+/, '').trim())
+            // Real prose: long enough, sentence punctuation, not chrome.
+            .filter(l => l.length > 80 && /\.\s|\.$/.test(l) && !READER_JUNK.test(l));
+        const text = paras.join('\n').trim();
+        return text.length >= 200 ? text : null; // higher bar: proxy output is noisier
+    } catch (err) {
+        console.error('Reader-proxy fetch failed:', realUrl.slice(0, 80), err.message);
+        return null;
+    }
+}
+
+export async function fetchArticleText(url, maxChars = 3000) {
+    try {
+        const realUrl = await resolveGoogleNewsUrl(url);
+        if (!realUrl) return null; // unresolvable wrapper → no body available
+        let text = await fetchDirectText(realUrl);
+        if (!text) text = await fetchViaReader(realUrl); // IP-block fallback
+        if (!text) return null;
         if (text.length > maxChars) {
             // Keep whole sentences: cut at the last sentence end before the cap.
             const clipped = text.slice(0, maxChars);

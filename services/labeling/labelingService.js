@@ -128,7 +128,9 @@ const BANNED_PHRASES = [
 // v3: anti-hallucination — Google News URLs now resolve to real article
 // bodies, the no-body case forbids figures, and key_figures are grounded
 // against the actual input before being returned.
-export const SUMMARY_VERSION = 'v3';
+// v4: reader-proxy fallback for IP-blocked publishers; no-body summaries are
+// no longer cached (bump invalidates v3 rows that cached a transient failure).
+export const SUMMARY_VERSION = 'v4';
 
 // Static instructions + output schema live in the SYSTEM prompt: it is
 // identical on every call, so Groq's automatic prompt caching can reuse it as
