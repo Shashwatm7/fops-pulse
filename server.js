@@ -152,7 +152,6 @@ app.get('/api/rate-limits', requireAuth, (req, res) => {
 
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
-const NEWS_KEY = process.env.NEWSDATA_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
 const envInt = (name, fallback) => {
@@ -384,41 +383,17 @@ let cachedRealTimeLogistics = {
 };
 
 async function fetchRealTimeLogistics() {
-    try {
-        console.log('[LOGISTICS] Fetching real-time maritime logistics news...');
-        let newsData = [];
-        if (process.env.NEWSDATA_API_KEY) {
-            const url = `https://newsdata.io/api/1/news?apikey=${process.env.NEWSDATA_API_KEY}&q=Jebel%20Ali%20OR%20freight%20rates%20OR%20port%20congestion&language=en`;
-            const response = await axios.get(url);
-            if (response.data && response.data.results) {
-                newsData = response.data.results;
-            }
-        }
-        
-        const prompt = `Extract exactly the current real-time maritime metrics from this raw live news feed.
-News: ${newsData.slice(0, 10).map(n => n.title + ' - ' + n.description).join(' | ')}
-
-If no explicit numbers exist in the news, estimate the current status based on global sentiment and typical baselines (e.g., Jebel Ali base is 1.5 days). You MUST provide realistic numbers.
-Return valid JSON exactly matching this format:
-{
-  "portCongestion": [
-    { "port": "Jebel Ali (Real-Time)", "status": "CONGESTED", "delayDays": 3.5, "reason": "Extracted from news" }
-  ],
-  "freightRates": { "reeferIndexFEU": 4500, "bunkerSurchargeImpact": "HIGH", "trend": "SPIKING" },
-  "airFreightRates": { "ratePerKg": 4.20, "trend": "STABLE" },
-  "geopoliticalRiskIndex": 6.5
-}`;
-
-        cachedRealTimeLogistics = {
-            portCongestion: [{ port: 'Jebel Ali (Real-Time)', status: 'NORMAL', delayDays: 1.5, reason: 'Deterministic baseline; LLM extraction disabled' }],
-            freightRates: { reeferIndexFEU: 0, bunkerSurchargeImpact: 'NORMAL', trend: 'BASELINE' },
-            airFreightRates: { ratePerKg: 0, trend: 'BASELINE' },
-            geopoliticalRiskIndex: newsData.length > 0 ? 5 : 3
-        };
-        console.log('[LOGISTICS] Deterministic logistics baseline refreshed; LLM extraction disabled.');
-    } catch (e) {
-        console.error('[LOGISTICS] Failed to fetch real-time logistics via LLM:', e.message);
-    }
+    // Deterministic baseline only — LLM extraction from a news feed was
+    // already disabled (see the removed prompt), and its only remaining
+    // effect was a NewsData.io call whose one output (geopoliticalRiskIndex
+    // 5 vs 3) wasn't worth an external API. Fixed baseline instead.
+    cachedRealTimeLogistics = {
+        portCongestion: [{ port: 'Jebel Ali (Real-Time)', status: 'NORMAL', delayDays: 1.5, reason: 'Deterministic baseline; LLM extraction disabled' }],
+        freightRates: { reeferIndexFEU: 0, bunkerSurchargeImpact: 'NORMAL', trend: 'BASELINE' },
+        airFreightRates: { ratePerKg: 0, trend: 'BASELINE' },
+        geopoliticalRiskIndex: 3
+    };
+    console.log('[LOGISTICS] Deterministic logistics baseline refreshed.');
 }
 
 setInterval(fetchRealTimeLogistics, 6 * 60 * 60 * 1000);
@@ -1189,45 +1164,6 @@ app.get('/api/news', requireAuth, async (req, res) => {
             if (result.status === 'fulfilled') allArticles.push(...result.value);
         }
 
-        // ── Source 2: NewsData.io (backup, with Middle East country codes) ──
-        if (NEWS_KEY) {
-            try {
-                let newsDataQuery = userKeywords.map(kw => `"${kw}"`).join(' OR ');
-                if (newsDataQuery.length > 100) {
-                    // NewsData free tier limits query to 100 chars. Fallback to just the main product keyword
-                    newsDataQuery = `"${focusProduct}"`.substring(0, 100);
-                }
-
-                // NewsData.io hard-caps `country` at 5 codes per query —
-                // templates like grains_global carry 8, which made every
-                // backup query fail with FilterLimitExceed. Keep the first 5.
-                const countryCodes = String(req.userProfile?.news_country_codes || 'ae,sa,eg,qa,kw')
-                    .split(',').map(c => c.trim()).filter(Boolean).slice(0, 5).join(',');
-
-                const { data } = await axios.get('https://newsdata.io/api/1/news', {
-                    params: {
-                        apikey: NEWS_KEY,
-                        q: newsDataQuery,
-                        country: countryCodes,
-                        language: 'en',
-                        size: 10,
-                    },
-                    timeout: 8000,
-                });
-                const newsDataArticles = (data.results || []).map(a => ({
-                    title: a.title,
-                    description: a.description?.slice(0, 250),
-                    source: a.source_id,
-                    publishedAt: a.pubDate,
-                    url: a.link,
-                    via: 'newsdata-io',
-                }));
-                allArticles.push(...newsDataArticles);
-            } catch (err) {
-                console.log('NewsData.io backup error:', err.response?.data || err.message);
-            }
-        }
-
         // ── Deduplicate by title similarity ──
         const seen = new Set();
         const unique = allArticles.filter(a => {
@@ -1244,7 +1180,7 @@ app.get('/api/news', requireAuth, async (req, res) => {
             return db - da;
         });
 
-        console.log(`News: fetched ${allArticles.length} articles, ${unique.length} unique (Google News + NewsData.io)`);
+        console.log(`News: fetched ${allArticles.length} articles, ${unique.length} unique (Google News)`);
         
         // ── Persist to PostgreSQL Database for external querying ──
         for (const a of unique) {
