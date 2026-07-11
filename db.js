@@ -456,9 +456,11 @@ export async function insertAlert(userId, alert) {
 }
 
 export async function getActiveAlerts(userId, limit = 30) {
-  // Lazy lifecycle: expire anything older than 7 days on read.
+  // Lazy lifecycle: alerts expire 24h after creation (hidden from view, row
+  // kept as ML training data). An alert is a "now" signal — a day-old one is
+  // history, not an alert.
   await pool.query(
-    `UPDATE alerts SET status = 'expired' WHERE status = 'active' AND created_at < NOW() - INTERVAL '7 days'`
+    `UPDATE alerts SET status = 'expired' WHERE status = 'active' AND created_at < NOW() - INTERVAL '24 hours'`
   ).catch(() => {});
   // Gate on settings_changed_at: after a material profile change, alerts from
   // the old profile are hidden (not deleted). COALESCE → NULL means show all.

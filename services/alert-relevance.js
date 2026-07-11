@@ -139,3 +139,33 @@ export function severityFromPriority(priority) {
     const map = { Critical: 'CRITICAL', High: 'HIGH', Medium: 'MEDIUM', Low: 'LOW' };
     return map[priority] || 'MEDIUM';
 }
+
+// Scarcity quota: an "alert" should be rare and worth acting on, not every
+// qualifying article. At most 1 CRITICAL, 2 HIGH, 1 MEDIUM are ever shown —
+// LOW never surfaces. Applied across ALL alerts combined (news + price
+// anomaly), so the user sees at most 4 alerts total at any time.
+export const ALERT_QUOTA = { CRITICAL: 1, HIGH: 2, MEDIUM: 1, LOW: 0 };
+
+/**
+ * Select the alerts to actually show, enforcing ALERT_QUOTA per severity.
+ * Input should be pre-sorted by importance/recency (freshest or highest-
+ * relevance first) — for each severity we keep the first `quota[severity]`
+ * and drop the rest. Anything with a severity not in the quota (or over its
+ * cap, incl. all LOW) is dropped. Pure/deterministic for testability.
+ * @param {Array<{severity:string}>} alerts
+ * @returns {Array} the kept alerts, in the same relative order as the input
+ */
+export function applyAlertQuota(alerts, quota = ALERT_QUOTA) {
+    const counts = {};
+    const out = [];
+    for (const a of alerts || []) {
+        const sev = a?.severity;
+        const cap = quota[sev] ?? 0;
+        const used = counts[sev] || 0;
+        if (used < cap) {
+            counts[sev] = used + 1;
+            out.push(a);
+        }
+    }
+    return out;
+}
