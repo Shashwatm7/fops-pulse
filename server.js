@@ -14,7 +14,7 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
-import { scoreAlertExposure, severityFromScore, severityFromPriority } from './services/alert-relevance.js';
+import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
@@ -186,7 +186,12 @@ const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 2 * 60 * 60 * 1
 
 const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
-const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 6);
+const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 4);
+// Minimum priority for a news article to become an alert at all. An alert is
+// a "you should act" signal — Low-scoring articles (score 40-59) are noise at
+// alert altitude, so they are never generated (the display quota drops LOW
+// too, but gating here also avoids the wasted article-fetch/NLP + email).
+const ALERTABLE_PRIORITIES = new Set(['Critical', 'High', 'Medium']);
 
 // ── Token Usage Tracking ─────────────────────────────────────
 let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
@@ -2716,8 +2721,11 @@ async function scanSingleUser(user, pipeline) {
         acceptedArticles.push(result.article);
       }
     }
-    acceptedArticles.sort((x, y) => y.relevanceScore - x.relevanceScore);
-    const toAlert = acceptedArticles.slice(0, MAX_USER_SCANNER_ALERTS);
+    // Only Medium+ articles are alert-worthy — Low-scoring ones never become
+    // alerts (keeps alerts scarce; the display quota also drops LOW).
+    const alertable = acceptedArticles.filter(a => ALERTABLE_PRIORITIES.has(a.priority));
+    alertable.sort((x, y) => y.relevanceScore - x.relevanceScore);
+    const toAlert = alertable.slice(0, MAX_USER_SCANNER_ALERTS);
 
     const triggeredAlerts = [];
     for (const a of toAlert) {
@@ -2917,10 +2925,15 @@ app.get('/api/geo-alerts', requireAuth, (req, res) => {
 app.get('/api/morning-brief', requireAuth, async (req, res) => {
     try {
         const userId = req.session.userId;
-        const [newAlerts, acceptedNews] = await Promise.all([
+        const [rawAlerts, acceptedNews] = await Promise.all([
             getAlertsSince(userId, 24, 20),
             getAcceptedArticlesSince(userId, 24, 5),
         ]);
+
+        // Same scarcity quota as the Alerts tab (getAlertsSince is already
+        // sorted severity-then-recency) so the two views can't disagree:
+        // at most 1 CRITICAL, 2 HIGH, 1 MEDIUM, no LOW.
+        const newAlerts = applyAlertQuota(rawAlerts);
 
         const alertCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
         for (const a of newAlerts) {
@@ -3342,9 +3355,17 @@ app.get('/api/review/stats', requireAuth, async (req, res) => {
 });
 
 // ── Unified persistent alerts (event × exposure store) ──
+const SEV_RANK = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
 app.get('/api/alerts', requireAuth, async (req, res) => {
   try {
-    const alerts = await getActiveAlerts(req.session.userId);
+    // Active (≤24h) alerts, then the scarcity quota: at most 1 CRITICAL,
+    // 2 HIGH, 1 MEDIUM across ALL alerts combined — LOW never shows. Sort by
+    // severity then recency so the quota keeps the freshest of each tier and
+    // the result reads critical-first.
+    const raw = await getActiveAlerts(req.session.userId);
+    raw.sort((a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9) || new Date(b.created_at) - new Date(a.created_at));
+    const alerts = applyAlertQuota(raw);
     res.json({ success: true, alerts });
   } catch (err) {
     console.error('Failed to fetch alerts:', err.message);
