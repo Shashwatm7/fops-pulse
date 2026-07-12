@@ -1554,7 +1554,10 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // the highest-quality news signal we have — feed them to the LLM.
         let acceptedNewsInsights = [];
         try {
-            const rows = await getRecentAlertsBySource(req.session.userId, 'PROFILE_NEWS', 72, 8);
+            // Capped at 5 (was 8): trims planner input tokens while keeping
+            // the highest-relevance insights — see formatActiveAlerts below
+            // for the matching cap on the other context block.
+            const rows = await getRecentAlertsBySource(req.session.userId, 'PROFILE_NEWS', 72, 5);
             acceptedNewsInsights = rows.map(r => ({
                 title: (r.title || '').replace(/^🎯 Profile Alert:\s*/, ''),
                 summary: String(r.payload?.description || '').replace(/^NLP Summary:\s*/, '').slice(0, 320),
@@ -1573,7 +1576,10 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // have — anchor the LLM's recommendations in them.
         let activeAlertsForAI = [];
         try {
-            const alertRows = await getActiveAlerts(req.session.userId, 8);
+            // Capped at 5 (was 8) — same token-trimming rationale, and the
+            // new alert scarcity quota (1 critical/2 high/1 medium) means
+            // there are rarely more than 4 active alerts anyway.
+            const alertRows = await getActiveAlerts(req.session.userId, 5);
             activeAlertsForAI = alertRows.map(a => ({
                 severity: a.severity,
                 title: String(a.title || '').replace(/^[^A-Za-z0-9]+\s*/, '').slice(0, 140),
