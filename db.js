@@ -411,6 +411,28 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
   }
 }
 
+// Discovery queue: recent REJECTED articles worth clustering for new-seed
+// candidates. Deliberate blocklist kills ("Matched excluded context") are
+// excluded — those are working as intended, not coverage gaps. Distinct on
+// title so the same wire story syndicated 12 times counts once.
+export async function getRejectedArticlesForDiscovery(userId, days = 7, limit = 400) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (article_title)
+            article_title AS title, source, rejection_reason, stage_dropped, scanned_at
+     FROM pipeline_audit_logs
+     WHERE user_id = $1
+       AND is_accepted = FALSE
+       AND rejection_reason IS NOT NULL
+       AND rejection_reason NOT ILIKE 'Matched excluded context%'
+       AND rejection_reason NOT ILIKE 'Duplicate%'
+       AND scanned_at > NOW() - ($2 || ' days')::interval
+     ORDER BY article_title, scanned_at DESC
+     LIMIT $3`,
+    [userId, String(days), limit]
+  );
+  return rows;
+}
+
 export async function getPipelineAuditLogs(userId, limit = 100) {
   const { rows } = await pool.query(
     `SELECT * FROM pipeline_audit_logs 

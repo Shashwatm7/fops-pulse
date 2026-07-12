@@ -13,7 +13,8 @@ import authRouter, { requireAuth } from './auth.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -1062,6 +1063,34 @@ app.get('/api/pipeline-audit', requireAuth, async (req, res) => {
         res.json({ success: true, logs });
     } catch (err) {
         console.error('Failed to fetch pipeline audit logs:', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// Template-candidate discovery: cluster this user's recently REJECTED
+// articles so coverage gaps (real driver categories with no seed/keyword
+// yet) surface as ~8 reviewable summaries instead of a thousand headlines.
+// Embedding ~400 titles takes seconds, so results are cached 6h per user;
+// pass ?refresh=1 to force a recompute after a scan.
+app.get('/api/discovery-clusters', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        const days = Math.min(30, Math.max(1, parseInt(req.query.days, 10) || 7));
+        const k = Math.min(12, Math.max(2, parseInt(req.query.k, 10) || 8));
+
+        if (!global.discoveryCache) global.discoveryCache = {};
+        const cacheKey = `${userId}:${days}:${k}`;
+        const cached = global.discoveryCache[cacheKey];
+        if (!req.query.refresh && cached && Date.now() - cached.timestamp < 6 * 60 * 60 * 1000) {
+            return res.json({ success: true, cached: true, ...cached.data });
+        }
+
+        const rows = await getRejectedArticlesForDiscovery(userId, days, 400);
+        const result = await discoverTemplateCandidates(rows, { k });
+        global.discoveryCache[cacheKey] = { data: result, timestamp: Date.now() };
+        res.json({ success: true, cached: false, ...result });
+    } catch (err) {
+        console.error('[DISCOVERY] Failed to cluster rejected articles:', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
