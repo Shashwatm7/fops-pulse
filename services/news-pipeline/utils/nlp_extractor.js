@@ -1,7 +1,13 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import nlp from 'compromise';
-import natural from 'natural';
+import { summarizeExtractive, splitSentences } from '../../labeling/extractiveSummarizer.js';
+
+// Best-effort page title for the summarizer's topic prior — og:title is the
+// cleanest (no "| Site Name" suffix); <title> is the fallback.
+function extractTitle($) {
+    return ($('meta[property="og:title"]').attr('content') || $('title').first().text() || '').trim().slice(0, 200);
+}
 
 // Realistic browser headers for PUBLISHER article fetches. Publisher sites
 // (and CDNs like Cloudflare/PerimeterX) block bare/skeleton UAs far more
@@ -198,45 +204,25 @@ export async function fetchAndExtractArticle(url) {
         const uniquePlaces = [...new Set(places)].slice(0, 5);
         const uniqueValues = [...new Set(values)].slice(0, 5);
 
-        // 4. Summarize with Natural (TF-IDF approximation)
-        const TfIdf = natural.TfIdf;
-        const tfidf = new TfIdf();
-        
-        // Split text into sentences
-        const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
-        
-        if (sentences.length <= 3) {
-            return {
-                summary: text,
-                entities: { organizations: uniqueOrgs, places: uniquePlaces, values: uniqueValues }
-            };
+        // 4. Extractive summary via MiniLM embeddings (centroid + MMR). This
+        // only runs for articles already promoted to alerts (the caller
+        // gates it), so the embedding cost is a few sentences per scan, not
+        // per candidate article. Falls back to the lead sentences if the
+        // embedding model is unavailable — an alert should never lose its
+        // summary to a model load failure.
+        let summary;
+        try {
+            const extractive = await summarizeExtractive(text, { title: extractTitle($) });
+            summary = extractive?.summary;
+        } catch (e) {
+            console.error('[NLP] Extractive summarize failed, using lead fallback:', e.message);
+        }
+        if (!summary) {
+            summary = splitSentences(text).slice(0, 3).join(' ') || text.slice(0, 500);
         }
 
-        tfidf.addDocument(text);
-        
-        // Score each sentence by its terms' TF-IDF weight in the document
-        const scoredSentences = sentences.map((sentence, idx) => {
-            let score = 0;
-            const tokenizer = new natural.WordTokenizer();
-            const words = tokenizer.tokenize(sentence);
-            
-            words.forEach(word => {
-                // Approximate term importance
-                score += tfidf.tfidf(word, 0); 
-            });
-            
-            // Normalize score by sentence length to prevent bias toward long run-on sentences
-            return { sentence: sentence.trim(), score: score / (words.length || 1), originalIndex: idx };
-        });
-
-        // Sort by score and pick top 3
-        scoredSentences.sort((a, b) => b.score - a.score);
-        const topSentences = scoredSentences.slice(0, 3)
-                                .sort((a, b) => a.originalIndex - b.originalIndex)
-                                .map(s => s.sentence);
-
         return {
-            summary: topSentences.join(' '),
+            summary,
             entities: {
                 organizations: uniqueOrgs,
                 places: uniquePlaces,
