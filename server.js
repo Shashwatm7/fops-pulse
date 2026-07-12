@@ -1614,8 +1614,8 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
             const pastFeedback = await getRecentAiFeedback(req.session.userId, 'RECOMMENDATION', 5);
             const negativeFeedback = pastFeedback.filter(f => f.is_helpful === false);
             if (negativeFeedback.length > 0) {
-                payload.feedbackContext = '\n=== USER FEEDBACK HISTORY (DO NOT REPEAT PAST MISTAKES) ===\n' + 
-                    negativeFeedback.map(f => `- You previously suggested: "${f.ai_response}". The user REJECTED this because: "${f.user_notes}". DO NOT make similar suggestions.`).join('\n');
+                payload.feedbackContext = '\n=== USER FEEDBACK HISTORY (DO NOT REPEAT PAST MISTAKES) ===\n' +
+                    negativeFeedback.map(f => `- You previously suggested: "${String(f.ai_response || '').slice(0, 160)}". The user REJECTED this because: "${String(f.user_notes || '').slice(0, 160)}". DO NOT make similar suggestions.`).join('\n');
             }
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
