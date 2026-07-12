@@ -268,6 +268,8 @@ export default function Dashboard() {
   const [showPipelineAnalytics, setShowPipelineAnalytics] = useState(false);
 
   const [tab, setTab] = useState('pulse');
+  // Alert ids whose precomputed extractive (MiniLM, no-LLM) summary is expanded.
+  const [openExtracts, setOpenExtracts] = useState({});
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [trackSearch, setTrackSearch] = useState('');
   const [trackResults, setTrackResults] = useState([]);
@@ -1330,12 +1332,27 @@ export default function Dashboard() {
                 );
               })()}
 
+              {a.extractSummary && (
+                <button
+                  onClick={() => setOpenExtracts(prev => ({ ...prev, [a.id ?? a.title]: !prev[a.id ?? a.title] }))}
+                  title="Key sentences extracted from the article itself (local model, no AI generation)"
+                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                >📄 Key Sentences {openExtracts[a.id ?? a.title] ? '▴' : '▾'}</button>
+              )}
               {a.url && (
                 <button
                   onClick={() => openArticleSummary({ url: a.url, title: (a.title || '').replace(/^🎯 Profile Alert:\s*/, ''), description: a.description || a.reason, source: a.source })}
                   title="Generate a plain-English AI summary of this article"
                   style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', color: '#c4b5fd', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                 >✨ AI Summary</button>
+              )}
+              {a.extractSummary && openExtracts[a.id ?? a.title] && (
+                <div style={{ marginTop: '8px', padding: '10px 12px', background: 'rgba(16,185,129,0.05)', borderLeft: '2px solid rgba(16,185,129,0.5)', borderRadius: '0 6px 6px 0' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#34d399', marginBottom: '6px' }}>
+                    📄 Key sentences from the article — extracted locally, not AI-written
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{a.extractSummary}</div>
+                </div>
               )}
               {(() => {
                 const pKey = a.id ?? `idx-${i}`;

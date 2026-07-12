@@ -1298,15 +1298,28 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
         req.body.geoAlerts = [];
         try {
             const dbAlerts = await getActiveAlerts(req.session.userId);
-            req.body.userAlerts = dbAlerts.map(a => ({
-                id: a.id,
-                severity: a.severity,
-                category: a.category,
-                title: a.title,
-                reason: a.reason,
-                url: a.url,
-                detectedAt: a.created_at,
-            }));
+            req.body.userAlerts = dbAlerts.map(a => {
+                // The scanner stores the MiniLM extractive summary (key article
+                // sentences, no LLM) in payload.description as "NLP Summary: …".
+                // Surface it so the alert card can show it without an API call.
+                let extractSummary = null;
+                try {
+                    const p = typeof a.payload === 'string' ? JSON.parse(a.payload) : (a.payload || {});
+                    if (typeof p.description === 'string' && p.description.startsWith('NLP Summary: ')) {
+                        extractSummary = p.description.slice('NLP Summary: '.length).trim() || null;
+                    }
+                } catch { /* malformed payload → no extract, alert still shows */ }
+                return {
+                    id: a.id,
+                    severity: a.severity,
+                    category: a.category,
+                    title: a.title,
+                    reason: a.reason,
+                    url: a.url,
+                    detectedAt: a.created_at,
+                    extractSummary,
+                };
+            });
         } catch (e) {
             // Fallback to the in-memory cache if the DB read fails
             req.body.userAlerts = userSpecificAlertsCache[req.session.userId] || [];
