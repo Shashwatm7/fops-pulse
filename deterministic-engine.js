@@ -527,6 +527,7 @@ function buildAlerts(signals, weatherExtended, livePricesSnapshot) {
         timestamp: a.timestamp || new Date(a.detectedAt || Date.now()).toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST',
         url: a.url,
         regions: ['User Tracked Regions'],
+        extractSummary: a.extractSummary || null, // MiniLM key sentences, precomputed at alert time
       });
     }
   }
