@@ -33,7 +33,6 @@
     "multer": "^2.1.1",
     "natural": "^8.1.1",
     "nodemailer": "^8.0.10",
-    "p-limit": "^7.3.0",
     "pg": "^8.21.0",
     "rss-parser": "^3.13.0",
     "sentiment": "^5.0.2",

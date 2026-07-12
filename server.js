@@ -14,7 +14,7 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -3230,15 +3230,12 @@ app.get('/api/debug-labeling', requireAuth, async (req, res) => {
         // — this always reports false now regardless of the env flag.
         out.labelingEnabled = false;
 
-        const td = await pool.query('SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE relevant=1)::int rel FROM training_data WHERE user_id=$1', [uid]);
-        out.training_data = td.rows[0];
         const ai = await pool.query(
             `SELECT ai.severity, ai.category, pal.article_title, ai.audit_log_id
              FROM article_insights ai JOIN pipeline_audit_logs pal ON ai.audit_log_id = pal.id
              WHERE ai.user_id=$1 ORDER BY ai.created_at DESC LIMIT 5`, [uid]);
         out.article_insights_count = (await pool.query('SELECT COUNT(*)::int n FROM article_insights WHERE user_id=$1', [uid])).rows[0].n;
         out.article_insights_sample = ai.rows;
-        out.review_queue_count = (await pool.query('SELECT COUNT(*)::int n FROM review_queue WHERE user_id=$1 AND reviewed=false', [uid])).rows[0].n;
 
         // Recent accepted-article titles (what labeling saw) — compare to the
         // news feed to judge title-overlap for hover matching.
@@ -3366,50 +3363,6 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Article summary error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to generate summary' });
-    }
-});
-
-// ── Article labeling: human review queue ──
-app.get('/api/review/queue', requireAuth, async (req, res) => {
-    try {
-        const confidenceLt = req.query.confidence_lt != null ? parseFloat(req.query.confidence_lt) : null;
-        const category = req.query.category || null;
-        const items = await getReviewQueue(req.session.userId, {
-            confidenceLt: Number.isFinite(confidenceLt) ? confidenceLt : null,
-            category,
-        });
-        res.json({ success: true, items });
-    } catch (err) {
-        console.error('Review queue error:', err.message);
-        res.status(500).json({ success: false, error: 'Failed to load review queue' });
-    }
-});
-
-app.post('/api/review/:id/label', requireAuth, async (req, res) => {
-    try {
-        const { relevant, category, severity, notes } = req.body || {};
-        if (relevant !== 0 && relevant !== 1) {
-            return res.status(400).json({ success: false, error: 'relevant must be 0 or 1' });
-        }
-        const out = await submitReview(req.session.userId, req.params.id, { relevant, category, severity, notes });
-        if (!out.ok) return res.status(404).json({ success: false, error: 'Review item not found or already reviewed' });
-        // If human disagreed with the LLM, that's the signal for future
-        // keyword/rule tuning — surfaced in the response and the logs.
-        if (!out.agreed) console.log(`[REVIEW] Human overrode LLM on ${req.params.id} — candidate for rule update`);
-        res.json({ success: true, agreed: out.agreed });
-    } catch (err) {
-        console.error('Review submit error:', err.message);
-        res.status(500).json({ success: false, error: 'Failed to submit review' });
-    }
-});
-
-app.get('/api/review/stats', requireAuth, async (req, res) => {
-    try {
-        const stats = await getReviewStats(req.session.userId);
-        res.json({ success: true, stats });
-    } catch (err) {
-        console.error('Review stats error:', err.message);
-        res.status(500).json({ success: false, error: 'Failed to load review stats' });
     }
 });
 
