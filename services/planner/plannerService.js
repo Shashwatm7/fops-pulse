@@ -133,7 +133,9 @@ function formatAcceptedNewsInsights(insights) {
 // recommendations in what the system already verified matters.
 function formatActiveAlerts(alerts) {
     if (!alerts || alerts.length === 0) return 'None currently active.';
-    return alerts.slice(0, 8)
+    // Defense-in-depth cap matching the DB fetch limit in server.js (5) —
+    // keeps this safe even if a future caller passes more.
+    return alerts.slice(0, 5)
         .map(a => `- [${a.severity ?? '?'}] ${a.title || ''} — ${String(a.reason || '').slice(0, 170)}`)
         .join('\n');
 }
