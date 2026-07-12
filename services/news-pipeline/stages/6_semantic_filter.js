@@ -58,7 +58,10 @@ export async function applySemanticFilter(article, profile, score) {
         const threshold = profile.semanticThreshold || DEFAULT_THRESHOLD;
 
         if (maxSim < threshold) {
-            return { passed: false, similarity: +maxSim.toFixed(3), reason: `Semantic similarity ${maxSim.toFixed(2)} < ${threshold}` };
+            // 3 decimals in the message: at 2, a 0.295 rounds to "0.30" and the
+            // log reads "0.30 < 0.3" — looks like a bug even though the full-
+            // precision comparison above was correct.
+            return { passed: false, similarity: +maxSim.toFixed(3), reason: `Semantic similarity ${maxSim.toFixed(3)} < threshold ${threshold}` };
         }
         return { passed: true, similarity: +maxSim.toFixed(3) };
     } catch (err) {
