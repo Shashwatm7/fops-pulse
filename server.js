@@ -14,7 +14,7 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getReviewQueue, submitReview, getReviewStats, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -1091,6 +1091,30 @@ app.get('/api/discovery-clusters', requireAuth, async (req, res) => {
         res.json({ success: true, cached: false, ...result });
     } catch (err) {
         console.error('[DISCOVERY] Failed to cluster rejected articles:', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// Promote a discovered pattern into the user's customer profile so the
+// pipeline catches that category from the next scan onward. Keywords feed
+// stage-3/5 term matching (signal_keywords); seeds feed the stage-6 semantic
+// filter (ml_seeds) and should be sentence-shaped, e.g. a sample headline.
+app.post('/api/discovery-promote', requireAuth, async (req, res) => {
+    try {
+        const { kind, value } = req.body || {};
+        const clean = String(value || '').trim();
+        if (!['keyword', 'seed'].includes(kind) || clean.length < 3 || clean.length > 200) {
+            return res.status(400).json({ success: false, error: 'kind must be keyword|seed and value 3-200 chars' });
+        }
+        const customer = await getCustomerProfileForUser(req.session.userId);
+        if (!customer) {
+            return res.status(400).json({ success: false, error: 'Your account is not linked to a customer profile.' });
+        }
+        const field = kind === 'seed' ? 'ml_seeds' : 'signal_keywords';
+        const result = await appendCustomerTerm(customer.id, field, kind === 'keyword' ? clean.toLowerCase() : clean);
+        res.json({ success: true, ...result, field, customer: customer.company });
+    } catch (err) {
+        console.error('[DISCOVERY] Promote failed:', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });

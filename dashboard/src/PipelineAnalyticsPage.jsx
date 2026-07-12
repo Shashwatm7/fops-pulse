@@ -1,5 +1,131 @@
 import React, { useState, useEffect } from 'react';
 
+// Coverage Discovery: clusters of recently REJECTED articles, so real driver
+// categories the profile has no seed/keyword for yet surface as a handful of
+// reviewable summaries. Promoting a term/headline updates the customer
+// profile and the pipeline catches that category from the next scan onward.
+function DiscoveryPanel() {
+    const [state, setState] = useState({ status: 'idle', data: null, error: '' });
+    const [promoted, setPromoted] = useState({}); // value -> 'pending' | 'done' | 'dupe' | 'error'
+
+    const analyze = (refresh) => {
+        setState(s => ({ ...s, status: 'loading', error: '' }));
+        fetch(`/api/discovery-clusters${refresh ? '?refresh=1' : ''}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) throw new Error(d.error || 'request failed');
+                setState({ status: 'ready', data: d, error: '' });
+            })
+            .catch(err => setState({ status: 'idle', data: null, error: err.message }));
+    };
+
+    const promote = async (kind, value) => {
+        setPromoted(p => ({ ...p, [value]: 'pending' }));
+        try {
+            const r = await fetch('/api/discovery-promote', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind, value }),
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'request failed');
+            setPromoted(p => ({ ...p, [value]: d.added ? 'done' : 'dupe' }));
+        } catch (err) {
+            console.error('promote failed:', err);
+            setPromoted(p => ({ ...p, [value]: 'error' }));
+        }
+    };
+
+    const chipMark = (value) => {
+        const st = promoted[value];
+        if (st === 'pending') return ' …';
+        if (st === 'done') return ' ✓';
+        if (st === 'dupe') return ' (already tracked)';
+        if (st === 'error') return ' ✕';
+        return '';
+    };
+
+    return (
+        <div className="intel-card" style={{ marginBottom: '24px', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                    <div style={{ fontWeight: 700, fontSize: '15px' }}>🔎 Coverage Discovery</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '13px', maxWidth: '640px', marginTop: '4px' }}>
+                        Clusters the last 7 days of <em>rejected</em> articles so you can spot driver categories your
+                        profile has no keyword or seed for yet. Click a term to track it as a keyword; add a sample
+                        headline as a semantic seed.
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-accent" onClick={() => analyze(false)} disabled={state.status === 'loading'}>
+                        {state.status === 'loading' ? 'Analyzing… (first run takes ~20s)' : 'Analyze Rejected Articles'}
+                    </button>
+                    {state.status === 'ready' && (
+                        <button className="btn-secondary" onClick={() => analyze(true)} title="Recompute, skipping the 6h cache">↻</button>
+                    )}
+                </div>
+            </div>
+
+            {state.error && <p style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '10px' }}>{state.error}</p>}
+
+            {state.status === 'ready' && state.data && (
+                <div style={{ marginTop: '16px' }}>
+                    {state.data.note && <p style={{ color: 'var(--accent-amber)', fontSize: '13px' }}>{state.data.note}</p>}
+                    {state.data.clusters?.length > 0 && (
+                        <>
+                            <div style={{ color: 'var(--text-dim)', fontSize: '12px', marginBottom: '10px' }}>
+                                {state.data.totalUnmatched} distinct rejected articles → {state.data.clusters.length} clusters
+                                {state.data.cached ? ' (cached)' : ''}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+                                {state.data.clusters.map((c, i) => (
+                                    <div key={i} style={{ border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px 14px' }}>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                            <b style={{ color: 'var(--text-secondary)' }}>{c.count} articles</b> rejected in this cluster
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                                            {c.topTerms.slice(0, 6).map(term => (
+                                                <button
+                                                    key={term}
+                                                    onClick={() => promote('keyword', term)}
+                                                    disabled={['pending', 'done', 'dupe'].includes(promoted[term])}
+                                                    title="Track as a signal keyword"
+                                                    style={{
+                                                        background: promoted[term] === 'done' ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.1)',
+                                                        color: promoted[term] === 'done' ? '#34d399' : 'var(--text-secondary)',
+                                                        border: '1px solid var(--border-subtle)', borderRadius: '999px',
+                                                        padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    + {term}{chipMark(term)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {c.sampleTitles.map(title => (
+                                            <div key={title} style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'baseline' }}>
+                                                <button
+                                                    onClick={() => promote('seed', title)}
+                                                    disabled={['pending', 'done', 'dupe'].includes(promoted[title])}
+                                                    title="Add this headline as a semantic seed (positive example)"
+                                                    style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: promoted[title] === 'done' ? '#34d399' : 'var(--text-dim)', fontSize: '11px', padding: '1px 6px', cursor: 'pointer', flexShrink: 0 }}
+                                                >
+                                                    {promoted[title] === 'done' ? '✓ seed' : '+ seed'}
+                                                </button>
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={title}>{title}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function PipelineAnalyticsPage({ onBack }) {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -132,6 +258,8 @@ export default function PipelineAnalyticsPage({ onBack }) {
                     )}
                 </div>
             )}
+
+            <DiscoveryPanel />
 
             {loading && <p style={{ color: 'var(--text-muted)' }}>Loading analytics…</p>}
             {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}

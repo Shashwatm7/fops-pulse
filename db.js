@@ -658,6 +658,23 @@ export async function setUserCustomer(userId, customerId) {
   await pool.query('UPDATE user_profiles SET customer_id = $1 WHERE user_id = $2', [customerId, userId]);
 }
 
+// Append one term to a customer's ml_seeds or signal_keywords (the discovery
+// promote flow). Field is whitelisted — never interpolate user input into the
+// column position. Case-insensitive dedupe so promoting twice is a no-op.
+export async function appendCustomerTerm(customerId, field, value) {
+  if (!['ml_seeds', 'signal_keywords'].includes(field)) {
+    throw new Error(`appendCustomerTerm: illegal field ${field}`);
+  }
+  const { rows } = await pool.query(`SELECT ${field} AS arr FROM customer_profiles WHERE id = $1`, [customerId]);
+  if (!rows[0]) return { added: false, reason: 'customer not found' };
+  const arr = Array.isArray(rows[0].arr) ? rows[0].arr : [];
+  const exists = arr.some(x => String(x).toLowerCase() === String(value).toLowerCase());
+  if (exists) return { added: false, reason: 'already present', total: arr.length };
+  arr.push(value);
+  await pool.query(`UPDATE customer_profiles SET ${field} = $2::jsonb WHERE id = $1`, [customerId, JSON.stringify(arr)]);
+  return { added: true, total: arr.length };
+}
+
 export async function getCustomerProfile(customerId) {
   if (!customerId) return null;
   const { rows } = await pool.query('SELECT * FROM customer_profiles WHERE id = $1', [customerId]);
