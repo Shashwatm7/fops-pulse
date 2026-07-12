@@ -89,7 +89,7 @@ function extractTopNewsIntelligence(news, focusProduct, userCommodities, focusRe
         const relevanceScore = (matchedCommodities.length * 4) + (matchedRegions.length * 2) + supplySignals.length + values.length;
         if (relevanceScore === 0) continue;
 
-        const usefulSnippet = (description || title).replace(/\s+/g, ' ').trim().slice(0, 280);
+        const usefulSnippet = (description || title).replace(/\s+/g, ' ').trim().slice(0, 200);
         extracted.push({
             score: relevanceScore,
             source,
@@ -147,8 +147,6 @@ function formatNewsIntelligence(extractedArticles) {
         lines.push(
             `${idx + 1}. Source: ${item.source} | Title: ${item.title}\n` +
             `   Useful extracted info: ${item.usefulInfo}\n` +
-            `   Matched commodities: ${item.matchedCommodities.join(', ') || 'none'} | ` +
-            `Matched regions: ${item.matchedRegions.join(', ') || 'none'}\n` +
             `   Supply signals: ${item.supplySignals.join(', ') || 'none'} | ` +
             `Numbers/dates: ${item.values.join(', ') || 'none'}`
         );
@@ -172,10 +170,19 @@ export function buildPlannerPrompt(payload) {
     const feedbackContext = payload.feedbackContext || '';
     const logisticsData = payload.logisticsData || {};
 
-    const shortWeather = weatherExtended
-        .map(w => `${w.name}: ${w.analytics?.alert ?? w.alert ?? 'NORMAL'}`)
-        .join(' | ');
-    const topNewsIntelligence = extractTopNewsIntelligence(news, focusProduct, userCommodities, focusRegion, userRegions);
+    // Only surface regions with an active (non-NORMAL) weather alert — a
+    // "NORMAL" reading is never a citable fact under the QUALITY BAR, so
+    // listing it for every tracked region just burns tokens with no signal.
+    const weatherAlerts = weatherExtended
+        .map(w => ({ name: w.name, alert: w.analytics?.alert ?? w.alert ?? 'NORMAL' }))
+        .filter(w => w.alert && w.alert.toUpperCase() !== 'NORMAL');
+    const shortWeather = weatherAlerts.length
+        ? weatherAlerts.map(w => `${w.name}: ${w.alert}`).join(' | ')
+        : 'No active weather alerts in tracked regions.';
+    // TIER 2 is the lowest-priority evidence tier (see PRIORITIZE rule in the
+    // system prompt) — 3 items is enough signal without paying full token
+    // cost for evidence the model is told to weight last anyway.
+    const topNewsIntelligence = extractTopNewsIntelligence(news, focusProduct, userCommodities, focusRegion, userRegions, 3);
     const topNewsIntelligenceBlock = formatNewsIntelligence(topNewsIntelligence);
     const acceptedInsightsBlock = formatAcceptedNewsInsights(payload.acceptedNewsInsights || []);
     const activeAlertsBlock = formatActiveAlerts(payload.activeAlerts || []);
