@@ -16,7 +16,7 @@ import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeli
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
-import { fetchCuratedFeeds, fetchPipelineFeeds } from './services/ingestion/curated_feeds.js';
+import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips } from './services/news-pipeline/entity_matcher.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
@@ -2791,26 +2791,23 @@ async function scanSingleUser(user, pipeline) {
       if (result.status === 'fulfilled') allArticles.push(...result.value);
     }
 
-    // Two external RSS lanes (both no-op if their env var is unset):
-    //  • PIPELINE_RSS_FEEDS → raw feeds run through the FULL pipeline (not
-    //    prevetted); they compete on our own relevance scoring like Google
-    //    News results.
-    //  • SUPPLY_RISK_FEEDS → Google Alerts feeds, marked prevetted; they skip
-    //    the commodity/region/semantic gates (Google already vetted relevance)
-    //    but honor the blocklist and enter at a Medium/High floor.
-    let pipelineFeedCount = 0, curatedCount = 0;
+    // Single external RSS feed lane (RSS_FEEDS; no-op if unset). Prevetted:
+    // articles skip the commodity/region/semantic keyword gates (the feed's
+    // own curation is trusted) but honor the blocklist and enter at a
+    // Medium/High floor. The risk-vs-commodity split and region requirement
+    // are enforced at output, not here. Commodity news also flows through the
+    // dynamic Google News search pipeline above.
+    let curatedCount = 0;
     try {
-      const [pipelineFeeds, curated] = await Promise.all([fetchPipelineFeeds(), fetchCuratedFeeds()]);
-      pipelineFeedCount = pipelineFeeds.length;
+      const curated = await fetchCuratedFeeds();
       curatedCount = curated.length;
-      allArticles.push(...pipelineFeeds, ...curated);
+      allArticles.push(...curated);
     } catch (e) {
-      console.error('[RSS-FEEDS] lane failed (continuing):', e.message);
+      console.error('[RSS-FEED] lane failed (continuing):', e.message);
     }
 
-    console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles for user ${user.id} (${pipelineFeedCount} pipeline-RSS, ${curatedCount} supply-risk)`);
+    console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles for user ${user.id} (${curatedCount} from RSS feeds)`);
     stats.fetched = allArticles.length;
-    stats.pipelineFeedFetched = pipelineFeedCount;
     stats.curatedFetched = curatedCount;
 
     // Profile fingerprint: lets the pipeline's rejection memo distinguish

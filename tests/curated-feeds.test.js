@@ -53,7 +53,7 @@ test('parseAlertsFeed skips entries missing title or date', () => {
     assert.equal(items.length, 0);
 });
 
-// RSS 2.0 feed for the PIPELINE_RSS_FEEDS lane (runs through full filtering).
+// RSS 2.0 feed — the parser must auto-detect this alongside Atom feeds.
 const RSS20 = `<rss version="2.0"><channel>
  <item>
   <title>Wheat futures climb on export demand</title>

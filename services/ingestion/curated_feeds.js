@@ -1,33 +1,24 @@
-// External RSS intake — TWO separate, independently-configured feed lists:
+// External RSS intake — ONE configured feed list (RSS_FEEDS, comma-separated
+// URLs; empty = inactive). These are the operator's curated feeds — typically
+// Google Alerts RSS (google.com/alerts, Deliver to: RSS feed) — whose own
+// curation is a better topical filter than our keyword rule engine for broad
+// supply-chain news. So feed articles are marked `prevetted`: they bypass the
+// commodity/region/semantic keyword gates (but NOT the user blocklist) and
+// enter at a Medium floor (High if they carry a severe disruptor in a tracked
+// region). The risk-vs-commodity separation and region requirement are then
+// enforced at OUTPUT (the categorized feed), not at ingestion — one pipeline
+// in, two clean streams out.
 //
-//  1. PIPELINE_RSS_FEEDS  → articles run through the FULL filtering pipeline
-//     (stages 3-8: commodity/region/score/semantic). Use for raw publisher or
-//     topic RSS feeds you want your own relevance engine to judge.
-//
-//  2. SUPPLY_RISK_FEEDS   → Google Alerts RSS feeds. Google's "best results"
-//     curation is a better topical filter for broad supply-chain-risk news
-//     than our keyword rule engine, so these are marked `prevetted`: they
-//     bypass the commodity/region/semantic gates (but NOT the user blocklist)
-//     and enter at a Medium floor (High if they carry a severe disruptor).
-//
-// Both are comma-separated URL lists; either empty = that lane is a safe
-// no-op. Commodity-focused news still flows through the dynamic Google News
-// search pipeline regardless of these. The parser auto-detects RSS 2.0
-// (<item>) and Atom (<entry>, e.g. Google Alerts) so any standard feed works.
+// Commodity-focused news also flows through the always-on dynamic Google News
+// search pipeline. The parser auto-detects RSS 2.0 (<item>) and Atom (<entry>,
+// e.g. Google Alerts) so any standard feed works.
 import axios from 'axios';
 
 export function getCuratedFeedUrls() {
-    return (process.env.SUPPLY_RISK_FEEDS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-}
-
-export function getPipelineFeedUrls() {
-    return (process.env.PIPELINE_RSS_FEEDS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+    // RSS_FEEDS is the current name; SUPPLY_RISK_FEEDS kept as a fallback so
+    // existing deployments don't break on rename.
+    const raw = process.env.RSS_FEEDS || process.env.SUPPLY_RISK_FEEDS || '';
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
 function decodeEntities(s) {
@@ -134,12 +125,8 @@ async function fetchFeeds(urls, prevetted, tag) {
     return out;
 }
 
-/** Google Alerts supply-risk lane (prevetted — bypasses keyword gates). */
+/** The single external RSS feed lane (prevetted — bypasses keyword gates;
+ * risk/commodity split + region gating happen at output). */
 export function fetchCuratedFeeds() {
-    return fetchFeeds(getCuratedFeedUrls(), true, 'SUPPLY-RISK-FEED');
-}
-
-/** Raw RSS lane (NOT prevetted — runs through the full filtering pipeline). */
-export function fetchPipelineFeeds() {
-    return fetchFeeds(getPipelineFeedUrls(), false, 'PIPELINE-FEED');
+    return fetchFeeds(getCuratedFeedUrls(), true, 'RSS-FEED');
 }
