@@ -56,13 +56,24 @@ function hasTerm(text, term) {
 export function buildMasterEntries(customer = {}) {
     const entries = [];
 
-    // Commodities — customer list is the canonical set; enrich aliases.
+    // Commodities — customer list is the canonical set; enrich aliases with
+    // that commodity's OWN synonym group only. Enrich only from the profile
+    // where the name is a PRIMARY term (its own identity) — not every profile
+    // that lists it as a related grain, which cross-contaminated ("wheat"
+    // inheriting "oats"/"corn"/"rice" because grain profiles cross-reference
+    // each other, so an oats article wrongly matched wheat/corn/rice).
+    // Also drop any alias that is itself another tracked commodity's name.
+    const commodityNames = new Set((customer.commodities || []).map(c => String(c).replace(/_/g, ' ').toLowerCase()));
     for (const raw of customer.commodities || []) {
         const name = String(raw).replace(/_/g, ' ').toLowerCase();
         const aliases = new Set([name]);
         for (const [, prof] of Object.entries(COMMODITY_PROFILES)) {
-            const terms = [...(prof.primaryTerms || []), ...(prof.relatedTerms || [])].map(t => t.toLowerCase());
-            if (terms.includes(name)) terms.forEach(t => aliases.add(t));
+            const primary = (prof.primaryTerms || []).map(t => t.toLowerCase());
+            if (primary.includes(name)) {
+                [...(prof.primaryTerms || []), ...(prof.relatedTerms || [])]
+                    .map(t => t.toLowerCase())
+                    .forEach(t => { if (t === name || !commodityNames.has(t)) aliases.add(t); });
+            }
         }
         entries.push({ type: 'commodity', canonical: name, aliases: [...aliases] });
     }
