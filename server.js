@@ -3349,28 +3349,37 @@ app.get('/api/insights/recent', requireAuth, async (req, res) => {
 app.get('/api/news/categorized', requireAuth, async (req, res) => {
     try {
         const rows = await getRecentAcceptedArticles(req.session.userId, 48, 40);
-        // Master data for rule-based entity matching (canonical linking).
+        // Master data for rule-based entity matching. Merge the CUSTOMER's
+        // commodities (e.g. Aramtec's food-service list) with the USER's own
+        // tracked commodities — otherwise a user-tracked commodity outside the
+        // customer catalog (oats, corn, gold) is never tagged, and its news
+        // silently falls out of the commodity stream.
         const customer = await getCustomerProfileForUser(req.session.userId).catch(() => null);
+        const master = {
+            commodities: [...new Set([...(customer?.commodities || []), ...((req.userProfile?.commodities) || [])])],
+            key_ports: customer?.key_ports || [],
+            key_routes: customer?.key_routes || [],
+            supplier_countries: customer?.supplier_countries || [],
+        };
         const PRIO_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3, Ignored: 4 };
         const items = rows.map(r => {
             const cat = categorizeArticle(r.title);
             const priority = classifyPriority(Number(r.relevance_score) || 0);
-            const ent = customer ? matchEntities(r.title, customer) : { commodities: [], regions: [], chokepoints: [], ports: [], routes: [], supplier_countries: [] };
+            const ent = matchEntities(r.title, master);
 
-            // Region-aware, entity-driven stream assignment (never mixed):
-            //   • RISK   = a supply-chain-risk factor (disruption/geopolitical/
-            //     trade/logistics category, OR a maritime chokepoint entity)
-            //     that also touches a tracked region.
-            //   • COMMODITY = a commodity mention (business/commodity relevance)
-            //     that also touches a tracked region.
-            //   • OTHER  = accepted but doesn't cleanly satisfy either's region
-            //     rule — surfaced separately so nothing silently vanishes.
-            const hasRegion = ent.regions.length > 0 || ent.chokepoints.length > 0;
+            // Stream assignment by TYPE (never mixed). Region is NOT a hard
+            // gate here — every article already passed the pipeline's region
+            // rules at ingestion, and hard-gating on a title-only region match
+            // silently hid accepted articles (esp. Global-focus profiles).
+            // Region is instead the filter dropdown + a scoring priority.
+            //   • RISK      = risk-factor category OR a chokepoint entity.
+            //   • COMMODITY = a commodity entity (business/commodity relevance).
+            //   • OTHER     = genuinely neither.
             const hasCommodity = ent.commodities.length > 0;
             const isRiskFactor = cat.stream === 'risk' || ent.chokepoints.length > 0;
             let stream;
-            if (isRiskFactor && hasRegion) stream = 'risk';
-            else if (!isRiskFactor && hasCommodity && hasRegion) stream = 'commodity';
+            if (isRiskFactor) stream = 'risk';
+            else if (hasCommodity) stream = 'commodity';
             else stream = 'other';
 
             return {
