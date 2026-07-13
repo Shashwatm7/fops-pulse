@@ -211,12 +211,17 @@ export class NewsPipeline {
 
         // Prevetted relevance floor: Google's curation is itself a strong
         // relevance signal. A curated supply-risk article enters at Medium
-        // minimum (alertable); if it also carries a SEVERE disruptor
-        // (attack/blockade/port closure) it floors at High — this is the
-        // "supply-chain-risk on top" behavior. The commodity-less scorer cap
-        // would otherwise hold these at 55, so the floor is applied here after
-        // scoring rather than by relaxing the cap.
-        if (prevetted) score = Math.max(score, breakdown.hasSevereDisruptor ? 70 : 60);
+        // minimum (alertable). Region is TAKEN INTO ACCOUNT: the High floor
+        // for a severe disruptor is granted only when the article also matches
+        // one of the user's regions — a severe shock outside their geography
+        // stays at Medium rather than being pinned High. (Region is a soft
+        // factor here, not a hard gate: Google already vetted topical
+        // relevance and the alert query is itself region-scoped, so we never
+        // drop the article — we only decline to elevate it.)
+        if (prevetted) {
+            const regionOk = regionCheck.passed || (regionCheck.regionMatches || []).length > 0;
+            score = Math.max(score, (breakdown.hasSevereDisruptor && regionOk) ? 70 : 60);
+        }
 
         if (score < this.llmThresholdLow) {
             const rescued = await attemptRescue(5);

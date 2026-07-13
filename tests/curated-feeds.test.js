@@ -112,8 +112,16 @@ test('prevetted does NOT bypass the user blocklist', async () => {
     assert.match(r.reason, /excluded context/i);
 });
 
-test('prevetted severe disruptor climbs above the floor to High/Critical', async () => {
+test('prevetted severe disruptor IN a tracked region climbs to High', async () => {
+    // Region is taken into account: severe + region match → High floor.
+    const r = await run({ title: 'Missile attack shuts UAE Sweihan port, blockade halts all cargo', prevetted: true });
+    assert.equal(r.accepted, true);
+    assert.ok(['High', 'Critical'].includes(r.article.priority), `severe + region should reach High, got ${r.article.priority}`);
+});
+
+test('prevetted severe disruptor OUTSIDE tracked regions stays Medium (region counts)', async () => {
+    // Same severity, but no tracked region named → not pinned High.
     const r = await run({ title: 'Missile attack shuts major port, blockade halts all cargo', prevetted: true });
     assert.equal(r.accepted, true);
-    assert.ok(['High', 'Critical'].includes(r.article.priority), `severe disruptor should exceed Medium floor, got ${r.article.priority}`);
+    assert.equal(r.article.priority, 'Medium', `severe without region should stay Medium, got ${r.article.priority}`);
 });

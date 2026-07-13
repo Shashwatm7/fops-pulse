@@ -72,6 +72,25 @@ export const CATEGORIES = [
 
 const FALLBACK = { key: 'general', label: 'General', emoji: '📰' };
 
+// Top-level stream each category belongs to. The two streams are shown as
+// SEPARATE sections in the UI (never mixed): supply-chain risk events vs.
+// commodity/market news.
+const STREAM_OF = {
+    supply_disruption: 'risk',
+    geopolitical: 'risk',
+    trade_policy: 'risk',
+    logistics: 'risk',
+    weather_crop: 'commodity',
+    food_safety: 'commodity',
+    energy: 'commodity',
+    price_move: 'commodity',
+    general: 'commodity',
+};
+
+export function streamOf(categoryKey) {
+    return STREAM_OF[categoryKey] || 'commodity';
+}
+
 const hasTerm = (text, term) => {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
@@ -86,8 +105,8 @@ export function categorizeArticle(title, description = '') {
     const text = `${title || ''} ${description || ''}`;
     for (const cat of CATEGORIES) {
         if (cat.terms.some(t => hasTerm(text, t))) {
-            return { key: cat.key, label: cat.label, emoji: cat.emoji, isDisruption: cat.key === 'supply_disruption' };
+            return { key: cat.key, label: cat.label, emoji: cat.emoji, stream: streamOf(cat.key), isDisruption: cat.key === 'supply_disruption' };
         }
     }
-    return { ...FALLBACK, isDisruption: false };
+    return { ...FALLBACK, stream: streamOf(FALLBACK.key), isDisruption: false };
 }

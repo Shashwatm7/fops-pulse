@@ -3364,6 +3364,7 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
                 category: cat.key,
                 categoryLabel: cat.label,
                 categoryEmoji: cat.emoji,
+                stream: cat.stream,          // 'risk' | 'commodity' — kept in separate UI sections
                 isDisruption: cat.isDisruption,
                 priority,
             };
@@ -3376,7 +3377,10 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
         // Category tallies for the header chips.
         const counts = {};
         for (const it of items) counts[it.category] = (counts[it.category] || 0) + 1;
-        res.json({ success: true, items, counts });
+        // Split into the two streams so the client renders them separately.
+        const risk = items.filter(i => i.stream === 'risk');
+        const commodity = items.filter(i => i.stream === 'commodity');
+        res.json({ success: true, items, risk, commodity, counts });
     } catch (err) {
         console.error('Categorized news error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to load categorized news' });

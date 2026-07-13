@@ -280,7 +280,6 @@ export default function Dashboard() {
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [categorizedNews, setCategorizedNews] = useState([]);
-  const [newsCatFilter, setNewsCatFilter] = useState('all');
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
   const [alertLimit, setAlertLimit] = useState(6);
@@ -1415,70 +1414,59 @@ export default function Dashboard() {
             </div>
           ))}
 
-          <div className="mb-xl mt-lg">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-              <div className="section-label" style={{ margin: 0 }}>📊 News Intelligence — Categorized</div>
-            </div>
-            {categorizedNews.length === 0 ? (
-              <div className="intel-card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.
+          {(() => {
+            const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
+            const riskItems = categorizedNews.filter(n => n.stream === 'risk');
+            const commodityItems = categorizedNews.filter(n => n.stream === 'commodity');
+
+            const card = (n, i) => (
+              <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                  <a href={n.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
+                    {n.title}
+                  </a>
+                  {n.priority && n.priority !== 'Ignored' && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: prioColor[n.priority], border: `1px solid ${prioColor[n.priority]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {n.priority.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px',
+                    background: n.isDisruption ? 'rgba(251,113,133,0.15)' : 'rgba(139,92,246,0.12)',
+                    color: n.isDisruption ? '#fb7185' : '#c4b5fd' }}>
+                    {n.categoryEmoji} {n.categoryLabel}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
+                </div>
               </div>
-            ) : (() => {
-              const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
-              // Category filter chips with counts; supply disruption first.
-              const counts = {};
-              categorizedNews.forEach(n => { counts[n.category] = (counts[n.category] || 0) + 1; });
-              const cats = [...new Set(categorizedNews.map(n => n.category))]
-                .sort((a, b) => (b === 'supply_disruption') - (a === 'supply_disruption') || counts[b] - counts[a]);
-              const labelOf = (k) => categorizedNews.find(n => n.category === k) || {};
-              const shown = newsCatFilter === 'all' ? categorizedNews : categorizedNews.filter(n => n.category === newsCatFilter);
+            );
+
+            const section = (title, subtitle, items, accent) => (
+              <div className="mb-xl mt-lg">
+                <div className="section-label" style={{ margin: '0 0 4px', color: accent }}>{title} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {items.length}</span></div>
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px' }}>{subtitle}</div>
+                {items.length === 0
+                  ? <div className="intel-card" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '13px' }}>No {title.replace(/^[^ ]+ /, '').toLowerCase()} in the last 48h.</div>
+                  : items.map(card)}
+              </div>
+            );
+
+            if (categorizedNews.length === 0) {
               return (
-                <>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                    <button onClick={() => setNewsCatFilter('all')} style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '999px', cursor: 'pointer', border: '1px solid var(--border-subtle)', background: newsCatFilter === 'all' ? 'rgba(99,102,241,0.2)' : 'transparent', color: 'var(--text-secondary)' }}>All · {categorizedNews.length}</button>
-                    {cats.map(k => {
-                      const meta = labelOf(k);
-                      const active = newsCatFilter === k;
-                      const disr = k === 'supply_disruption';
-                      return (
-                        <button key={k} onClick={() => setNewsCatFilter(active ? 'all' : k)}
-                          style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '999px', cursor: 'pointer',
-                            border: `1px solid ${disr ? 'rgba(251,113,133,0.5)' : 'var(--border-subtle)'}`,
-                            background: active ? (disr ? 'rgba(251,113,133,0.18)' : 'rgba(99,102,241,0.2)') : 'transparent',
-                            color: disr ? '#fb7185' : 'var(--text-secondary)', fontWeight: disr ? 700 : 400 }}>
-                          {meta.categoryEmoji} {meta.categoryLabel} · {counts[k]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {shown.map((n, i) => (
-                    <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                        <a href={n.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
-                          {n.title}
-                        </a>
-                        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                          {n.priority && n.priority !== 'Ignored' && (
-                            <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: prioColor[n.priority], border: `1px solid ${prioColor[n.priority]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
-                              {n.priority.toUpperCase()}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px',
-                          background: n.isDisruption ? 'rgba(251,113,133,0.15)' : 'rgba(139,92,246,0.12)',
-                          color: n.isDisruption ? '#fb7185' : '#c4b5fd' }}>
-                          {n.categoryEmoji} {n.categoryLabel}
-                        </span>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
-                      </div>
-                    </div>
-                  ))}
-                </>
+                <div className="intel-card mt-lg" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.
+                </div>
               );
-            })()}
-          </div>
+            }
+            // Two separate, region-aware streams — never mixed.
+            return (
+              <>
+                {section('🚨 Supply Chain Risk', 'Disruption, geopolitical, logistics & trade-policy events affecting your regions.', riskItems, '#fb7185')}
+                {section('📊 Commodity News', 'Price, weather/crop, energy & food-safety news for your tracked commodities & regions.', commodityItems, '#38bdf8')}
+              </>
+            );
+          })()}
 
           <div className="mt-lg">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
