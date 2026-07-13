@@ -16,7 +16,7 @@ import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeli
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
-import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
+import { fetchCuratedFeeds, fetchPipelineFeeds } from './services/ingestion/curated_feeds.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -2790,23 +2790,26 @@ async function scanSingleUser(user, pipeline) {
       if (result.status === 'fulfilled') allArticles.push(...result.value);
     }
 
-    // Supply-chain-risk lane: pull the operator's curated Google Alerts feeds
-    // (Google's broad-web "best results" curation, which beats our keyword
-    // rule engine for this class of risk news). These articles are marked
-    // prevetted and skip the commodity/region/semantic gates downstream —
-    // commodity-focused news keeps flowing through the Google News pipeline
-    // above. No-op if SUPPLY_RISK_FEEDS is unset.
-    let curatedCount = 0;
+    // Two external RSS lanes (both no-op if their env var is unset):
+    //  • PIPELINE_RSS_FEEDS → raw feeds run through the FULL pipeline (not
+    //    prevetted); they compete on our own relevance scoring like Google
+    //    News results.
+    //  • SUPPLY_RISK_FEEDS → Google Alerts feeds, marked prevetted; they skip
+    //    the commodity/region/semantic gates (Google already vetted relevance)
+    //    but honor the blocklist and enter at a Medium/High floor.
+    let pipelineFeedCount = 0, curatedCount = 0;
     try {
-      const curated = await fetchCuratedFeeds();
+      const [pipelineFeeds, curated] = await Promise.all([fetchPipelineFeeds(), fetchCuratedFeeds()]);
+      pipelineFeedCount = pipelineFeeds.length;
       curatedCount = curated.length;
-      allArticles.push(...curated);
+      allArticles.push(...pipelineFeeds, ...curated);
     } catch (e) {
-      console.error('[SUPPLY-RISK-FEED] lane failed (continuing):', e.message);
+      console.error('[RSS-FEEDS] lane failed (continuing):', e.message);
     }
 
-    console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles for user ${user.id} (${curatedCount} from supply-risk feeds)`);
+    console.log(`[USER-SCANNER] Fetched ${allArticles.length} raw articles for user ${user.id} (${pipelineFeedCount} pipeline-RSS, ${curatedCount} supply-risk)`);
     stats.fetched = allArticles.length;
+    stats.pipelineFeedFetched = pipelineFeedCount;
     stats.curatedFetched = curatedCount;
 
     // Profile fingerprint: lets the pipeline's rejection memo distinguish

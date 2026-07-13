@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAlertsFeed, unwrapAlertUrl } from '../services/ingestion/curated_feeds.js';
+import { parseAlertsFeed, parseFeed, unwrapAlertUrl } from '../services/ingestion/curated_feeds.js';
 import { NewsPipeline } from '../services/news-pipeline/pipeline.js';
 
 // A realistic Google Alerts Atom feed fragment.
@@ -51,6 +51,31 @@ test('parseAlertsFeed extracts entries, strips HTML, splits source, marks prevet
 test('parseAlertsFeed skips entries missing title or date', () => {
     const items = parseAlertsFeed('<feed><entry><content>no title</content></entry></feed>');
     assert.equal(items.length, 0);
+});
+
+// RSS 2.0 feed for the PIPELINE_RSS_FEEDS lane (runs through full filtering).
+const RSS20 = `<rss version="2.0"><channel>
+ <item>
+  <title>Wheat futures climb on export demand</title>
+  <link>https://example.com/wheat-futures</link>
+  <pubDate>Sun, 13 Jul 2026 08:00:00 GMT</pubDate>
+  <description>Prices rose 3% amid strong buying.</description>
+  <source url="https://agnews.com">AgNews</source>
+ </item>
+</channel></rss>`;
+
+test('parseFeed auto-detects RSS 2.0 and extracts item fields', () => {
+    const items = parseFeed(RSS20);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].title, 'Wheat futures climb on export demand');
+    assert.equal(items[0].url, 'https://example.com/wheat-futures');
+    assert.equal(items[0].source, 'AgNews');
+    assert.equal(items[0].prevetted, undefined, 'parseFeed itself does not tag prevetted');
+});
+
+test('parseFeed auto-detects Atom (entry) vs RSS (item)', () => {
+    assert.equal(parseFeed('<feed><entry><title>t</title><link href="https://x.com/a"/><published>2026-07-13T00:00:00Z</published></entry></feed>').length, 1);
+    assert.equal(parseFeed(RSS20).length, 1);
 });
 
 // A profile whose keyword rule engine would REJECT a region-less, commodity-
