@@ -127,12 +127,20 @@ export function buildWatchlistProfile(userProfile) {
         userProfile.news_keywords.forEach(k => profile.primaryTerms.add(k.toLowerCase()));
     }
 
-    // 2. Process Regions (regions + focus_region + focus_countries)
+    // 2. Process Regions (regions + focus_region + focus_countries + custom)
     const regions = Array.isArray(userProfile.regions) ? userProfile.regions : [];
     const focusCountries = Array.isArray(userProfile.focus_countries) ? userProfile.focus_countries : [];
     const focusRegion = userProfile.focus_region;
+    // Regions the user explicitly ADDED on the fly — the "Add Custom region"
+    // field and the focus region. These signal deliberate intent, so they are
+    // PRIORITY regions: news matching them gets a scoring bonus (stage 5) and
+    // therefore ranks/alerts higher than generic tracked-region news. (Custom
+    // regions were previously not matched at all — this also fixes that.)
+    const customRegions = (Array.isArray(userProfile.custom_regions) ? userProfile.custom_regions : [])
+        .map(r => (typeof r === 'string' ? r : r?.name)).filter(Boolean);
+    profile.priorityRegionAliases = new Set();
 
-    const regionKeys = [...regions, ...focusCountries];
+    const regionKeys = [...regions, ...focusCountries, ...customRegions];
     if (focusRegion && typeof focusRegion === 'string') {
         regionKeys.push(focusRegion);
     }
@@ -142,6 +150,17 @@ export function buildWatchlistProfile(userProfile) {
         // Micro-region-aware expansion: "Saudi Arabia Al-Hasa" → full Saudi
         // alias group; "UAE Sweihan" → UAE group; exact names work as before.
         expandRegionAliases(region).forEach(a => profile.regionAliases.add(a));
+    }
+
+    // Priority set: custom-added regions + focus region/countries (never the
+    // whole template list).
+    const priorityKeys = [...customRegions, ...focusCountries];
+    if (focusRegion && typeof focusRegion === 'string' && focusRegion.toLowerCase() !== 'global') {
+        priorityKeys.push(focusRegion);
+    }
+    for (const region of priorityKeys) {
+        profile.priorityRegionAliases.add(String(region).toLowerCase());
+        expandRegionAliases(region).forEach(a => profile.priorityRegionAliases.add(a));
     }
 
     // 3. Apply blocklists: global noise topics + the user's custom blocklist
@@ -156,6 +175,7 @@ export function buildWatchlistProfile(userProfile) {
         primaryTerms: Array.from(profile.primaryTerms),
         relatedTerms: Array.from(profile.relatedTerms),
         regionAliases: Array.from(profile.regionAliases),
+        priorityRegionAliases: Array.from(profile.priorityRegionAliases),
         businessTerms: Array.from(profile.businessTerms),
         excludedContexts: Array.from(profile.excludedContexts),
         // Metaphor phrases hidden from commodity matching (see rule engine).

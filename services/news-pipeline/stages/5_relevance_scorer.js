@@ -96,6 +96,17 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
     regionScore = Math.min(25, regionScore);
     score += regionScore;
 
+    // Priority-region bonus (0-20): a region the user explicitly ADDED (custom
+    // region or focus region) outranks generic tracked-region news. Added on
+    // top of the base region score, so news for a user's dynamically-added
+    // region scores materially higher and is more likely to alert.
+    let priorityRegionScore = 0;
+    (profile.priorityRegionAliases || []).forEach(region => {
+        if (hasExactTerm(title, region)) priorityRegionScore = Math.max(priorityRegionScore, 20);
+        else if (hasExactTerm(body, region)) priorityRegionScore = Math.max(priorityRegionScore, 10);
+    });
+    score += priorityRegionScore;
+
     // 4. Disruption severity (Max 40) — attacks, blockades, port closures,
     // sanctions etc. A supply-chain shock is the highest-value signal for a
     // procurement desk, so it is scored explicitly rather than left to
@@ -140,6 +151,7 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
             commodityScore,
             businessScore,
             regionScore,
+            priorityRegionScore,
             disruptionScore,
             hasSevereDisruptor,
         }
