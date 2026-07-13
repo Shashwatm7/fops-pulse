@@ -3,7 +3,7 @@ import { buildWatchlistProfile } from './stages/2_profile_builder.js';
 import { applyRuleEngine } from './stages/3_rule_engine.js';
 import { matchRegion } from './stages/4_region_matcher.js';
 import { calculateRelevanceScore } from './stages/5_relevance_scorer.js';
-import { applySemanticFilter } from './stages/6_semantic_filter.js';
+import { applySemanticFilter, semanticSimilarity } from './stages/6_semantic_filter.js';
 import { classifyPriority } from './stages/8_priority_classifier.js';
 
 export class NewsPipeline {
@@ -16,6 +16,16 @@ export class NewsPipeline {
         // 'off' lets tests exercise the deterministic stages without pulling
         // the local embedding model into CI.
         this.semanticEnabled = config.semantic !== 'off';
+        // Semantic rescue lane: a keyword-rejected article (stages 3-5) gets
+        // one similarity check against the customer's seeds, and is rescued
+        // if unmistakably on-topic. 0.40 calibrated against real audit data
+        // (Jul 2026): a genuinely-relevant rejected article ("ships reroute
+        // around the Cape") scored 0.421 while the noise ceiling (restaurant
+        // openings, local fires, sports) was 0.265. Above the stage-6 gate
+        // (0.30) because rescue bypasses every keyword check. Injectable for
+        // tests; env-tunable via SEMANTIC_RESCUE_THRESHOLD.
+        this.rescueThreshold = config.rescueThreshold ?? 0.4;
+        this.similarityFn = config.similarityFn || semanticSimilarity;
         // Rejection memo: userArticleKey → profile fingerprint of the profile
         // version that rejected it. Prevents re-LOGGING the same rejection on
         // every scan (RSS re-fetches the same articles all day) while still
@@ -107,9 +117,65 @@ export class NewsPipeline {
         // Stage 2
         const profile = buildWatchlistProfile(userProfile);
 
+        // Semantic rescue: keyword gates (3-5) only see literal terms, so an
+        // article phrased without any tracked keyword ("Iran ready to
+        // escalate over Hormuz") dies even when it embeds on top of a seed
+        // ("Houthi attacks force shipping lines to reroute…"). Before letting
+        // a keyword rejection stand, check seed similarity once; rescue only
+        // near-certain matches. Fails CLOSED — if embedding errors, the
+        // original keyword rejection stands. Returns an accepted result or
+        // null (rescue declined).
+        const attemptRescue = async (rejectedStage) => {
+            if (!this.semanticEnabled) return null;
+            let sim = null;
+            try {
+                sim = await this.similarityFn(article, profile);
+            } catch (err) {
+                console.error('[USER-SCANNER] Rescue similarity failed (rejection stands):', err.message);
+                return null;
+            }
+            if (sim == null || sim < this.rescueThreshold) return null;
+
+            // Similarity-derived score, floored at 60 (Medium): a rescue is a
+            // judgment that this article matters despite no keyword — an
+            // accepted-but-Low result would never alert, making the rescue
+            // pointless. Real similarities cluster in 0.40-0.55 (calibration
+            // above), so without the floor nearly every rescue would be Low.
+            // Capped at 84 — a semantic-only match never mints Critical;
+            // that stays keyword-verified.
+            const rescueScore = Math.min(84, Math.max(60, Math.round(sim * 100)));
+            const priority = classifyPriority(rescueScore, null);
+            if (priority === 'Ignored') return null;
+
+            const simStr = sim.toFixed(3);
+            console.log(`[USER-SCANNER] Rescued (semantic ${simStr} ≥ ${this.rescueThreshold}, was stage ${rejectedStage}): ${article.title}`);
+            return await doReturn({
+                accepted: true,
+                score: rescueScore,
+                reason: `Semantic rescue: similarity ${simStr} to profile seeds (keyword stage ${rejectedStage} had rejected)`,
+                article: {
+                    ...rawArticle,
+                    priority,
+                    relevanceScore: rescueScore,
+                    breakdown: { commodityScore: 0, businessScore: 0, regionScore: 0, semanticRescue: true, similarity: +simStr },
+                    matchedRegions: [],
+                    titleKey,
+                    llmReason: `Matches your supply-chain profile by meaning (similarity ${simStr}) despite no tracked keyword in the text`,
+                },
+                stage: 9,
+            });
+        };
+
         // Stage 3
         const ruleCheck = applyRuleEngine(article, profile);
         if (!ruleCheck.passed) {
+            // Blocklist kills are deliberate user configuration — never
+            // rescued. Everything else missing keywords gets a semantic look.
+            const isBlocklistKill = String(ruleCheck.reason || '').startsWith('Matched excluded context');
+            if (!isBlocklistKill) {
+                const rescued = await attemptRescue(3);
+                if (rescued) return rescued;
+            }
             console.log(`[USER-SCANNER] Rejected (Stage 3 - Rules): ${article.title} - ${ruleCheck.reason}`);
             memoizeRejection();
             return await doReturn({ accepted: false, reason: ruleCheck.reason, stage: 3 });
@@ -119,6 +185,8 @@ export class NewsPipeline {
         // tracked-commodity news soft-passes and is penalized by the scorer.
         const regionCheck = matchRegion(article, profile, ruleCheck.matchData);
         if (!regionCheck.passed) {
+            const rescued = await attemptRescue(4);
+            if (rescued) return rescued;
             console.log(`[USER-SCANNER] Rejected (Stage 4 - Region): ${article.title} - ${regionCheck.reason}`);
             memoizeRejection();
             return await doReturn({ accepted: false, reason: regionCheck.reason, stage: 4 });
@@ -128,6 +196,8 @@ export class NewsPipeline {
         const { score, breakdown } = calculateRelevanceScore(article, profile, ruleCheck.matchData);
 
         if (score < this.llmThresholdLow) {
+            const rescued = await attemptRescue(5);
+            if (rescued) return rescued;
             console.log(`[USER-SCANNER] Rejected (Stage 5 - Low Score ${score}): ${article.title}`);
             memoizeRejection();
             return await doReturn({ accepted: false, reason: `Score too low (${score})`, stage: 5, score });
