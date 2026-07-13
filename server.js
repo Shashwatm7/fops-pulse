@@ -14,7 +14,9 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { categorizeArticle } from './services/news-pipeline/categorizer.js';
+import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -3318,6 +3320,46 @@ app.get('/api/insights/recent', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Recent insights error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to load insights' });
+    }
+});
+
+// Categorized news intelligence — replaces the (now-empty) LLM-labeled feed
+// with deterministic categorization of accepted articles. Supply-chain
+// disruption is pinned on top; within a tier, higher priority/relevance
+// first. No LLM: category from the keyword categorizer, priority from the
+// same score→bucket mapping the pipeline uses.
+app.get('/api/news/categorized', requireAuth, async (req, res) => {
+    try {
+        const rows = await getRecentAcceptedArticles(req.session.userId, 48, 40);
+        const PRIO_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3, Ignored: 4 };
+        const items = rows.map(r => {
+            const cat = categorizeArticle(r.title);
+            const priority = classifyPriority(Number(r.relevance_score) || 0);
+            return {
+                title: r.title,
+                url: r.url,
+                source: r.source,
+                score: Number(r.relevance_score) || 0,
+                scannedAt: r.scanned_at,
+                category: cat.key,
+                categoryLabel: cat.label,
+                categoryEmoji: cat.emoji,
+                isDisruption: cat.isDisruption,
+                priority,
+            };
+        });
+        // Disruption first, then by priority, then by score.
+        items.sort((a, b) =>
+            (b.isDisruption - a.isDisruption)
+            || (PRIO_RANK[a.priority] - PRIO_RANK[b.priority])
+            || (b.score - a.score));
+        // Category tallies for the header chips.
+        const counts = {};
+        for (const it of items) counts[it.category] = (counts[it.category] || 0) + 1;
+        res.json({ success: true, items, counts });
+    } catch (err) {
+        console.error('Categorized news error:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to load categorized news' });
     }
 });
 

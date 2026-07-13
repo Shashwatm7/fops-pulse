@@ -433,6 +433,27 @@ export async function getRejectedArticlesForDiscovery(userId, days = 7, limit = 
   return rows;
 }
 
+// Recent ACCEPTED articles (distinct title) for the categorized news feed.
+// Gated on settings_changed_at like the alerts/insights views so a profile
+// change doesn't leave stale articles on screen.
+export async function getRecentAcceptedArticles(userId, hours = 48, limit = 40) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (article_title)
+            article_title AS title, article_url AS url, source, relevance_score, scanned_at
+     FROM pipeline_audit_logs
+     WHERE user_id = $1
+       AND is_accepted = TRUE
+       AND scanned_at > NOW() - ($2 || ' hours')::interval
+       AND scanned_at >= COALESCE(
+         (SELECT settings_changed_at FROM user_profiles WHERE user_id = $1),
+         '1970-01-01'::timestamptz)
+     ORDER BY article_title, scanned_at DESC
+     LIMIT $3`,
+    [userId, String(hours), limit]
+  );
+  return rows;
+}
+
 export async function getPipelineAuditLogs(userId, limit = 100) {
   const { rows } = await pool.query(
     `SELECT * FROM pipeline_audit_logs 

@@ -279,12 +279,12 @@ export default function Dashboard() {
   const [news, setNews] = useState([]);
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
-  const [recentInsights, setRecentInsights] = useState([]);
+  const [categorizedNews, setCategorizedNews] = useState([]);
+  const [newsCatFilter, setNewsCatFilter] = useState('all');
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
   const [alertLimit, setAlertLimit] = useState(6);
   const [newsLimit, setNewsLimit] = useState(10);
-  const [insightLimit, setInsightLimit] = useState(5);
   const [rescanning, setRescanning] = useState(false);
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
   const [pipelineBlocklist, setPipelineBlocklist] = useState([]);
@@ -757,9 +757,9 @@ export default function Dashboard() {
   // containing the same articles) ──
   useEffect(() => {
     if (tab !== 'alerts' || !user) return;
-    fetch(`${API_BASE}/insights/recent`, { credentials: 'include' })
+    fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.success) setRecentInsights(d.insights || []); })
+      .then(d => { if (d.success) setCategorizedNews(d.items || []); })
       .catch(() => {});
   }, [tab, user]);
 
@@ -814,9 +814,9 @@ export default function Dashboard() {
   };
 
   const refetchInsights = () => {
-    fetch(`${API_BASE}/insights/recent`, { credentials: 'include' })
+    fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.success) setRecentInsights(d.insights || []); })
+      .then(d => { if (d.success) setCategorizedNews(d.items || []); })
       .catch(() => {});
   };
 
@@ -828,7 +828,7 @@ export default function Dashboard() {
     setShowSettings(false);
     if (rescan) {
       setAnalysis(prev => ({ ...prev, alerts: [] }));
-      setRecentInsights([]);
+      setCategorizedNews([]);
       setAlertInsights({ byUrl: {}, byTitle: {} });
       setRescanning(true);
     }
@@ -1416,53 +1416,67 @@ export default function Dashboard() {
           ))}
 
           <div className="mb-xl mt-lg">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div className="section-label" style={{ margin: 0 }}>✨ AI Intelligence — Labeled Articles</div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Show
-                <select value={insightLimit} onChange={e => setInsightLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={15}>15</option>
-                  <option value="all">All</option>
-                </select>
-              </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div className="section-label" style={{ margin: 0 }}>📊 News Intelligence — Categorized</div>
             </div>
-            {recentInsights.length === 0 ? (
+            {categorizedNews.length === 0 ? (
               <div className="intel-card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                No labeled articles. Automatic AI labeling during scans has been turned off — click "✨ AI Summary" on a Risk Alert below for an on-demand summary instead.
+                No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.
               </div>
             ) : (() => {
-              const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };
-              return (insightLimit === 'all' ? recentInsights : recentInsights.slice(0, insightLimit)).map((ins, i) => {
-                const d = ins.insight_json || {};
-                return (
-                  <div key={ins.id || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.05}s`, borderLeft: `2px solid ${sevColor[ins.severity] || 'rgba(139, 92, 246, 0.55)'}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                      <a href={ins.article_url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
-                        {ins.summary || ins.article_title}
-                      </a>
-                      {ins.severity && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: sevColor[ins.severity], border: `1px solid ${sevColor[ins.severity]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
-                          {ins.severity.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
-                      {ins.source} {ins.category && <>· {ins.category.replace(/_/g, ' ')}</>} {ins.urgency && <>· {ins.urgency}</>}
-                    </div>
-                    {d.what && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{d.what}</div>}
-                    <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {d.key_dates?.map((kd, j) => <span key={`kd-${j}`} style={{ fontSize: '10px', background: 'rgba(244,114,182,0.15)', color: '#f9a8d4', padding: '2px 6px', borderRadius: '4px' }}>📅 {kd}</span>)}
-                      {d.key_figures?.map((kf, j) => <span key={`kf-${j}`} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>📊 {kf}</span>)}
-                      {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
-                      {d.routes_affected?.map((r, j) => <span key={`r-${j}`} style={{ fontSize: '10px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🚢 {r}</span>)}
-                      {d.ports_affected?.map((p, j) => <span key={`p-${j}`} style={{ fontSize: '10px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>⚓ {p}</span>)}
-                    </div>
-                    {ins.action_note && <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', fontSize: '12px', color: '#34d399' }}>→ {ins.action_note}</div>}
+              const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
+              // Category filter chips with counts; supply disruption first.
+              const counts = {};
+              categorizedNews.forEach(n => { counts[n.category] = (counts[n.category] || 0) + 1; });
+              const cats = [...new Set(categorizedNews.map(n => n.category))]
+                .sort((a, b) => (b === 'supply_disruption') - (a === 'supply_disruption') || counts[b] - counts[a]);
+              const labelOf = (k) => categorizedNews.find(n => n.category === k) || {};
+              const shown = newsCatFilter === 'all' ? categorizedNews : categorizedNews.filter(n => n.category === newsCatFilter);
+              return (
+                <>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                    <button onClick={() => setNewsCatFilter('all')} style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '999px', cursor: 'pointer', border: '1px solid var(--border-subtle)', background: newsCatFilter === 'all' ? 'rgba(99,102,241,0.2)' : 'transparent', color: 'var(--text-secondary)' }}>All · {categorizedNews.length}</button>
+                    {cats.map(k => {
+                      const meta = labelOf(k);
+                      const active = newsCatFilter === k;
+                      const disr = k === 'supply_disruption';
+                      return (
+                        <button key={k} onClick={() => setNewsCatFilter(active ? 'all' : k)}
+                          style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '999px', cursor: 'pointer',
+                            border: `1px solid ${disr ? 'rgba(251,113,133,0.5)' : 'var(--border-subtle)'}`,
+                            background: active ? (disr ? 'rgba(251,113,133,0.18)' : 'rgba(99,102,241,0.2)') : 'transparent',
+                            color: disr ? '#fb7185' : 'var(--text-secondary)', fontWeight: disr ? 700 : 400 }}>
+                          {meta.categoryEmoji} {meta.categoryLabel} · {counts[k]}
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              });
+                  {shown.map((n, i) => (
+                    <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                        <a href={n.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
+                          {n.title}
+                        </a>
+                        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                          {n.priority && n.priority !== 'Ignored' && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: prioColor[n.priority], border: `1px solid ${prioColor[n.priority]}`, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                              {n.priority.toUpperCase()}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px',
+                          background: n.isDisruption ? 'rgba(251,113,133,0.15)' : 'rgba(139,92,246,0.12)',
+                          color: n.isDisruption ? '#fb7185' : '#c4b5fd' }}>
+                          {n.categoryEmoji} {n.categoryLabel}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
             })()}
           </div>
 
