@@ -1,5 +1,44 @@
 import { maskPhrases } from './3_rule_engine.js';
 
+// Supply-chain DISRUPTOR lexicon, tiered by how hard the event hits flows.
+// SEVERE = a physical/geopolitical shock that stops or diverts goods now
+// (this is what a procurement desk must see first). MODERATE = friction that
+// raises cost or delays but rarely halts. Matched as whole words/phrases.
+export const SEVERE_DISRUPTORS = [
+    'attack', 'attacks', 'attacked', 'strike', 'strikes', 'blockade', 'blockaded',
+    'war', 'conflict', 'missile', 'drone', 'seized', 'seize', 'sabotage', 'hijack',
+    'hijacked', 'embargo', 'explosion', 'blast', 'shutdown', 'shut down', 'closure',
+    'closed', 'halt', 'halted', 'suspended', 'force majeure', 'invasion', 'airstrike',
+    'bombing', 'militant', 'houthi', 'escalation', 'escalate', 'blast', 'shelling',
+];
+export const MODERATE_DISRUPTORS = [
+    'disruption', 'disrupt', 'disrupted', 'delay', 'delays', 'delayed', 'reroute',
+    'rerouting', 'rerouted', 'diverted', 'congestion', 'shortage', 'ban', 'banned',
+    'sanction', 'sanctions', 'tariff', 'tariffs', 'export ban', 'import ban',
+    'protest', 'unrest', 'strike action', 'backlog', 'chokepoint',
+];
+
+/**
+ * Disruption-severity score (0-40), title-weighted. Additive on top of the
+ * commodity/business/region signal so genuine supply-chain shocks (attacks,
+ * blockades, port closures) outrank routine commodity chatter. Returns the
+ * numeric boost plus whether a SEVERE term was present (drives the
+ * commodity-less cap relaxation below).
+ */
+export function disruptionSeverity(title, body, hasTerm) {
+    let boost = 0;
+    let severe = false;
+    for (const term of SEVERE_DISRUPTORS) {
+        if (hasTerm(title, term)) { boost += 20; severe = true; }
+        else if (hasTerm(body, term)) { boost += 8; severe = true; }
+    }
+    for (const term of MODERATE_DISRUPTORS) {
+        if (hasTerm(title, term)) boost += 8;
+        else if (hasTerm(body, term)) boost += 3;
+    }
+    return { boost: Math.min(40, boost), severe };
+}
+
 /**
  * Stage 5: Relevance Scorer
  * Calculates a 0-100 score based on weighted features.
@@ -57,6 +96,13 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
     regionScore = Math.min(25, regionScore);
     score += regionScore;
 
+    // 4. Disruption severity (Max 40) — attacks, blockades, port closures,
+    // sanctions etc. A supply-chain shock is the highest-value signal for a
+    // procurement desk, so it is scored explicitly rather than left to
+    // incidental business-term overlap.
+    const { boost: disruptionScore, severe: hasSevereDisruptor } = disruptionSeverity(title, body, hasExactTerm);
+    score += disruptionScore;
+
     // Region-miss penalty: the article got here without mentioning any of the
     // user's regions (stage 4 soft pass for tracked-commodity news). It stays
     // eligible, but geo-matched articles must always outrank it.
@@ -69,8 +115,15 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
     // "supply chain disruption in <region>" think-pieces scored up to 65
     // (business 40 + region 25) and alerted as Medium with no commodity
     // relevance at all — the verified "Khamenei cold storage" FP class.
+    //
+    // EXCEPTION: a SEVERE disruptor (attack/blockade/war) hitting one of the
+    // user's tracked regions is materially different from a generic think-
+    // piece — it can halt delivered supply regardless of which commodity is
+    // named. Those are allowed to reach Critical (raised cap 90); everything
+    // else commodity-less stays capped at 55.
     if (commodityScore === 0) {
-        score = Math.min(score, 55);
+        const cap = (hasSevereDisruptor && regionScore > 0) ? 90 : 55;
+        score = Math.min(score, cap);
     }
 
     // Note: no excluded-context penalty here. Stage 3 (rule engine) already
@@ -86,7 +139,8 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
         breakdown: {
             commodityScore,
             businessScore,
-            regionScore
+            regionScore,
+            disruptionScore,
         }
     };
 }
