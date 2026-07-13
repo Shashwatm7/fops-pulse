@@ -166,25 +166,39 @@ export class NewsPipeline {
             });
         };
 
+        // Prevetted = from a curated supply-chain-risk feed (Google Alerts).
+        // Google already vetted topical relevance better than our keyword rule
+        // engine can for this class of broad risk news, so these skip the
+        // commodity/region/semantic gates below — but NEVER the blocklist.
+        const prevetted = rawArticle.prevetted === true;
+
         // Stage 3
         const ruleCheck = applyRuleEngine(article, profile);
         if (!ruleCheck.passed) {
-            // Blocklist kills are deliberate user configuration — never
-            // rescued. Everything else missing keywords gets a semantic look.
+            // Blocklist kills are deliberate user configuration — applied even
+            // to prevetted feeds.
             const isBlocklistKill = String(ruleCheck.reason || '').startsWith('Matched excluded context');
-            if (!isBlocklistKill) {
+            if (isBlocklistKill) {
+                console.log(`[USER-SCANNER] Rejected (Stage 3 - Blocklist): ${article.title} - ${ruleCheck.reason}`);
+                memoizeRejection();
+                return await doReturn({ accepted: false, reason: ruleCheck.reason, stage: 3 });
+            }
+            // Prevetted articles bypass the keyword commodity gate entirely.
+            if (!prevetted) {
                 const rescued = await attemptRescue(3);
                 if (rescued) return rescued;
+                console.log(`[USER-SCANNER] Rejected (Stage 3 - Rules): ${article.title} - ${ruleCheck.reason}`);
+                memoizeRejection();
+                return await doReturn({ accepted: false, reason: ruleCheck.reason, stage: 3 });
             }
-            console.log(`[USER-SCANNER] Rejected (Stage 3 - Rules): ${article.title} - ${ruleCheck.reason}`);
-            memoizeRejection();
-            return await doReturn({ accepted: false, reason: ruleCheck.reason, stage: 3 });
         }
 
         // Stage 4 — region is a hard gate only for commodity-less articles;
         // tracked-commodity news soft-passes and is penalized by the scorer.
+        // Prevetted risk news bypasses the region gate (broad-web risk stories
+        // often don't name the user's exact region).
         const regionCheck = matchRegion(article, profile, ruleCheck.matchData);
-        if (!regionCheck.passed) {
+        if (!regionCheck.passed && !prevetted) {
             const rescued = await attemptRescue(4);
             if (rescued) return rescued;
             console.log(`[USER-SCANNER] Rejected (Stage 4 - Region): ${article.title} - ${regionCheck.reason}`);
@@ -193,7 +207,16 @@ export class NewsPipeline {
         }
 
         // Stage 5
-        const { score, breakdown } = calculateRelevanceScore(article, profile, ruleCheck.matchData);
+        let { score, breakdown } = calculateRelevanceScore(article, profile, ruleCheck.matchData);
+
+        // Prevetted relevance floor: Google's curation is itself a strong
+        // relevance signal. A curated supply-risk article enters at Medium
+        // minimum (alertable); if it also carries a SEVERE disruptor
+        // (attack/blockade/port closure) it floors at High — this is the
+        // "supply-chain-risk on top" behavior. The commodity-less scorer cap
+        // would otherwise hold these at 55, so the floor is applied here after
+        // scoring rather than by relaxing the cap.
+        if (prevetted) score = Math.max(score, breakdown.hasSevereDisruptor ? 70 : 60);
 
         if (score < this.llmThresholdLow) {
             const rescued = await attemptRescue(5);
@@ -209,7 +232,10 @@ export class NewsPipeline {
         // borderline scores. Keyword scoring can be gamed by coincidental
         // word overlap; the local-embedding similarity check is the last
         // line of defense against those false positives, and it's free.
-        if (this.semanticEnabled) {
+        // Prevetted feeds skip it: Google already vetted relevance, and a
+        // food-seed similarity check would wrongly drop legit risk news (the
+        // same class of miss as the copper/gold seed gap).
+        if (this.semanticEnabled && !prevetted) {
             const semCheck = await applySemanticFilter(article, profile, score);
             if (!semCheck.passed) {
                 console.log(`[USER-SCANNER] Rejected (Stage 6 - Semantic ${semCheck.similarity}): ${article.title}`);
@@ -250,7 +276,10 @@ export class NewsPipeline {
                 priority,
                 relevanceScore: score,
                 breakdown,
-                matchedRegions: regionCheck.regionMatches,
+                // regionMatches is absent when a prevetted article bypassed a
+                // failed region gate — default to [] so downstream .length is safe.
+                matchedRegions: regionCheck.regionMatches || [],
+                prevetted,
                 titleKey,
                 llmReason: llmResult ? llmResult.reason : null
             },
