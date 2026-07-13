@@ -71,7 +71,8 @@ test('rescue score is capped below Critical', async () => {
 test('blocklist kills are never rescued, even at similarity 0.99', async () => {
     let called = 0;
     const p = makePipeline(async () => { called++; return 0.99; });
-    const blocked = { ...HORMUZ_ARTICLE, url: 'https://t.test/blocked', title: 'Hormuz crisis recipe for wheat market chaos' };
+    // Standalone culinary "recipe" (not the idiom "recipe for") → genuine blocklist hit.
+    const blocked = { ...HORMUZ_ARTICLE, url: 'https://t.test/blocked', title: 'Hormuz wheat: our best flatbread recipe collection' };
     const res = await p.processArticle(blocked, USER, new Set());
     assert.equal(res.accepted, false);
     assert.match(res.reason, /excluded context/i);

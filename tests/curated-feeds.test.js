@@ -107,7 +107,8 @@ test('same article WITHOUT prevetted is rejected by the keyword gate', async () 
 });
 
 test('prevetted does NOT bypass the user blocklist', async () => {
-    const r = await run({ title: 'Supply chain recipe for disaster as ports clog', prevetted: true });
+    // Standalone culinary "recipe" (not the idiom "recipe for") → genuine blocklist hit.
+    const r = await run({ title: 'Ports clog; meanwhile a quick chicken recipe roundup', prevetted: true });
     assert.equal(r.accepted, false, 'blocklisted term (recipe) must still reject a prevetted article');
     assert.match(r.reason, /excluded context/i);
 });
