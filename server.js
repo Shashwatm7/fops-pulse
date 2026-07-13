@@ -1421,7 +1421,20 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
             }
         } catch(e) { console.error('Failed to inject CSV alerts:', e.message); }
         // ---------------------------------------------------
-        
+
+        // Alerts tab and Command Center must agree. Both derive from the same
+        // active-alert store, but the Command Center (/api/morning-brief) and
+        // /api/alerts apply the scarcity quota while this route historically
+        // did not — so the Alerts tab showed the full unquota'd list. Apply
+        // the identical sort-then-quota here (1 CRITICAL/2 HIGH/1 MEDIUM, no
+        // LOW) so the two views can never diverge.
+        if (Array.isArray(analysis.alerts)) {
+            analysis.alerts.sort((a, b) =>
+                (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
+                || new Date(b.detectedAt || b.timestamp || 0) - new Date(a.detectedAt || a.timestamp || 0));
+            analysis.alerts = applyAlertQuota(analysis.alerts);
+        }
+
         // Attach raw simulated data to the response for the frontend UI
         analysis.logistics = logisticsData;
         analysis.usda = usdaData;
@@ -3013,13 +3026,20 @@ app.get('/api/morning-brief', requireAuth, async (req, res) => {
     try {
         const userId = req.session.userId;
         const [rawAlerts, acceptedNews] = await Promise.all([
-            getAlertsSince(userId, 24, 20),
+            // SAME source as the Alerts tab (/api/analyze) and /api/alerts:
+            // getActiveAlerts respects settings_changed_at gating + 24h expiry.
+            // getAlertsSince (the old source here) ignored profile-change
+            // gating, so the two views drew from different pools.
+            getActiveAlerts(userId),
             getAcceptedArticlesSince(userId, 24, 5),
         ]);
 
-        // Same scarcity quota as the Alerts tab (getAlertsSince is already
-        // sorted severity-then-recency) so the two views can't disagree:
-        // at most 1 CRITICAL, 2 HIGH, 1 MEDIUM, no LOW.
+        // Identical sort-then-quota as the Alerts tab and /api/alerts so the
+        // three views can never disagree: at most 1 CRITICAL, 2 HIGH, 1
+        // MEDIUM, no LOW.
+        rawAlerts.sort((a, b) =>
+            (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
+            || new Date(b.created_at || 0) - new Date(a.created_at || 0));
         const newAlerts = applyAlertQuota(rawAlerts);
 
         const alertCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
