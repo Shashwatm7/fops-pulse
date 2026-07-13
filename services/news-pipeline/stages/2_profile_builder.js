@@ -166,6 +166,22 @@ export function buildWatchlistProfile(userProfile) {
     };
     // Customer ml_seeds if configured; otherwise auto-generated from the
     // profile so semantic filtering protects every user.
-    built.mlSeeds = hasCustomerSeeds ? userProfile.ml_seeds : generateDefaultSeeds(commoditySeedGroups, userProfile);
+    //
+    // MERGE, don't replace: customer seeds cover the customer's core domain
+    // (Aramtec's are 100% food-service), so a user-tracked commodity OUTSIDE
+    // that domain (copper, gold) had no seed at all — every metals article
+    // scored ~0.2 against food seeds and died at stage 6. Auto-seeds for
+    // commodities the customer set never mentions restore that coverage.
+    if (hasCustomerSeeds) {
+        const customerText = userProfile.ml_seeds.join(' ').toLowerCase();
+        // A commodity is "covered" if any of its primary words appear in the
+        // customer seed text; only uncovered commodities contribute a seed.
+        const uncovered = commoditySeedGroups
+            .filter(g => !g.split(' ').some(w => w.length > 3 && customerText.includes(w)))
+            .map(g => `${g} prices supply demand export import shortage`);
+        built.mlSeeds = [...userProfile.ml_seeds, ...uncovered];
+    } else {
+        built.mlSeeds = generateDefaultSeeds(commoditySeedGroups, userProfile);
+    }
     return built;
 }
