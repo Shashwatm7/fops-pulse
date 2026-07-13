@@ -31,21 +31,12 @@ function BriefSkeleton() {
 export default function MorningBrief({ brief, username, onViewAlerts, onSelectCommodity }) {
   if (!brief) return <BriefSkeleton />;
 
-  // Show a MIX of commodity (price) and news alerts, not just whichever type
-  // fired most. Target ratio 2 commodity : 3 news out of 5 shown; if one
-  // bucket is short, backfill from the other. Keep the DB triage order
-  // (severity, then recency) among the chosen rows.
+  // Show exactly the alerts the Alerts tab shows — the backend already
+  // applied the severity scarcity quota (1 CRITICAL / 2 HIGH / 1 MEDIUM, no
+  // LOW) and sorted severity-then-recency, so render as-is. No separate
+  // news/price re-composition here: the two views must not diverge.
   const allAlerts = brief.newAlerts || [];
-  const priceAll = allAlerts.filter(a => a.source === 'PRICE');
-  const newsAll = allAlerts.filter(a => a.source !== 'PRICE'); // PROFILE_NEWS etc.
-  const SHOW = 5;
-  const chosen = [...newsAll.slice(0, 3), ...priceAll.slice(0, 2)];
-  if (chosen.length < SHOW) {
-    const rest = [...newsAll.slice(3), ...priceAll.slice(2)];
-    chosen.push(...rest.slice(0, SHOW - chosen.length));
-  }
-  const triageOrder = new Map(allAlerts.map((a, i) => [a.id, i]));
-  const alerts = chosen.sort((a, b) => triageOrder.get(a.id) - triageOrder.get(b.id));
+  const alerts = allAlerts;
   const counts = brief.alertCounts || {};
   const totalAlerts = allAlerts.length;
   const priceMovers = brief.priceMovers || [];
