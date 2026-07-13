@@ -23,20 +23,19 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const [customerId, setCustomerId] = useState(profile?.customer_id || '');
   const [saving, setSaving] = useState(false);
   const [addingRegion, setAddingRegion] = useState(false);
-  const [quickCommodity, setQuickCommodity] = useState('');
-  const [quickRegion, setQuickRegion] = useState('');
 
   const commodityLabel = (key) =>
     allCommodities.find(c => c.key === key)?.label
     || String(key).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
 
-  const addCommodity = () => {
-    if (quickCommodity && !commodities.includes(quickCommodity)) setCommodities([...commodities, quickCommodity]);
-    setQuickCommodity('');
+  // Add immediately on selection — a separate "Add" step after picking from
+  // the dropdown was repeatedly missed, so the commodity silently never
+  // entered the tracked list.
+  const addCommodity = (key) => {
+    if (key && !commodities.includes(key)) setCommodities([...commodities, key]);
   };
-  const addStandardRegion = () => {
-    if (quickRegion && !regions.includes(quickRegion)) setRegions([...regions, quickRegion]);
-    setQuickRegion('');
+  const addStandardRegion = (name) => {
+    if (name && !regions.includes(name)) setRegions([...regions, name]);
   };
 
   useEffect(() => {
@@ -154,13 +153,12 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           ))}
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <select className="form-select" style={{ minWidth: '220px' }} value={quickCommodity} onChange={e => setQuickCommodity(e.target.value)}>
-            <option value="">Add commodity…</option>
+          <select className="form-select" style={{ minWidth: '220px' }} value="" onChange={e => addCommodity(e.target.value)}>
+            <option value="">+ Add commodity…</option>
             {allCommodities.filter(c => !commodities.includes(c.key)).map(c => (
               <option key={c.key} value={c.key}>{c.label}</option>
             ))}
           </select>
-          <button className="btn-accent" onClick={addCommodity} disabled={!quickCommodity}>Add</button>
         </div>
 
         <div className="section-label" style={styles.sectionTitle}>Tracked Regions</div>
@@ -180,13 +178,12 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           ))}
         </div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-          <select className="form-select" style={{ minWidth: '220px' }} value={quickRegion} onChange={e => setQuickRegion(e.target.value)}>
-            <option value="">Add tracked region…</option>
+          <select className="form-select" style={{ minWidth: '220px' }} value="" onChange={e => addStandardRegion(e.target.value)}>
+            <option value="">+ Add tracked region…</option>
             {allRegions.filter(r => !regions.includes(r.name)).map(r => (
               <option key={r.name} value={r.name}>{r.name}</option>
             ))}
           </select>
-          <button className="btn-accent" onClick={addStandardRegion} disabled={!quickRegion}>Add</button>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="Or add a custom city/region (e.g. Omaha, NE)" />
