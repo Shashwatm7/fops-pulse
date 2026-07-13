@@ -280,6 +280,7 @@ export default function Dashboard() {
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [categorizedNews, setCategorizedNews] = useState([]);
+  const [regionCatalog, setRegionCatalog] = useState([]);
   const [newsSearch, setNewsSearch] = useState('');
   const [newsStreamFilter, setNewsStreamFilter] = useState('all'); // all | risk | commodity
   const [newsCatFilter, setNewsCatFilter] = useState('all');
@@ -762,7 +763,7 @@ export default function Dashboard() {
     if (tab !== 'alerts' || !user) return;
     fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.success) setCategorizedNews(d.items || []); })
+      .then(d => { if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); } })
       .catch(() => {});
   }, [tab, user]);
 
@@ -819,7 +820,7 @@ export default function Dashboard() {
   const refetchInsights = () => {
     fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.success) setCategorizedNews(d.items || []); })
+      .then(d => { if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); } })
       .catch(() => {});
   };
 
@@ -1421,7 +1422,11 @@ export default function Dashboard() {
           {categorizedNews.length > 0 && (() => {
             // Filter bar options derived from what's actually present.
             const allCats = [...new Set(categorizedNews.map(n => n.categoryLabel))].sort();
-            const allRegions = [...new Set(categorizedNews.flatMap(n => n.regions || []))].sort();
+            // Full region/country catalog (every selectable region), not just
+            // those in the current results. Falls back to feed regions if the
+            // catalog hasn't loaded.
+            const feedRegions = [...new Set(categorizedNews.flatMap(n => n.regions || []))];
+            const allRegions = (regionCatalog.length ? regionCatalog : feedRegions.sort());
             return (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', margin: '18px 0 4px' }}>
                 <span className="section-label" style={{ margin: 0 }}>Filter news</span>

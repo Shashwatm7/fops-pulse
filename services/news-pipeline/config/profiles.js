@@ -112,6 +112,22 @@ export const REGION_ALIASES = {
   "Turkey": ["Turkiye", "Ankara", "Istanbul"],
 };
 
+// Comprehensive country catalog for the region FILTER + entity matching. The
+// REGION_ALIASES above carry rich alias groups for the priority regions; this
+// list broadens coverage to every food/commodity-trade-relevant country so a
+// user can filter by any of them and articles get tagged accordingly. Names
+// only (plus a couple of common variants); the entity matcher matches them
+// word-boundary. Countries already keyed in REGION_ALIASES are skipped when
+// the two are merged, so there are no duplicate canonicals.
+export const WORLD_COUNTRIES = [
+  'United States', 'Canada', 'Mexico', 'Brazil', 'Argentina', 'Chile', 'Peru', 'Colombia', 'Ecuador', 'Uruguay', 'Paraguay', 'Bolivia', 'Venezuela',
+  'United Kingdom', 'Ireland', 'France', 'Germany', 'Netherlands', 'Belgium', 'Spain', 'Portugal', 'Italy', 'Poland', 'Ukraine', 'Russia', 'Romania', 'Hungary', 'Greece', 'Turkey', 'Bulgaria', 'Serbia', 'Sweden', 'Denmark', 'Norway', 'Finland', 'Switzerland', 'Austria',
+  'Saudi Arabia', 'United Arab Emirates', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Yemen', 'Jordan', 'Lebanon', 'Israel', 'Iraq', 'Iran', 'Syria', 'Egypt', 'Morocco', 'Algeria', 'Tunisia', 'Libya',
+  'Nigeria', 'Kenya', 'Ethiopia', 'South Africa', 'Ghana', 'Ivory Coast', 'Tanzania', 'Uganda', 'Sudan', 'Senegal', 'Angola', 'Mozambique',
+  'China', 'India', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Japan', 'South Korea', 'North Korea', 'Indonesia', 'Malaysia', 'Singapore', 'Thailand', 'Vietnam', 'Philippines', 'Myanmar', 'Cambodia', 'Kazakhstan', 'Uzbekistan', 'Afghanistan',
+  'Australia', 'New Zealand',
+];
+
 // Fallback profile if commodity is unknown
 export const FALLBACK_PROFILE = {
     primaryTerms: [],

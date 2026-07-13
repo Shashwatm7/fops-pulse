@@ -14,7 +14,16 @@
 //
 // Output is a set of typed, canonical-linked entities usable for display,
 // alert reasons, and grounding.
-import { COMMODITY_PROFILES, REGION_ALIASES } from './config/profiles.js';
+import { COMMODITY_PROFILES, REGION_ALIASES, WORLD_COUNTRIES } from './config/profiles.js';
+
+// The full set of regions/countries the filter offers and the matcher can
+// tag: rich REGION_ALIASES canonicals + every WORLD_COUNTRIES name not already
+// keyed there. Deduped by canonical, sorted for display.
+export const REGION_CATALOG = (() => {
+    const canon = new Set(Object.keys(REGION_ALIASES).filter(k => k !== 'Global'));
+    for (const c of WORLD_COUNTRIES) if (![...canon].some(k => k.toLowerCase() === c.toLowerCase())) canon.add(c);
+    return [...canon].sort();
+})();
 
 // Canonical maritime chokepoints and the surface forms that name them. Kept
 // here (not imported from alert-relevance) so this module owns its master data.
@@ -58,11 +67,19 @@ export function buildMasterEntries(customer = {}) {
         entries.push({ type: 'commodity', canonical: name, aliases: [...aliases] });
     }
 
-    // Regions — REGION_ALIASES canonical groups (all of them; a mention of any
-    // alias resolves to its canonical region).
+    // Regions — REGION_ALIASES canonical groups (rich aliases), plus every
+    // WORLD_COUNTRIES name not already keyed (so any country can be tagged and
+    // filtered). A mention of any alias resolves to its canonical region.
+    const keyed = new Set();
     for (const [canonical, aliases] of Object.entries(REGION_ALIASES)) {
         if (canonical === 'Global') continue;
         entries.push({ type: 'region', canonical, aliases: aliases.map(a => a.toLowerCase()) });
+        keyed.add(canonical.toLowerCase());
+    }
+    for (const c of WORLD_COUNTRIES) {
+        if (keyed.has(c.toLowerCase())) continue;
+        entries.push({ type: 'region', canonical: c, aliases: [c.toLowerCase()] });
+        keyed.add(c.toLowerCase());
     }
 
     // Chokepoints.
