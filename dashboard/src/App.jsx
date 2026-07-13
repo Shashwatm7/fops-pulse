@@ -1418,6 +1418,7 @@ export default function Dashboard() {
             const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
             const riskItems = categorizedNews.filter(n => n.stream === 'risk');
             const commodityItems = categorizedNews.filter(n => n.stream === 'commodity');
+            const otherItems = categorizedNews.filter(n => n.stream === 'other');
 
             const card = (n, i) => (
               <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
@@ -1474,8 +1475,16 @@ export default function Dashboard() {
             // Two separate, region-aware streams — never mixed.
             return (
               <>
-                {section('🚨 Supply Chain Risk', 'Disruption, geopolitical, logistics & trade-policy events affecting your regions.', riskItems, '#fb7185')}
-                {section('📊 Commodity News', 'Price, weather/crop, energy & food-safety news for your tracked commodities & regions.', commodityItems, '#38bdf8')}
+                {section('🚨 Supply Chain Risk', 'Supply-chain-risk factors (disruption, geopolitical, chokepoints, trade policy) touching your regions.', riskItems, '#fb7185')}
+                {section('📊 Commodity News', 'Commodity news with business + region relevance for your tracked commodities.', commodityItems, '#38bdf8')}
+                {otherItems.length > 0 && (
+                  <details style={{ marginTop: '8px' }}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--text-dim)', fontSize: '12px' }}>
+                      Other accepted articles · {otherItems.length} <span style={{ color: 'var(--text-dim)' }}>(no clear region match — shown for transparency, not mixed into the two streams above)</span>
+                    </summary>
+                    <div style={{ marginTop: '8px' }}>{otherItems.map(card)}</div>
+                  </details>
+                )}
               </>
             );
           })()}

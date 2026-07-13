@@ -3358,9 +3358,26 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
         const items = rows.map(r => {
             const cat = categorizeArticle(r.title);
             const priority = classifyPriority(Number(r.relevance_score) || 0);
-            const entities = customer ? entitiesToChips(matchEntities(r.title, customer)) : [];
+            const ent = customer ? matchEntities(r.title, customer) : { commodities: [], regions: [], chokepoints: [], ports: [], routes: [], supplier_countries: [] };
+
+            // Region-aware, entity-driven stream assignment (never mixed):
+            //   • RISK   = a supply-chain-risk factor (disruption/geopolitical/
+            //     trade/logistics category, OR a maritime chokepoint entity)
+            //     that also touches a tracked region.
+            //   • COMMODITY = a commodity mention (business/commodity relevance)
+            //     that also touches a tracked region.
+            //   • OTHER  = accepted but doesn't cleanly satisfy either's region
+            //     rule — surfaced separately so nothing silently vanishes.
+            const hasRegion = ent.regions.length > 0 || ent.chokepoints.length > 0;
+            const hasCommodity = ent.commodities.length > 0;
+            const isRiskFactor = cat.stream === 'risk' || ent.chokepoints.length > 0;
+            let stream;
+            if (isRiskFactor && hasRegion) stream = 'risk';
+            else if (!isRiskFactor && hasCommodity && hasRegion) stream = 'commodity';
+            else stream = 'other';
+
             return {
-                entities,
+                entities: entitiesToChips(ent),
                 title: r.title,
                 url: r.url,
                 source: r.source,
@@ -3369,9 +3386,10 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
                 category: cat.key,
                 categoryLabel: cat.label,
                 categoryEmoji: cat.emoji,
-                stream: cat.stream,          // 'risk' | 'commodity' — kept in separate UI sections
+                stream,
                 isDisruption: cat.isDisruption,
                 priority,
+                regions: ent.regions.map(e => e.canonical),
             };
         });
         // Disruption first, then by priority, then by score.
@@ -3379,13 +3397,11 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
             (b.isDisruption - a.isDisruption)
             || (PRIO_RANK[a.priority] - PRIO_RANK[b.priority])
             || (b.score - a.score));
-        // Category tallies for the header chips.
-        const counts = {};
-        for (const it of items) counts[it.category] = (counts[it.category] || 0) + 1;
-        // Split into the two streams so the client renders them separately.
+        // Split into the two clean streams + the transparency bucket.
         const risk = items.filter(i => i.stream === 'risk');
         const commodity = items.filter(i => i.stream === 'commodity');
-        res.json({ success: true, items, risk, commodity, counts });
+        const other = items.filter(i => i.stream === 'other');
+        res.json({ success: true, items, risk, commodity, other });
     } catch (err) {
         console.error('Categorized news error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to load categorized news' });

@@ -26,6 +26,22 @@ export function maskPhrases(text, phrases) {
     return masked;
 }
 
+// Idiomatic phrases that contain a culinary blocklist word but are NOT about
+// cooking — "a recipe for rising flour prices", "cooking up a trade deal".
+// These are masked BEFORE the excluded-context check so the idiom can't trip
+// the blocklist and kill a genuine commodity/supply article. A real culinary
+// piece ("chicken recipe", "how to cook") still trips it — the standalone
+// word survives masking.
+const CULINARY_IDIOMS = ['recipe for', 'recipes for', 'cooking up', 'cook up', 'cooking the books', 'cooking with gas'];
+export function maskIdioms(text) {
+    let t = text;
+    for (const p of CULINARY_IDIOMS) {
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        t = t.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' § ');
+    }
+    return t;
+}
+
 export function applyRuleEngine(normArticle, profile) {
     const text = normArticle.fullTextNorm;
     const matchData = {
@@ -34,8 +50,10 @@ export function applyRuleEngine(normArticle, profile) {
         regionMatches: []
     };
 
-    // 1. Must NOT have excluded contexts
-    const excludedMatch = profile.excludedContexts.find(term => hasExactTerm(text, term));
+    // 1. Must NOT have excluded contexts. Idioms are masked first so
+    // "a recipe for rising prices" doesn't trip the culinary blocklist.
+    const exclusionText = maskIdioms(text);
+    const excludedMatch = profile.excludedContexts.find(term => hasExactTerm(exclusionText, term));
     if (excludedMatch) {
         return { passed: false, reason: `Matched excluded context: ${excludedMatch}`, matchData };
     }
