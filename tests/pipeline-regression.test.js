@@ -4,6 +4,7 @@ import { NewsPipeline } from '../services/news-pipeline/pipeline.js';
 import { buildWatchlistProfile, expandRegionAliases, canonicalRegionName } from '../services/news-pipeline/stages/2_profile_builder.js';
 import { applyRuleEngine, maskPhrases, maskIdioms } from '../services/news-pipeline/stages/3_rule_engine.js';
 import { matchRegion } from '../services/news-pipeline/stages/4_region_matcher.js';
+import { calculateRelevanceScore } from '../services/news-pipeline/stages/5_relevance_scorer.js';
 
 // End-to-end regression corpus for the precision/recall contract:
 // the user must see every relevant article (no false negatives) and no
@@ -77,6 +78,25 @@ test('maskPhrases hides metaphors but keeps real mentions', () => {
     const masked = maskPhrases('spacex gold rush as gold prices soar', ['gold rush']);
     assert.ok(!masked.includes('gold rush'));
     assert.ok(masked.includes('gold prices'), 'the genuine mention survives');
+});
+
+test('dynamically-added (custom) region gets a priority scoring boost', () => {
+    const built = buildWatchlistProfile({
+        user_id: 1, commodities: ['WHEAT'], regions: ['India'],
+        custom_regions: [{ name: 'Kenya' }], focus_region: 'Global',
+    });
+    assert.ok(built.priorityRegionAliases.includes('kenya'), 'custom region is a priority region');
+    assert.ok(!built.priorityRegionAliases.includes('india'), 'plain tracked region is NOT priority');
+    const mk = (t) => ({ titleNorm: t.toLowerCase(), descNorm: '', contentNorm: '', fullTextNorm: t.toLowerCase() });
+    const score = (t) => {
+        const md = applyRuleEngine(mk(t), built).matchData;
+        return calculateRelevanceScore(mk(t), built, md);
+    };
+    const india = score('Wheat shortage hits India bakeries');
+    const kenya = score('Wheat shortage hits Kenya bakeries');
+    assert.equal(india.breakdown.priorityRegionScore, 0);
+    assert.equal(kenya.breakdown.priorityRegionScore, 20);
+    assert.ok(kenya.score > india.score, 'user-added region ranks higher than a plain tracked region');
 });
 
 test('idiom "recipe for" does not trip the culinary blocklist (real FN fix)', () => {

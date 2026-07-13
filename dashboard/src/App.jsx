@@ -280,6 +280,10 @@ export default function Dashboard() {
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [categorizedNews, setCategorizedNews] = useState([]);
+  const [newsSearch, setNewsSearch] = useState('');
+  const [newsStreamFilter, setNewsStreamFilter] = useState('all'); // all | risk | commodity
+  const [newsCatFilter, setNewsCatFilter] = useState('all');
+  const [newsRegionFilter, setNewsRegionFilter] = useState('all');
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
   const [alertLimit, setAlertLimit] = useState(6);
@@ -1414,11 +1418,48 @@ export default function Dashboard() {
             </div>
           ))}
 
+          {categorizedNews.length > 0 && (() => {
+            // Filter bar options derived from what's actually present.
+            const allCats = [...new Set(categorizedNews.map(n => n.categoryLabel))].sort();
+            const allRegions = [...new Set(categorizedNews.flatMap(n => n.regions || []))].sort();
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', margin: '18px 0 4px' }}>
+                <span className="section-label" style={{ margin: 0 }}>Filter news</span>
+                <input value={newsSearch} onChange={e => setNewsSearch(e.target.value)} placeholder="Search title, source, entity…"
+                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '13px', minWidth: '220px', flex: '1 1 220px' }} />
+                <select value={newsStreamFilter} onChange={e => setNewsStreamFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  <option value="all">Both streams</option>
+                  <option value="risk">🚨 Risk only</option>
+                  <option value="commodity">📊 Commodity only</option>
+                </select>
+                <select value={newsCatFilter} onChange={e => setNewsCatFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  <option value="all">All categories</option>
+                  {allCats.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select value={newsRegionFilter} onChange={e => setNewsRegionFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  <option value="all">All regions</option>
+                  {allRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                {(newsSearch || newsStreamFilter !== 'all' || newsCatFilter !== 'all' || newsRegionFilter !== 'all') && (
+                  <button onClick={() => { setNewsSearch(''); setNewsStreamFilter('all'); setNewsCatFilter('all'); setNewsRegionFilter('all'); }} style={{ fontSize: '12px' }}>Clear</button>
+                )}
+              </div>
+            );
+          })()}
+
           {(() => {
             const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
-            const riskItems = categorizedNews.filter(n => n.stream === 'risk');
-            const commodityItems = categorizedNews.filter(n => n.stream === 'commodity');
-            const otherItems = categorizedNews.filter(n => n.stream === 'other');
+            // Apply the filter bar.
+            const q = newsSearch.trim().toLowerCase();
+            const matches = (n) =>
+              (newsStreamFilter === 'all' || n.stream === newsStreamFilter) &&
+              (newsCatFilter === 'all' || n.categoryLabel === newsCatFilter) &&
+              (newsRegionFilter === 'all' || (n.regions || []).includes(newsRegionFilter)) &&
+              (!q || n.title.toLowerCase().includes(q) || (n.source || '').toLowerCase().includes(q) || (n.entities || []).some(e => e.label.toLowerCase().includes(q)));
+            const filtered = categorizedNews.filter(matches);
+            const riskItems = filtered.filter(n => n.stream === 'risk');
+            const commodityItems = filtered.filter(n => n.stream === 'commodity');
+            const otherItems = filtered.filter(n => n.stream === 'other');
 
             const card = (n, i) => (
               <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
