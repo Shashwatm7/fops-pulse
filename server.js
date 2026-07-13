@@ -1311,6 +1311,7 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
                 } catch { /* malformed payload → no extract, alert still shows */ }
                 return {
                     id: a.id,
+                    source: a.source,
                     severity: a.severity,
                     category: a.category,
                     title: a.title,
@@ -1344,9 +1345,12 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
                 const shortWeather = (req.body.weatherExtended || []).map(w => `${w.name}: ${w.analytics?.alert || w.alert || 'NORMAL'}`).join(', ');
                 const shortNews = (req.body.news || []).slice(0, 5).map(n => `- ${n.title} (${n.source || 'unknown source'})`).join('\n');
                 // Reuse the same active alerts already fetched above for the
-                // deterministic engine — the strongest signal we have, and
-                // previously never reached this prompt at all.
-                const shortAlerts = (req.body.userAlerts || []).slice(0, 5)
+                // deterministic engine — the strongest signal we have. Price-
+                // anomaly alerts are EXCLUDED here: a price move is an effect,
+                // not a driver, and feeding them in made the LLM fill all 3
+                // driver slots with "PRICE: X +N% today" restatements the
+                // dashboard already shows elsewhere.
+                const shortAlerts = (req.body.userAlerts || []).filter(a => a.source !== 'PRICE').slice(0, 5)
                     .map(a => `- [${a.severity}] ${a.title} — ${String(a.reason || '').slice(0, 140)}`).join('\n') || 'None currently active.';
                 const trackedCommodities = (req.userProfile?.commodities || []).join(', ') || 'Commodities';
 
@@ -1362,14 +1366,15 @@ ${shortNews || 'None'}
 Weather flags: ${shortWeather || 'N/A'}
 
 RULES:
-- Prioritize active alerts as evidence over raw news/prices — they are pre-verified as relevant.
+- A driver is a real-world CAUSE: weather, logistics, trade policy, conflict, demand shifts, supply disruptions. A price move is an EFFECT, not a driver — NEVER output a driver that is just a price change (no "PRICE: ..." factors). Use the live prices only as supporting evidence for a cause-based driver.
+- Prioritize active alerts as evidence over raw news — they are pre-verified as relevant.
 - Every driver's "explanation" and "evidence" MUST reference a specific number, alert, headline, or weather flag from the DATA above. Never write a generic driver with no citation.
-- "strength" (1-10) must reflect actual magnitude in the data (e.g. a +7% price move or CRITICAL alert = 8-10; a NORMAL weather flag or routine headline = 1-3), not a default middle value.
+- "strength" (1-10) must reflect actual magnitude in the data (e.g. a CRITICAL alert or major disruption = 8-10; a NORMAL weather flag or routine headline = 1-3), not a default middle value.
 - Do NOT invent commodities, regions, or events not present in the data. If the data is thin, pick the 3 most concrete items available rather than padding with generic macro commentary.
 - BANNED as filler: "market volatility", "global uncertainty", "supply chain disruptions" used without naming the specific disruption.
 
 Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
-"factor": string, e.g. "WEATHER: Drought in Brazil" or "PRICE: Corn +7.1% today"
+"factor": string, e.g. "WEATHER: Drought in Brazil" or "LOGISTICS: Red Sea rerouting delays"
 "direction": "UP" | "DOWN" | "NEUTRAL"
 "strength": number 1-10, reflecting actual magnitude above
 "explanation": string, 1 sentence, must cite the specific data point
@@ -1381,6 +1386,11 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                 const driverRes = await callGroq('llama-3.3-70b-versatile', driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.3, false);
                 const driverParsed = JSON.parse(driverRes);
 
+                // Backstop the prompt rule in code: a price move is never a
+                // driver. Better 2 real drivers than 3 with a price restatement.
+                if (driverParsed && Array.isArray(driverParsed.drivers)) {
+                    driverParsed.drivers = driverParsed.drivers.filter(d => !/^\s*PRICE\b/i.test(String(d.factor || '')));
+                }
                 if (driverParsed && driverParsed.drivers && Array.isArray(driverParsed.drivers) && driverParsed.drivers.length > 0) {
                     analysis.drivers = driverParsed.drivers;
                     global.marketDriversCache[mdCacheKey] = { data: driverParsed.drivers, timestamp: mdNow };
