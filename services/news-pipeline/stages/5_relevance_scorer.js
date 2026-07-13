@@ -141,6 +141,7 @@ export function calculateRelevanceScore(normArticle, profile, matchData) {
             businessScore,
             regionScore,
             disruptionScore,
+            hasSevereDisruptor,
         }
     };
 }
