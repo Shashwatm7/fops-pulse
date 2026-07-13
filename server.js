@@ -17,7 +17,7 @@ import { discoverTemplateCandidates } from './services/news-pipeline/discovery.j
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
-import { matchEntities, entitiesToChips } from './services/news-pipeline/entity_matcher.js';
+import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -3398,7 +3398,9 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
         const risk = items.filter(i => i.stream === 'risk');
         const commodity = items.filter(i => i.stream === 'commodity');
         const other = items.filter(i => i.stream === 'other');
-        res.json({ success: true, items, risk, commodity, other });
+        // Full country/region catalog so the filter offers every selectable
+        // region, not just those present in the current results.
+        res.json({ success: true, items, risk, commodity, other, regionCatalog: REGION_CATALOG });
     } catch (err) {
         console.error('Categorized news error:', err.message);
         res.status(500).json({ success: false, error: 'Failed to load categorized news' });
