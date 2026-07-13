@@ -17,6 +17,7 @@ import { discoverTemplateCandidates } from './services/news-pipeline/discovery.j
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds, fetchPipelineFeeds } from './services/ingestion/curated_feeds.js';
+import { matchEntities, entitiesToChips } from './services/news-pipeline/entity_matcher.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -3351,11 +3352,15 @@ app.get('/api/insights/recent', requireAuth, async (req, res) => {
 app.get('/api/news/categorized', requireAuth, async (req, res) => {
     try {
         const rows = await getRecentAcceptedArticles(req.session.userId, 48, 40);
+        // Master data for rule-based entity matching (canonical linking).
+        const customer = await getCustomerProfileForUser(req.session.userId).catch(() => null);
         const PRIO_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3, Ignored: 4 };
         const items = rows.map(r => {
             const cat = categorizeArticle(r.title);
             const priority = classifyPriority(Number(r.relevance_score) || 0);
+            const entities = customer ? entitiesToChips(matchEntities(r.title, customer)) : [];
             return {
+                entities,
                 title: r.title,
                 url: r.url,
                 source: r.source,

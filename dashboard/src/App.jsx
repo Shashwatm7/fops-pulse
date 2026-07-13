@@ -1439,6 +1439,18 @@ export default function Dashboard() {
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
                 </div>
+                {n.entities?.length > 0 && (() => {
+                  const icon = { commodity: '🌾', region: '📍', chokepoint: '⚓', port: '🚢', route: '🛳️', supplier: '🏭' };
+                  return (
+                    <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {n.entities.map((e, k) => (
+                        <span key={k} title={`${e.type} (master-data match)`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.12)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>
+                          {icon[e.type] || '•'} {e.label}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
 
