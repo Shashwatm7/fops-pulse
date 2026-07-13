@@ -2636,7 +2636,12 @@ async function initScannerPipeline() {
     },
     scoreThreshold: 75,
     llmThresholdLow: 25,
-    llmThresholdHigh: 85
+    llmThresholdHigh: 85,
+    // Semantic rescue: keyword-rejected articles with seed similarity at or
+    // above this are accepted anyway (see pipeline.js for the calibration —
+    // relevant rejected articles scored ~0.42, noise ceiling 0.265). Stricter
+    // than the stage-6 gate (0.30) since rescue bypasses all keyword checks.
+    rescueThreshold: Number.parseFloat(process.env.SEMANTIC_RESCUE_THRESHOLD) || 0.4
   });
   return userScannerPipeline;
 }

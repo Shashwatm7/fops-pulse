@@ -43,18 +43,28 @@ async function getSeedVectors(seeds) {
     return vecs;
 }
 
-export async function applySemanticFilter(article, profile, score) {
+/**
+ * Raw max cosine similarity between an article and the profile's seed set,
+ * or null when the profile has no usable seeds. Shared by the stage-6 gate
+ * (reject survivors below threshold) and the pipeline's rescue lane (save
+ * keyword-rejected articles that are unmistakably on-topic).
+ * Throws on embedding failure — each caller decides its own failure policy
+ * (the gate fails open, the rescue fails closed).
+ */
+export async function semanticSimilarity(article, profile) {
     const seeds = profile.mlSeeds || [];
-    if (!Array.isArray(seeds) || seeds.length === 0) {
-        return { passed: true, similarity: null }; // no seeds → no semantic gating
-    }
-    try {
-        const seedVecs = await getSeedVectors(seeds);
-        if (seedVecs.length === 0) return { passed: true, similarity: null };
+    if (!Array.isArray(seeds) || seeds.length === 0) return null;
+    const seedVecs = await getSeedVectors(seeds);
+    if (seedVecs.length === 0) return null;
+    const text = `${article.title || ''}. ${article.descNorm || article.description || ''}`.slice(0, 500);
+    const v = await embed(text);
+    return Math.max(...seedVecs.map(sv => cosine(v, sv)));
+}
 
-        const text = `${article.title || ''}. ${article.descNorm || article.description || ''}`.slice(0, 500);
-        const v = await embed(text);
-        const maxSim = Math.max(...seedVecs.map(sv => cosine(v, sv)));
+export async function applySemanticFilter(article, profile, score) {
+    try {
+        const maxSim = await semanticSimilarity(article, profile);
+        if (maxSim == null) return { passed: true, similarity: null }; // no seeds → no semantic gating
         const threshold = profile.semanticThreshold || DEFAULT_THRESHOLD;
 
         if (maxSim < threshold) {
