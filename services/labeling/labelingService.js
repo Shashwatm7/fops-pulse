@@ -5,6 +5,7 @@
 // this module only serves the click-to-summarize feature.)
 import axios from 'axios';
 import { labelingConfig as cfg } from '../../config/labeling.js';
+import { matchEntities } from '../news-pipeline/entity_matcher.js';
 
 // ── Provider factory: same interface, different backend ──
 function makeClient() {
@@ -48,19 +49,23 @@ function makeClient() {
     };
 }
 
-// Cheap, zero-LLM-cost entity extraction: regex-match the customer's own
-// profile lists against the article text. Feeding these into the summary
-// prompt (instead of asking Groq to find them) keeps the prompt short and
-// the extraction free.
+// Rule-based entity extraction + master-data matching (zero LLM). Delegates
+// to the shared matcher: word-boundary, alias-aware ("chicken"→poultry synonym
+// group; "Dubai"→UAE region), canonical-linked. Replaces the old naive
+// substring match that matched "india" inside "indiana" and knew no synonyms.
+// Output keys are the canonical master names (back-compatible with the summary
+// prompt, which just lists them). Feeding these to the LLM instead of asking
+// it to find them keeps the prompt short and the extraction free + grounded.
 export function extractLocalEntities(text, customer) {
-    const hay = (text || '').toLowerCase();
-    const matchAll = (list) => (Array.isArray(list) ? list : [])
-        .filter(term => term && hay.includes(String(term).toLowerCase()));
+    const m = matchEntities(text, customer || {});
+    const names = (arr) => arr.map(e => e.canonical);
     return {
-        commodities: matchAll(customer?.commodities),
-        ports: matchAll(customer?.key_ports),
-        routes: matchAll(customer?.key_routes),
-        supplier_countries: matchAll(customer?.supplier_countries),
+        commodities: names(m.commodities),
+        ports: names(m.ports),
+        routes: names(m.routes),
+        supplier_countries: names(m.supplier_countries),
+        regions: names(m.regions),
+        chokepoints: names(m.chokepoints),
     };
 }
 
