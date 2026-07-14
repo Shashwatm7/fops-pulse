@@ -1,0 +1,405 @@
+<title>GCC Food Industry &middot; Insights</title>
+<style>
+  :root{
+    --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
+    --s-blue:#2a78d6; --s-aqua:#1baf7a; --s-yellow:#eda100; --s-violet:#4a3aa7;
+    --s-red:#e34948; --s-orange:#eb6834; --s-green:#008300;
+    --good:#0ca30c; --bad:#d03b3b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
+      --s-blue:#3987e5; --s-aqua:#199e70; --s-yellow:#c98500; --s-violet:#9085e9;
+      --s-red:#e66767; --s-orange:#d95926; --s-green:#008300;
+      --good:#0ca30c; --bad:#d03b3b;
+    }
+  }
+  :root[data-theme="dark"]{
+    --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
+    --s-blue:#3987e5; --s-aqua:#199e70; --s-yellow:#c98500; --s-violet:#9085e9;
+    --s-red:#e66767; --s-orange:#d95926; --s-green:#008300;
+  }
+  :root[data-theme="light"]{
+    --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
+    --s-blue:#2a78d6; --s-aqua:#1baf7a; --s-yellow:#eda100; --s-violet:#4a3aa7;
+    --s-red:#e34948; --s-orange:#eb6834; --s-green:#008300;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--plane);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 24px 72px;}
+  header.top{margin-bottom:28px;}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--s-blue);}
+  h1{font-size:30px;line-height:1.15;margin:6px 0 8px;font-weight:700;letter-spacing:-.01em;}
+  .sub{color:var(--ink2);font-size:15px;max-width:70ch;}
+  .src{color:var(--muted);font-size:12px;margin-top:10px;}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0 8px;}
+  .tile{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:16px 16px 14px;}
+  .tile .k{font-size:12px;color:var(--ink2);font-weight:600;}
+  .tile .v{font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.01em;}
+  .tile .n{font-size:12px;color:var(--muted);margin-top:3px;}
+  section.card{background:var(--surface);border:1px solid var(--ring);border-radius:14px;
+    padding:20px 20px 16px;margin-top:22px;}
+  .card h2{font-size:17px;margin:0 0 2px;font-weight:700;letter-spacing:-.01em;}
+  .card .desc{color:var(--ink2);font-size:13px;margin:0 0 14px;max-width:78ch;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .legend{display:flex;flex-wrap:wrap;gap:12px 16px;margin-top:12px;font-size:12px;color:var(--ink2);}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  svg{display:block;width:100%;height:auto;overflow:visible;}
+  .tbl-scroll{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;}
+  th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid);}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--ink2);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--surface);}
+  th.active{color:var(--ink);}
+  td.num{font-variant-numeric:tabular-nums;}
+  tbody tr:hover{background:color-mix(in srgb,var(--s-blue) 8%,transparent);}
+  .pos{color:var(--good);} .neg{color:var(--bad);}
+  .seg-chip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle;}
+  .tip{position:fixed;pointer-events:none;z-index:50;background:var(--ink);color:var(--surface);
+    font-size:12px;padding:6px 9px;border-radius:7px;opacity:0;transition:opacity .08s;max-width:240px;
+    box-shadow:0 4px 14px rgba(0,0,0,.25);}
+  .note{font-size:12px;color:var(--muted);margin-top:10px;}
+  .foot{margin-top:34px;color:var(--muted);font-size:12px;border-top:1px solid var(--grid);padding-top:16px;}
+  @media (max-width:760px){.tiles{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}h1{font-size:24px}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">FOps &middot; Market Intelligence</div>
+    <h1>GCC Food Industry &mdash; Insights</h1>
+    <p class="sub">Curated view of 22 listed food producers across six GCC markets &mdash; profitability,
+      scale, consumption demand, food security and deal flow. Every figure below is drawn directly from the
+      extracted 2025 industry report; nothing is modelled or estimated.</p>
+    <p class="src">Source: GCC Food Industry report 2025 &middot; 15 cleaned tables &middot; financials are 3-year averages (FY22&ndash;FY24), macro figures are IMF estimates (2024E) and forecasts (2025F&ndash;2029F).</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <h2>Profitability by sub-segment</h2>
+    <p class="desc">Median 3-year EBITDA margin. Dairy and agri-processing (flour milling) carry the fattest
+      margins; livestock is dragged negative by loss-making meat and fisheries names.</p>
+    <div id="c_sector"></div>
+  </section>
+
+  <section class="card">
+    <h2>Food-consumption demand, indexed to 2024</h2>
+    <p class="desc">Volume growth 2024E&rarr;2029F, each market rebased to 100 at 2024. Oman (+20%) and Bahrain
+      (+18%) grow fastest; the UAE and Qatar are near-flat as populations plateau.</p>
+    <div id="c_food"></div>
+    <div class="legend" id="l_food"></div>
+  </section>
+
+  <section class="card">
+    <h2>Scale vs profitability</h2>
+    <p class="desc">Revenue (log scale) against EBITDA margin, bubble sized by market cap, coloured by segment.
+      The two revenue giants &mdash; Savola and Almarai &mdash; sit at opposite margin extremes; the most
+      profitable names are mid-scale (Arabian Mills 41%, Baladna 29%).</p>
+    <div id="c_scatter"></div>
+    <div class="legend" id="l_scatter"></div>
+  </section>
+
+  <section class="card">
+    <div class="grid2">
+      <div>
+        <h2>Consumption 2029F</h2>
+        <p class="desc">Forecast volume, mn metric tonnes.</p>
+        <div id="c_cons29"></div>
+      </div>
+      <div>
+        <h2>Per-capita income 2029F</h2>
+        <p class="desc">Forecast, US$. Qatar and the UAE lead premium-food capacity.</p>
+        <div id="c_pci29"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="grid2">
+      <div>
+        <h2>Food Security Index 2022</h2>
+        <p class="desc">Global FSI score (higher is better); global rank shown at bar end.</p>
+        <div id="c_gfsi"></div>
+      </div>
+      <div>
+        <h2>M&amp;A deals by acquirer (2023&ndash;25)</h2>
+        <p class="desc">19 disclosed transactions; Saudi and UAE buyers dominate consolidation.</p>
+        <div id="c_mna"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Company financials</h2>
+    <p class="desc">22 listed producers, 3-year averages. Click any column header to sort.</p>
+    <div class="tbl-scroll">
+      <table id="tbl">
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="note">Segment colours match the scatter above. Margins and returns are 3-year averages; P/E is latest twelve months where listed.</p>
+  </section>
+
+  <div class="foot">Demo insights page &middot; built from the cleaned CSV extract &middot; light / dark aware.
+    Data is illustrative of a curated on-site analytics view and is not investment advice.</div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+// ---- palette accessor (reads live CSS vars so light/dark both work) ----
+var ROOT=document.documentElement;
+function cv(n){return getComputedStyle(ROOT).getPropertyValue(n).trim();}
+function pal(){return {blue:cv("--s-blue"),aqua:cv("--s-aqua"),yellow:cv("--s-yellow"),
+  violet:cv("--s-violet"),red:cv("--s-red"),orange:cv("--s-orange"),green:cv("--s-green"),
+  ink:cv("--ink"),ink2:cv("--ink2"),muted:cv("--muted"),grid:cv("--grid"),axis:cv("--axis"),surface:cv("--surface")};}
+
+// ---- segment + country colour maps ----
+var SEGCOL={"Agri. & Agri. Processing":"blue","Dairy":"aqua","Livestock":"yellow",
+  "Processed & Frozen Food":"violet","Diversified":"orange"};
+var SEGSHORT={"Agri. & Agri. Processing":"Agri-processing","Dairy":"Dairy",
+  "Livestock":"Livestock","Processed & Frozen Food":"Processed/frozen","Diversified":"Diversified"};
+var CTRYCOL={"Saudi Arabia":"blue","UAE":"aqua","Oman":"yellow","Qatar":"violet","Kuwait":"red","Bahrain":"orange"};
+
+// ---- real data ----
+// [segment, company, country, mcap, rev, revGrowth, ebitda, niMargin, roae, roaa, pe]
+var FIN=[
+["Agri. & Agri. Processing","Arabian Mills","Saudi Arabia",575.2,259.6,16.4,41.3,24.5,26.4,9.8,null],
+["Agri. & Agri. Processing","Oman Flour Mills Co.","Oman",201.5,334.8,10.1,8.5,3.0,5.1,25.3,9.4],
+["Agri. & Agri. Processing","Bahrain Flour Mills Co.","Bahrain",24.0,20.2,3.6,13.5,18.9,5.6,4.0,null],
+["Dairy","Saudia Dairy & Foodstuff (SADAFCO)","Saudi Arabia",2321.5,789.7,14.0,19.8,14.5,21.2,14.4,18.8],
+["Dairy","National Agriculture Dev. (NADEC)","Saudi Arabia",1713.8,858.3,12.6,18.1,12.3,13.2,7.9,null],
+["Dairy","Baladna","Qatar",933.5,314.2,14.3,28.9,11.6,5.4,2.7,12.0],
+["Livestock","Tanmiah Food Co.","Saudi Arabia",444.8,683.2,28.8,13.2,6.1,20.4,6.6,20.8],
+["Livestock","A'Saffa Foods","Oman",159.1,166.2,21.0,18.2,5.1,7.4,3.0,8.3],
+["Livestock","Widam Food Co.","Qatar",114.7,149.2,11.5,-2.3,-10.0,-30.8,-10.6,null],
+["Livestock","Oman Fisheries Company","Oman",13.7,12.6,-22.2,-31.4,-38.1,-63.4,-22.3,null],
+["Processed & Frozen Food","Zad Holding Company","Qatar",1106.4,410.0,5.3,18.2,13.0,15.0,7.8,null],
+["Processed & Frozen Food","Dubai Refreshments","UAE",536.6,222.7,7.0,21.2,25.2,18.4,11.8,14.7],
+["Processed & Frozen Food","Halwani Brothers Co.","Saudi Arabia",434.6,258.3,-3.4,7.6,-2.1,-3.6,-1.5,25.7],
+["Processed & Frozen Food","Herfy Foods Co.","Saudi Arabia",405.3,299.8,-5.2,0.1,-3.1,-3.6,-1.9,null],
+["Processed & Frozen Food","Oman Refreshment Co.","Oman",129.9,164.7,-1.3,9.0,3.4,4.8,2.7,null],
+["Diversified","Almarai Co.","Saudi Arabia",12395.3,5591.6,9.9,22.5,10.3,11.6,6.0,21.9],
+["Diversified","Savola Group Co.","Saudi Arabia",1918.9,6393.0,-0.3,8.6,16.3,50.7,15.1,0.6],
+["Diversified","Mezzan Holding Co.","Kuwait",1329.3,932.8,5.3,8.3,2.9,6.7,2.9,20.3],
+["Diversified","Agthia Group","UAE",918.4,1338.2,17.5,11.0,6.1,8.9,4.1,14.0],
+["Diversified","United Foods Company","UAE",152.4,157.2,4.0,7.1,4.5,8.1,6.5,14.6],
+["Diversified","Unikai Foods","UAE",71.9,109.9,17.3,11.2,4.9,31.6,7.2,null],
+["Diversified","Trafco Group","Bahrain",51.2,124.3,9.6,7.0,4.2,5.6,3.5,15.1]
+];
+// sub-segment average EBITDA margins (from report)
+var SECTOR=[["Agri. & Agri. Processing",21.1],["Dairy",22.3],["Processed & Frozen Food",11.2],
+  ["Diversified",10.8],["Livestock",-0.6]];
+var COUNTRIES=["Saudi Arabia","UAE","Oman","Qatar","Kuwait","Bahrain"];
+var YEARS=[2024,2025,2027,2029];
+var FOOD={ // mn MT
+"Saudi Arabia":[29.3,30.1,31.0,32.1],"UAE":[8.7,8.6,8.8,8.8],"Oman":[5.9,6.2,6.6,7.1],
+"Qatar":[2.2,2.3,2.3,2.3],"Kuwait":[3.6,3.6,3.8,3.9],"Bahrain":[1.1,1.1,1.2,1.3]};
+var PCI29={"Saudi Arabia":33536,"UAE":60993,"Oman":20230,"Qatar":87870,"Kuwait":31833,"Bahrain":31365};
+var GFSI={ // 2022 score, rank
+"UAE":[75.2,23],"Qatar":[72.4,30],"Oman":[71.2,35],"Bahrain":[70.3,38],"Saudi Arabia":[69.9,41],"Kuwait":[65.2,50]};
+var MNA=[["Saudi Arabia",7],["UAE",8],["Oman",1],["Kuwait",1],["Belgium",1],["India",1]];
+
+// ---- helpers ----
+var NS="http://www.w3.org/2000/svg";
+function el(t,a){var e=document.createElementNS(NS,t);if(a)for(var k in a)e.setAttribute(k,a[k]);return e;}
+function fmt(n,d){if(n==null)return "n/a";d=d==null?1:d;return (Math.round(n*Math.pow(10,d))/Math.pow(10,d)).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});}
+function money(n){if(n>=1000)return "$"+fmt(n/1000,1)+"bn";return "$"+fmt(n,0)+"m";}
+var TIP=document.getElementById("tip");
+function tipOn(e,html){TIP.innerHTML=html;TIP.style.opacity=1;tipMove(e);}
+function tipMove(e){var x=e.clientX+14,y=e.clientY+14;if(x+250>window.innerWidth)x=e.clientX-250;TIP.style.left=x+"px";TIP.style.top=y+"px";}
+function tipOff(){TIP.style.opacity=0;}
+function bind(node,html){node.addEventListener("mousemove",function(e){tipOn(e,html);});node.addEventListener("mouseleave",tipOff);}
+
+// ---- stat tiles ----
+function tiles(){
+  var totRev=FIN.reduce(function(s,r){return s+r[4];},0);
+  var margins=FIN.map(function(r){return r[6];}).sort(function(a,b){return a-b;});
+  var med=margins[Math.floor(margins.length/2)];
+  var food29=COUNTRIES.reduce(function(s,c){return s+FOOD[c][3];},0);
+  var data=[
+    ["Listed producers","22","6 GCC markets, 5 segments"],
+    ["Combined revenue",money(totRev),"FY24, 22 companies"],
+    ["Food demand 2029F",fmt(food29,1)+" mn MT","+"+fmt((food29/COUNTRIES.reduce(function(s,c){return s+FOOD[c][0];},0)-1)*100,0)+"% vs 2024E"],
+    ["Median EBITDA margin",fmt(med,1)+"%","industry avg 11.8%"]
+  ];
+  var host=document.getElementById("tiles");host.innerHTML="";
+  data.forEach(function(d){
+    var t=document.createElement("div");t.className="tile";
+    t.innerHTML='<div class="k">'+d[0]+'</div><div class="v">'+d[1]+'</div><div class="n">'+d[2]+'</div>';
+    host.appendChild(t);
+  });
+}
+
+// ---- horizontal bar chart ----
+function hbar(host,rows,opt){
+  // rows: [label, value, colorKey, tipHtml, endLabel?]
+  opt=opt||{};var p=pal();
+  var W=560,rowH=opt.rowH||30,padL=opt.padL||150,padR=60,padT=6,padB=26;
+  var H=padT+padB+rows.length*rowH;
+  var vals=rows.map(function(r){return r[1];});
+  var min=Math.min(0,Math.min.apply(null,vals)),max=Math.max.apply(null,vals);
+  var span=(max-min)||1;
+  function x(v){return padL+(v-min)/span*(W-padL-padR);}
+  var svg=el("svg",{viewBox:"0 0 "+W+" "+H});
+  // zero / baseline
+  var zx=x(0);
+  svg.appendChild(el("line",{x1:zx,y1:padT,x2:zx,y2:H-padB,stroke:p.axis,"stroke-width":1}));
+  rows.forEach(function(r,i){
+    var y=padT+i*rowH, v=r[1], col=p[r[2]]||p.blue;
+    var xv=x(v), x0=x(0);
+    var rx=Math.min(xv,x0), rw=Math.abs(xv-x0);
+    var bar=el("rect",{x:rx,y:y+5,width:Math.max(rw,1),height:rowH-12,rx:4,fill:col});
+    bar.style.cursor="default";bind(bar,r[3]);svg.appendChild(bar);
+    var lab=el("text",{x:padL-10,y:y+rowH/2+4,"text-anchor":"end","font-size":12,fill:p.ink});
+    lab.textContent=r[0];svg.appendChild(lab);
+    var vl=el("text",{x:(v<0?rx-6:xv+6),y:y+rowH/2+4,"text-anchor":(v<0?"end":"start"),"font-size":11.5,fill:p.ink2});
+    vl.textContent=(opt.vfmt?opt.vfmt(v):fmt(v,1))+(opt.suffix||"");svg.appendChild(vl);
+    if(r[4]!=null){var e=el("text",{x:W-6,y:y+rowH/2+4,"text-anchor":"end","font-size":11,fill:p.muted});e.textContent=r[4];svg.appendChild(e);}
+  });
+  host.innerHTML="";host.appendChild(svg);
+}
+
+// ---- indexed line chart ----
+function lines(host,legHost){
+  var p=pal(),W=680,H=300,padL=44,padR=16,padT=12,padB=30;
+  var idx={};COUNTRIES.forEach(function(c){idx[c]=FOOD[c].map(function(v){return v/FOOD[c][0]*100;});});
+  var all=[];COUNTRIES.forEach(function(c){all=all.concat(idx[c]);});
+  var min=Math.min.apply(null,all),max=Math.max.apply(null,all);
+  min=Math.floor(min/5)*5;max=Math.ceil(max/5)*5;
+  function x(i){return padL+i/(YEARS.length-1)*(W-padL-padR);}
+  function y(v){return padT+(1-(v-min)/(max-min))*(H-padT-padB);}
+  var svg=el("svg",{viewBox:"0 0 "+W+" "+H});
+  for(var g=min;g<=max;g+=5){var yy=y(g);
+    svg.appendChild(el("line",{x1:padL,y1:yy,x2:W-padR,y2:yy,stroke:p.grid,"stroke-width":1}));
+    var t=el("text",{x:padL-8,y:yy+4,"text-anchor":"end","font-size":11,fill:p.muted});t.textContent=g;svg.appendChild(t);}
+  YEARS.forEach(function(yr,i){var t=el("text",{x:x(i),y:H-10,"text-anchor":"middle","font-size":11,fill:p.muted});
+    t.textContent=(i===0?yr+"E":yr+"F");svg.appendChild(t);});
+  COUNTRIES.forEach(function(c){
+    var col=p[CTRYCOL[c]],d="";
+    idx[c].forEach(function(v,i){d+=(i?"L":"M")+x(i)+","+y(v);});
+    svg.appendChild(el("path",{d:d,fill:"none",stroke:col,"stroke-width":2.4,"stroke-linejoin":"round"}));
+    idx[c].forEach(function(v,i){
+      var dot=el("circle",{cx:x(i),cy:y(v),r:3.4,fill:col});dot.style.cursor="default";
+      bind(dot,"<b>"+c+"</b><br>"+YEARS[i]+": "+fmt(FOOD[c][i],1)+" mn MT<br>index "+fmt(v,1));
+      svg.appendChild(dot);});
+    var last=idx[c].length-1;var lab=el("text",{x:x(last)+0,y:y(idx[c][last])-7,"text-anchor":"end","font-size":11,fill:col,"font-weight":600});
+    lab.textContent=c==="Saudi Arabia"?"KSA":c;svg.appendChild(lab);
+  });
+  host.innerHTML="";host.appendChild(svg);
+  legHost.innerHTML=COUNTRIES.map(function(c){return '<span><i class="swatch" style="background:'+p[CTRYCOL[c]]+'"></i>'+c+'</span>';}).join("");
+}
+
+// ---- scatter (log x) ----
+function scatter(host,legHost){
+  var p=pal(),W=680,H=380,padL=48,padR=20,padT=14,padB=40;
+  var xs=FIN.map(function(r){return r[4];}),ys=FIN.map(function(r){return r[6];});
+  var lminExp=1,lmaxExp=4; // 10..10000
+  function x(v){return padL+(Math.log10(v)-lminExp)/(lmaxExp-lminExp)*(W-padL-padR);}
+  var ymin=-35,ymax=45;
+  function y(v){return padT+(1-(v-ymin)/(ymax-ymin))*(H-padT-padB);}
+  var mmax=Math.max.apply(null,FIN.map(function(r){return r[3];}));
+  function rad(m){return 5+Math.sqrt(m/mmax)*26;}
+  var svg=el("svg",{viewBox:"0 0 "+W+" "+H});
+  // y grid
+  for(var g=ymin;g<=ymax;g+=10){var yy=y(g);
+    svg.appendChild(el("line",{x1:padL,y1:yy,x2:W-padR,y2:yy,stroke:(g===0?p.axis:p.grid),"stroke-width":1}));
+    var t=el("text",{x:padL-8,y:yy+4,"text-anchor":"end","font-size":11,fill:p.muted});t.textContent=g+"%";svg.appendChild(t);}
+  // x ticks decades
+  [10,100,1000,10000].forEach(function(v){var xx=x(v);
+    svg.appendChild(el("line",{x1:xx,y1:padT,x2:xx,y2:H-padB,stroke:p.grid,"stroke-width":1}));
+    var t=el("text",{x:xx,y:H-22,"text-anchor":"middle","font-size":11,fill:p.muted});t.textContent=v>=1000?("$"+(v/1000)+"bn"):("$"+v+"m");svg.appendChild(t);});
+  var ax=el("text",{x:(padL+W-padR)/2,y:H-6,"text-anchor":"middle","font-size":11.5,fill:p.ink2});ax.textContent="Revenue (log scale)";svg.appendChild(ax);
+  var ay=el("text",{x:14,y:padT+(H-padT-padB)/2,"text-anchor":"middle","font-size":11.5,fill:p.ink2,transform:"rotate(-90 14 "+(padT+(H-padT-padB)/2)+")"});ay.textContent="EBITDA margin";svg.appendChild(ay);
+  FIN.slice().sort(function(a,b){return b[3]-a[3];}).forEach(function(r){
+    var col=p[SEGCOL[r[0]]];
+    var c=el("circle",{cx:x(r[4]),cy:y(r[6]),r:rad(r[3]),fill:col,"fill-opacity":.62,stroke:col,"stroke-width":1.3});
+    c.style.cursor="default";
+    bind(c,"<b>"+r[1]+"</b><br>"+SEGSHORT[r[0]]+" &middot; "+r[2]+"<br>Revenue "+money(r[4])+"<br>EBITDA "+fmt(r[6],1)+"% &middot; Mkt cap "+money(r[3]));
+    svg.appendChild(c);
+  });
+  // label a few notable
+  [["Almarai",5591.6,22.5],["Savola Group Co.",6393.0,8.6],["Arabian Mills",259.6,41.3],["Baladna",314.2,28.9]].forEach(function(l){
+    var t=el("text",{x:x(l[1]),y:y(l[2])-rad(FIN.filter(function(r){return r[1].indexOf(l[0])>-1;})[0][3])-4,"text-anchor":"middle","font-size":10.5,fill:p.ink,"font-weight":600});
+    t.textContent=l[0]==="Savola Group Co."?"Savola":l[0];svg.appendChild(t);});
+  host.innerHTML="";host.appendChild(svg);
+  legHost.innerHTML=SECTOR.map(function(s){return s[0];}).concat().map(function(){return"";}).join("");
+  legHost.innerHTML=Object.keys(SEGCOL).map(function(k){return '<span><i class="swatch" style="background:'+p[SEGCOL[k]]+'"></i>'+SEGSHORT[k]+'</span>';}).join("")
+    +'<span style="color:var(--muted)">bubble = market cap</span>';
+}
+
+// ---- render all ----
+function renderAll(){
+  tiles();
+  hbar(document.getElementById("c_sector"),
+    SECTOR.map(function(s){return [SEGSHORT[s[0]],s[1],SEGCOL[s[0]],"<b>"+SEGSHORT[s[0]]+"</b><br>median EBITDA margin "+fmt(s[1],1)+"%"];}),
+    {suffix:"%",padL:120,rowH:34});
+  lines(document.getElementById("c_food"),document.getElementById("l_food"));
+  scatter(document.getElementById("c_scatter"),document.getElementById("l_scatter"));
+  var cons=COUNTRIES.slice().sort(function(a,b){return FOOD[b][3]-FOOD[a][3];})
+    .map(function(c){return [c==="Saudi Arabia"?"KSA":c,FOOD[c][3],CTRYCOL[c],"<b>"+c+"</b><br>2029F: "+fmt(FOOD[c][3],1)+" mn MT<br>2024E: "+fmt(FOOD[c][0],1)+" mn MT"];});
+  hbar(document.getElementById("c_cons29"),cons,{suffix:" MT",padL:70,rowH:30,vfmt:function(v){return fmt(v,1);}});
+  var pci=COUNTRIES.slice().sort(function(a,b){return PCI29[b]-PCI29[a];})
+    .map(function(c){return [c==="Saudi Arabia"?"KSA":c,PCI29[c],CTRYCOL[c],"<b>"+c+"</b><br>per-capita income 2029F: $"+fmt(PCI29[c],0)];});
+  hbar(document.getElementById("c_pci29"),pci,{padL:70,rowH:30,vfmt:function(v){return "$"+(v/1000).toFixed(0)+"k";}});
+  var gfsi=Object.keys(GFSI).map(function(c){return [c==="Saudi Arabia"?"KSA":c,GFSI[c][0],CTRYCOL[c],"<b>"+c+"</b><br>GFSI 2022: "+fmt(GFSI[c][0],1)+"<br>global rank #"+GFSI[c][1],"#"+GFSI[c][1]];});
+  hbar(document.getElementById("c_gfsi"),gfsi,{padL:70,rowH:30,vfmt:function(v){return fmt(v,1);}});
+  var mna=MNA.slice().sort(function(a,b){return b[1]-a[1];})
+    .map(function(m){return [m[0]==="Saudi Arabia"?"KSA":m[0],m[1],(CTRYCOL[m[0]]||"aqua"),"<b>"+m[0]+"</b><br>"+m[1]+" acquisition"+(m[1]>1?"s":"")];});
+  hbar(document.getElementById("c_mna"),mna,{padL:70,rowH:28,vfmt:function(v){return v.toFixed(0);}});
+  buildTable();
+}
+
+// ---- sortable table ----
+var COLS=[["company","Company",0],["seg","Segment",0],["country","Country",0],
+  ["mcap","Mkt cap $m",1],["rev","Revenue $m",1],["revg","Rev CAGR %",1],
+  ["ebitda","EBITDA %",1],["ni","Net margin %",1],["roae","ROAE %",1],["pe","P/E",1]];
+var IDX={company:1,country:2,mcap:3,rev:4,revg:5,ebitda:6,ni:7,roae:8,roae2:9,pe:10};
+var sortKey="rev",sortDir=-1;
+function buildTable(){
+  var p=pal();
+  var th=document.getElementById("thead");th.innerHTML="";
+  COLS.forEach(function(c){var e=document.createElement("th");e.textContent=c[1];
+    if(c[0]===sortKey)e.className="active";
+    e.onclick=function(){if(sortKey===c[0])sortDir=-sortDir;else{sortKey=c[0];sortDir=(c[2]?-1:1);}buildTable();};
+    th.appendChild(e);});
+  var rows=FIN.slice().sort(function(a,b){
+    var va,vb;
+    if(sortKey==="company"){va=a[1];vb=b[1];}
+    else if(sortKey==="seg"){va=a[0];vb=b[0];}
+    else if(sortKey==="country"){va=a[2];vb=b[2];}
+    else{var m={mcap:3,rev:4,revg:5,ebitda:6,ni:7,roae:8,pe:10};va=a[m[sortKey]];vb=b[m[sortKey]];
+      if(va==null)va=-1e9;if(vb==null)vb=-1e9;}
+    if(va<vb)return -sortDir;if(va>vb)return sortDir;return 0;
+  });
+  var tb=document.getElementById("tbody");tb.innerHTML="";
+  rows.forEach(function(r){
+    var tr=document.createElement("tr");
+    function sc(v,d,pct){if(v==null)return '<td class="num">n/a</td>';
+      var cls=v<0?"neg":(pct&&v>0?"pos":"");return '<td class="num '+cls+'">'+fmt(v,d)+'</td>';}
+    tr.innerHTML='<td><span class="seg-chip" style="background:'+p[SEGCOL[r[0]]]+'"></span>'+r[1]+'</td>'
+      +'<td style="text-align:left">'+SEGSHORT[r[0]]+'</td>'
+      +'<td style="text-align:left">'+r[2]+'</td>'
+      +'<td class="num">'+fmt(r[3],0)+'</td>'
+      +'<td class="num">'+fmt(r[4],0)+'</td>'
+      +sc(r[5],1,true)+sc(r[6],1,false)+sc(r[7],1,true)+sc(r[8],1,true)
+      +'<td class="num">'+(r[10]==null?"n/a":fmt(r[10],1))+'</td>';
+    tb.appendChild(tr);
+  });
+}
+
+renderAll();
+// re-render on theme change (data-theme attr) and on OS scheme change
+new MutationObserver(renderAll).observe(ROOT,{attributes:true,attributeFilter:["data-theme"]});
+if(window.matchMedia){window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",renderAll);}
+window.addEventListener("resize",function(){/* svg is viewBox-scaled, tooltips reposition on move */});
+</script>
