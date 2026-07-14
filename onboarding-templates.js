@@ -37,15 +37,20 @@ export const ALL_COMMODITIES = [
   { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: '$/MMBtu', yahooSymbol: 'NG=F' },
 ];
 
+// lat/lon point at REAL WeatherAPI-covered locations (verified via
+// search.json) so weather queries return genuine station data, not a
+// nearest-point proxy. `wxLocation` is the actual WeatherAPI place name,
+// shown in the UI for transparency. `name` is kept stable because it is the
+// key used across TEMPLATES, user profiles, and the raw_weather.region column.
 export const ALL_REGIONS = [
-  { name: 'Saudi Arabia Al-Hasa', lat: 25.3, lon: 49.5, crop: 'Dates/Wheat', country: 'KSA' },
-  { name: 'UAE Sweihan', lat: 24.3, lon: 55.3, crop: 'Greenhouse/Poultry', country: 'UAE' },
-  { name: 'Egypt Nile Delta', lat: 30.8, lon: 31.2, crop: 'Wheat/Corn', country: 'EGY' },
-  { name: 'Jordan Valley', lat: 32.0, lon: 35.5, crop: 'Fruits/Vegetables', country: 'JOR' },
-  { name: 'Oman Al Batinah', lat: 23.8, lon: 57.0, crop: 'Dates/Produce', country: 'OMN' },
-  { name: 'Qatar Al Khor', lat: 25.6, lon: 51.5, crop: 'Poultry/Dairy', country: 'QAT' },
-  { name: 'Kuwait Wafra', lat: 28.5, lon: 48.0, crop: 'Produce/Livestock', country: 'KWT' },
-  { name: 'Bahrain', lat: 26.0, lon: 50.5, crop: 'Seafood/Produce', country: 'BHR' },
+  { name: 'Saudi Arabia Al-Hasa', lat: 25.38, lon: 49.59, crop: 'Dates/Wheat', country: 'KSA', wxLocation: 'Hofuf, Ash Sharqiyah' },
+  { name: 'UAE Sweihan', lat: 24.19, lon: 55.76, crop: 'Greenhouse/Poultry', country: 'UAE', wxLocation: 'Al Ain, Abu Dhabi' },
+  { name: 'Egypt Nile Delta', lat: 30.79, lon: 31.0, crop: 'Wheat/Corn', country: 'EGY', wxLocation: 'Tanta, Al Gharbiyah' },
+  { name: 'Jordan Valley', lat: 32.2, lon: 35.62, crop: 'Fruits/Vegetables', country: 'JOR', wxLocation: "Deir Alla, Al Balqa'" },
+  { name: 'Oman Al Batinah', lat: 23.98, lon: 57.1, crop: 'Dates/Produce', country: 'OMN', wxLocation: 'Al Khaburah, Al Batinah' },
+  { name: 'Qatar Al Khor', lat: 25.68, lon: 51.51, crop: 'Poultry/Dairy', country: 'QAT', wxLocation: 'Al Khor' },
+  { name: 'Kuwait Wafra', lat: 29.08, lon: 48.08, crop: 'Produce/Livestock', country: 'KWT', wxLocation: 'Al Ahmadi' },
+  { name: 'Bahrain', lat: 26.24, lon: 50.58, crop: 'Seafood/Produce', country: 'BHR', wxLocation: 'Manama' },
 ];
 
 export const TEMPLATES = {

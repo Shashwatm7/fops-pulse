@@ -87,8 +87,11 @@ export async function updateUserProfile(userId, profile) {
       custom_regions = $10,
       price_alerts = $11,
       custom_blocklist = $12,
-      custom_dictionary = $13
-    WHERE user_id = $14`,
+      custom_dictionary = $13,
+      -- Preserve existing weather_regions when the caller doesn't supply them
+      -- (Settings save, onboarding), so those flows never wipe the list.
+      weather_regions = COALESCE($14::jsonb, weather_regions)
+    WHERE user_id = $15`,
     [
       JSON.stringify(profile.commodities || []),
       JSON.stringify(profile.regions || []),
@@ -103,8 +106,18 @@ export async function updateUserProfile(userId, profile) {
       JSON.stringify(profile.price_alerts || []),
       JSON.stringify(profile.custom_blocklist || []),
       JSON.stringify(profile.custom_dictionary || []),
+      profile.weather_regions === undefined ? null : JSON.stringify(profile.weather_regions),
       userId,
     ]
+  );
+}
+
+// Set ONLY the weather_regions list — used by the dedicated add/remove
+// endpoints so managing weather regions never touches any other profile field.
+export async function setWeatherRegions(userId, weatherRegions) {
+  return pool.query(
+    'UPDATE user_profiles SET weather_regions = $1 WHERE user_id = $2',
+    [JSON.stringify(weatherRegions || []), userId]
   );
 }
 
