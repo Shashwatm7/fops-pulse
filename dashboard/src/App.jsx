@@ -730,6 +730,7 @@ export default function Dashboard() {
           )}
         </div>
       ), icon: <Zap size={14} /> },
+    { id: 'marketinfo', label: 'Market Info', icon: <BarChart2 size={14} /> },
     { id: 'actions', label: 'Recommendations', icon: <PlaySquare size={14} /> }
   ];
 
@@ -1790,6 +1791,19 @@ export default function Dashboard() {
               });
             })()}
           </div>
+        </div>
+      )}
+
+
+
+      {/* ═══════════ MARKET INFO ═══════════ */}
+      {tab === 'marketinfo' && (
+        <div className={`tab-content enter-${tabDirection}`} key="marketinfo">
+          <iframe
+            src="/market-info.html"
+            title="Market Info"
+            style={{ width: '100%', height: 'calc(100vh - 160px)', minHeight: '600px', border: 'none', borderRadius: '12px', background: 'transparent' }}
+          />
         </div>
       )}
 
