@@ -290,7 +290,11 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                      {r.wxLocation || r.country}{c?.condition ? ` · ${c.condition}` : ''}
+                      {/* Show the station name only when it differs from the title
+                          (built-in regions); otherwise fall back to country so
+                          we never print the same string twice. */}
+                      {[(r.wxLocation && r.wxLocation !== r.name) ? r.wxLocation : (r.country && r.country !== r.name ? r.country : null), c?.condition]
+                        .filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>

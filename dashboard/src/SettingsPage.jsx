@@ -162,6 +162,11 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
         </div>
 
         <div className="section-label" style={styles.sectionTitle}>Tracked Regions</div>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 10px', maxWidth: '60ch', lineHeight: 1.5 }}>
+          Used for <strong>news filtering</strong> — which regions' supply-chain news you see. These are geographic
+          tags, not weather stations. For live temperature &amp; rainfall, add real locations in the
+          Command Center's weather panel.
+        </p>
         <div style={styles.chipRow}>
           {regions.length === 0 && customRegions.length === 0 && <span style={styles.empty}>None selected yet.</span>}
           {regions.map(name => (
