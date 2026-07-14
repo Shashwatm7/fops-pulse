@@ -3,10 +3,11 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid, BarChart, Bar, LineChart, Line, ComposedChart, ReferenceLine
 } from 'recharts';
-import { 
-  Activity, BarChart2, Globe2, Zap, Target, PlaySquare, 
+import {
+  Activity, BarChart2, Globe2, Zap, Target, PlaySquare,
   Settings, Shield, RefreshCw, LogOut, Sparkles, Plus,
-  LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown, Bell
+  LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown, Bell,
+  Droplets, Thermometer, Wind
 } from 'lucide-react';
 import './App.css';
 import LoginPage from './LoginPage.jsx';
@@ -199,6 +200,150 @@ function WeatherSparkline({ regionName }) {
   );
 }
 
+// Real-time temp + rainfall strip for the Command Center. User-managed: a
+// type-to-search box adds regions (WeatherAPI-backed, no proxy) and each card
+// has a remove control. Cards render live WeatherAPI current-conditions; a
+// region whose live payload hasn't arrived is still listed (so it can be
+// removed) but shown as loading.
+function WeatherStrip({ regions, onAdd, onRemove }) {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const debounceRef = useRef(null);
+
+  const runSearch = (q) => {
+    setQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.trim().length < 2) { setSuggestions([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const d = await fetch(`${API_BASE}/regions/search?q=${encodeURIComponent(q.trim())}`, { credentials: 'include' }).then(r => r.json());
+        setSuggestions(d.results || []);
+      } catch { setSuggestions([]); }
+      setSearching(false);
+    }, 250);
+  };
+
+  const pick = async (loc) => {
+    setBusy(true);
+    setSuggestions([]);
+    setQuery('');
+    try { await onAdd?.(loc); } finally { setBusy(false); }
+  };
+
+  const flagColor = (a) => a === 'DROUGHT_RISK' ? '#f59e0b' : a === 'HEAT_STRESS' ? '#ef4444' : a === 'FLOOD_RISK' ? '#38bdf8' : 'var(--text-muted)';
+  const flagLabel = (a) => a === 'DROUGHT_RISK' ? 'Drought risk' : a === 'HEAT_STRESS' ? 'Heat stress' : a === 'FLOOD_RISK' ? 'Flood risk' : 'Normal';
+
+  const list = regions || [];
+
+  return (
+    <div className="mb-xl">
+      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Droplets size={13} /> Live Weather &amp; Rainfall
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
+          real-time &middot; WeatherAPI{list.length ? ` · ${list.length} region${list.length > 1 ? 's' : ''}` : ''}
+        </span>
+      </div>
+
+      {/* type-to-search add box */}
+      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            value={query}
+            onChange={e => runSearch(e.target.value)}
+            placeholder="Add a region - search any city, town, or ZIP..."
+            disabled={busy}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
+          />
+          {(searching || busy) && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
+        </div>
+        {suggestions.length > 0 && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            {suggestions.map((s, i) => (
+              <div
+                key={`${s.lat},${s.lon}-${i}`}
+                onClick={() => pick(s)}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >{s.label}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {list.length === 0 ? (
+        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+          No regions yet. Search above to add live temperature &amp; rainfall tracking for any location.
+        </div>
+      ) : (
+        <div className="grid-auto">
+          {list.map((r, i) => {
+            const c = r.current;
+            const today = r.todayPrecipMm;
+            return (
+              <div key={r.name || i} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                      {r.wxLocation || r.country}{c?.condition ? ` · ${c.condition}` : ''}
+                    </div>
+                  </div>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {c && (
+                      <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: flagColor(r.alert), border: `1px solid ${flagColor(r.alert)}`, borderRadius: '5px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                        {flagLabel(r.alert)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => onRemove?.(r.name)}
+                      title="Remove region"
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px' }}
+                    >&times;</button>
+                  </span>
+                </div>
+                {c ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '10px' }}>
+                      <Thermometer size={16} style={{ color: '#f59e0b', alignSelf: 'center' }} />
+                      <span style={{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{Math.round(c.tempC)}</span>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>&deg;C</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', marginTop: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      <span title="Rainfall today" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <Droplets size={13} style={{ color: '#38bdf8' }} />
+                        {today != null ? `${today} mm` : `${c.precipMm} mm`}
+                        <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>{today != null ? 'today' : 'now'}</span>
+                      </span>
+                      <span title="Humidity" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <span style={{ color: '#38bdf8', fontSize: '12px' }}>&#128167;</span>{c.humidity}%
+                      </span>
+                      <span title="Wind" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <Wind size={13} style={{ color: 'var(--text-muted)' }} />{Math.round(c.windKph)} kph
+                      </span>
+                    </div>
+                    {c.lastUpdated && (
+                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
+                        updated {c.lastUpdated}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px' }}>Loading conditions…</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiFeedbackWidget({ featureName, context, aiResponse }) {
   const [status, setStatus] = useState('idle'); // idle, rating, submitted, error
   const [isHelpful, setIsHelpful] = useState(null);
@@ -295,6 +440,34 @@ export default function Dashboard() {
   const [weather, setWeather] = useState([]);
   const [weatherExt, setWeatherExt] = useState([]);
   const [forex, setForex] = useState(null);
+
+  // Command Center weather strip: user-managed region list (independent of the
+  // news pipeline's regions). Add/remove hit dedicated endpoints, then refetch.
+  const refetchWeather = useCallback(async () => {
+    try {
+      const d = await fetch(`${API_BASE}/weather`, { credentials: 'include' }).then(r => r.json());
+      setWeather(d.regions || []);
+    } catch (e) { console.error('weather refetch failed', e); }
+  }, []);
+  const addWeatherRegion = useCallback(async (loc) => {
+    try {
+      const d = await fetch(`${API_BASE}/weather-regions/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ name: loc.name, country: loc.country, lat: loc.lat, lon: loc.lon }),
+      }).then(r => r.json());
+      if (d.error) { alert(d.error); return; }
+      await refetchWeather();
+    } catch (e) { console.error('add weather region failed', e); }
+  }, [refetchWeather]);
+  const removeWeatherRegion = useCallback(async (name) => {
+    try {
+      await fetch(`${API_BASE}/weather-regions/remove`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ name }),
+      });
+      await refetchWeather();
+    } catch (e) { console.error('remove weather region failed', e); }
+  }, [refetchWeather]);
   const [analysis, setAnalysis] = useState(null);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -1227,6 +1400,8 @@ export default function Dashboard() {
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
           <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
+
+          <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 
           {drivers.length > 0 && (
             <div className="mb-xl">

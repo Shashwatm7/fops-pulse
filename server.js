@@ -18,7 +18,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions } from './db.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -964,13 +964,14 @@ app.post('/api/weather/ai-forecast', requireAuth, async (req, res) => {
 
 // ── ROUTE: simple weather (backward compatible, profile-aware) ───────
 app.get('/api/weather', requireAuth, async (req, res) => {
-    const userRegions = req.userProfile?.regions || [];
-    const customRegions = req.userProfile?.custom_regions || [];
-    const standardRegions = (userRegions.length > 0
-        ? ALL_REGIONS.filter(r => userRegions.includes(r.name))
-        : ALL_REGIONS
-    ).map(r => ({ name: r.name, lat: r.lat, lon: r.lon, crop: r.crop }));
-    const regions = [...standardRegions, ...customRegions];
+    // Driven ONLY by the user's dedicated weather_regions list (managed live
+    // from the Command Center) — independent of the news pipeline's regions.
+    // Empty until the user adds their first region.
+    const regions = (req.userProfile?.weather_regions || [])
+        .filter(r => r && r.lat != null && r.lon != null);
+    if (regions.length === 0) {
+        return res.json({ success: true, regions: [] });
+    }
     try {
         const apiKey = process.env.WEATHER_API_KEY;
         if (!apiKey) throw new Error('Missing WeatherAPI key');
@@ -990,6 +991,18 @@ app.get('/api/weather', requireAuth, async (req, res) => {
                 avgTempC: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : 'N/A',
                 totalPrecipMm: totalRain.toFixed(1),
                 alert: totalRain < 5 ? 'DROUGHT_RISK' : maxTemp > 38 ? 'HEAT_STRESS' : 'NORMAL',
+                // Real-time current conditions straight from WeatherAPI (no
+                // aggregation, no proxy) for the live Command Center strip.
+                current: data.current ? {
+                    tempC: data.current.temp_c,
+                    precipMm: data.current.precip_mm,
+                    humidity: data.current.humidity,
+                    windKph: data.current.wind_kph,
+                    condition: data.current.condition?.text || null,
+                    isDay: data.current.is_day === 1,
+                    lastUpdated: data.current.last_updated || null,
+                } : null,
+                todayPrecipMm: days[0]?.day?.totalprecip_mm ?? null,
             };
             
             // Insert snapshot into Postgres
@@ -1017,29 +1030,49 @@ app.post('/api/regions/add', requireAuth, async (req, res) => {
         const { name, crop } = req.body;
         if (!name) return res.status(400).json({ error: 'Region name is required' });
 
-        // Geocode using open-meteo (handle comma separated like 'Punjab, India')
-        const queryName = name.split(',')[0].trim();
-        const { data } = await axios.get('https://geocoding-api.open-meteo.com/v1/search', {
-            params: { name: queryName, count: 10, language: 'en', format: 'json' }
+        const apiKey = process.env.WEATHER_API_KEY;
+        if (!apiKey) return res.status(503).json({ error: 'Weather service not configured' });
+
+        // Resolve against WeatherAPI's OWN location catalog (search.json) so we
+        // only ever store a place WeatherAPI genuinely covers — no nearest-point
+        // proxy. Handle "City, Country" by country-constraining the match.
+        const parts = name.split(',').map(s => s.trim());
+        const queryName = parts[0];
+        const countryHint = parts.length > 1 ? parts.slice(1).join(',').trim().toLowerCase() : null;
+
+        const { data } = await axios.get('http://api.weatherapi.com/v1/search.json', {
+            params: { key: apiKey, q: queryName }
         });
 
-        if (!data.results || data.results.length === 0) {
-            return res.status(404).json({ error: 'Location not found' });
+        if (!Array.isArray(data) || data.length === 0) {
+            return res.status(404).json({ error: `"${queryName}" is not a location covered by the weather service. Try a nearby town or city.` });
         }
 
-        let location = data.results[0];
-        const parts = name.split(',').map(s => s.trim().toLowerCase());
-        if (parts.length > 1) {
-            const countryQuery = parts[1];
-            const exact = data.results.find(r => r.country?.toLowerCase().includes(countryQuery));
-            if (exact) location = exact;
+        // Common ISO/abbreviation aliases so "UAE"/"KSA"/"US" match WeatherAPI's
+        // full country names.
+        const COUNTRY_ALIASES = {
+            uae: 'united arab emirates', ksa: 'saudi arabia', us: 'united states',
+            usa: 'united states', uk: 'united kingdom',
+        };
+        let location = data[0];
+        if (countryHint) {
+            const hint = COUNTRY_ALIASES[countryHint] || countryHint;
+            const exact = data.find(r =>
+                r.country?.toLowerCase().includes(hint) || hint.includes(r.country?.toLowerCase()));
+            if (!exact) {
+                return res.status(404).json({
+                    error: `No "${queryName}" found in "${parts.slice(1).join(',').trim()}". Covered matches: ${data.slice(0, 5).map(r => `${r.name}, ${r.country}`).join('; ')}`,
+                });
+            }
+            location = exact;
         }
         const newRegion = {
-            name: location.name,
+            name: location.region ? `${location.name}, ${location.region}` : location.name,
             country: location.country,
-            lat: location.latitude,
-            lon: location.longitude,
-            crop: crop || 'Mixed Agriculture'
+            lat: location.lat,
+            lon: location.lon,
+            crop: crop || 'Mixed Agriculture',
+            wxLocation: location.region ? `${location.name}, ${location.region}` : location.name,
         };
 
         const currentProfile = req.userProfile;
@@ -1056,6 +1089,106 @@ app.post('/api/regions/add', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Add region error:', err.message);
         res.status(500).json({ error: 'Failed to add region' });
+    }
+});
+
+// ── Weather regions: type-ahead search + add/remove ──────────────
+// These manage user_profiles.weather_regions ONLY (the Command Center live
+// weather strip), independent of the news pipeline's regions.
+
+// GET /api/regions/search?q= — proxy WeatherAPI's own location catalog so the
+// UI only ever offers real, covered locations (no proxy). Returns [] for a
+// too-short or unmatched query rather than erroring.
+app.get('/api/regions/search', requireAuth, async (req, res) => {
+    const q = (req.query.q || '').trim();
+    if (q.length < 2) return res.json({ success: true, results: [] });
+    try {
+        const apiKey = process.env.WEATHER_API_KEY;
+        if (!apiKey) return res.status(503).json({ error: 'Weather service not configured' });
+        const { data } = await axios.get('http://api.weatherapi.com/v1/search.json', {
+            params: { key: apiKey, q },
+        });
+        const results = (Array.isArray(data) ? data : []).map(r => ({
+            name: r.region ? `${r.name}, ${r.region}` : r.name,
+            city: r.name,
+            region: r.region || '',
+            country: r.country,
+            lat: r.lat,
+            lon: r.lon,
+            label: [r.name, r.region, r.country].filter(Boolean).join(', '),
+        }));
+        res.json({ success: true, results });
+    } catch (err) {
+        console.error('Region search error:', err.response?.data?.error?.message || err.message);
+        res.status(500).json({ success: false, error: 'Search failed' });
+    }
+});
+
+// POST /api/weather-regions/add — append a region. Body may be a picked search
+// result {lat,lon,name,...} or {name:"City, Country"} to resolve server-side.
+// Either way we re-resolve against WeatherAPI so nothing but a real covered
+// location is ever stored.
+app.post('/api/weather-regions/add', requireAuth, async (req, res) => {
+    try {
+        const apiKey = process.env.WEATHER_API_KEY;
+        if (!apiKey) return res.status(503).json({ error: 'Weather service not configured' });
+        const body = req.body || {};
+        let region;
+        if (body.lat != null && body.lon != null && body.name) {
+            // A picked search suggestion — it already came from WeatherAPI's
+            // catalog, so store it verbatim. Re-resolving by coords would
+            // rename it to the nearest covered place (e.g. Rotterdam ->
+            // Kralingen) and break remove-by-name.
+            region = {
+                name: body.name,
+                country: body.country || '',
+                lat: body.lat,
+                lon: body.lon,
+                wxLocation: body.name,
+            };
+        } else {
+            // A bare typed name — resolve it against WeatherAPI (no proxy).
+            const query = (body.name || '').split(',')[0].trim();
+            if (!query) return res.status(400).json({ error: 'A location is required' });
+            const { data } = await axios.get('http://api.weatherapi.com/v1/search.json', {
+                params: { key: apiKey, q: query },
+            });
+            if (!Array.isArray(data) || data.length === 0) {
+                return res.status(404).json({ error: 'That location is not covered by the weather service.' });
+            }
+            const loc = data[0];
+            region = {
+                name: loc.region ? `${loc.name}, ${loc.region}` : loc.name,
+                country: loc.country,
+                lat: loc.lat,
+                lon: loc.lon,
+                wxLocation: loc.region ? `${loc.name}, ${loc.region}` : loc.name,
+            };
+        }
+        const list = (req.userProfile?.weather_regions || []).slice();
+        if (list.find(r => r.name === region.name && r.country === region.country)) {
+            return res.json({ success: true, weather_regions: list, duplicate: true });
+        }
+        list.push(region);
+        await setWeatherRegions(req.user.id, list);
+        res.json({ success: true, region, weather_regions: list });
+    } catch (err) {
+        console.error('Add weather region error:', err.response?.data?.error?.message || err.message);
+        res.status(500).json({ error: 'Failed to add weather region' });
+    }
+});
+
+// POST /api/weather-regions/remove — drop a region by name.
+app.post('/api/weather-regions/remove', requireAuth, async (req, res) => {
+    try {
+        const { name } = req.body || {};
+        if (!name) return res.status(400).json({ error: 'Region name is required' });
+        const list = (req.userProfile?.weather_regions || []).filter(r => r.name !== name);
+        await setWeatherRegions(req.user.id, list);
+        res.json({ success: true, weather_regions: list });
+    } catch (err) {
+        console.error('Remove weather region error:', err.message);
+        res.status(500).json({ error: 'Failed to remove weather region' });
     }
 });
 
