@@ -28,24 +28,40 @@ function makeClient() {
             return res.data.content[0].text;
         };
     }
-    // default: groq
-    if (!cfg.groqApiKey) throw new Error('GROQ_API_KEY is empty');
-    const key = cfg.groqApiKey.split(',')[0].trim(); // first key if comma-rotated
+    if (cfg.provider === 'groq') {
+        if (!cfg.groqApiKey) throw new Error('LLM_PROVIDER=groq but GROQ_API_KEY is empty');
+        const key = cfg.groqApiKey.split(',')[0].trim(); // first key if comma-rotated
+        return async (system, user, maxTokens) => {
+            const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+                model: cfg.models.groq,
+                max_tokens: maxTokens,
+                temperature: 0.1,
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user },
+                ],
+            }, {
+                headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+                timeout: 30000,
+            });
+            return res.data.choices[0].message.content;
+        };
+    }
+    // default: gemini (summaries route here — "everything else")
+    if (!cfg.geminiApiKey) throw new Error('LLM_PROVIDER=gemini but GEMINI_API_KEY is empty');
     return async (system, user, maxTokens) => {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-            model: cfg.models.groq,
-            max_tokens: maxTokens,
-            temperature: 0.1,
-            response_format: { type: 'json_object' },
-            messages: [
-                { role: 'system', content: system },
-                { role: 'user', content: user },
-            ],
-        }, {
-            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-            timeout: 30000,
-        });
-        return res.data.choices[0].message.content;
+        const { data } = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${cfg.models.gemini}:generateContent?key=${cfg.geminiApiKey}`,
+            {
+                systemInstruction: { parts: [{ text: system + '\nIMPORTANT: Return ONLY valid JSON matching the schema. No markdown, no backticks.' }] },
+                contents: [{ parts: [{ text: user }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 }, responseMimeType: 'application/json' },
+            },
+            { timeout: 30000 }
+        );
+        let text = data.candidates[0].content.parts[0].text;
+        return text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
     };
 }
 
