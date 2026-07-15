@@ -30,7 +30,11 @@ function makeClient() {
     }
     if (cfg.provider === 'groq') {
         if (!cfg.groqApiKey) throw new Error('LLM_PROVIDER=groq but GROQ_API_KEY is empty');
-        const key = cfg.groqApiKey.split(',')[0].trim(); // first key if comma-rotated
+        // Pool-aware: pin summaries to the 'summary' key (index 2 by default,
+        // matching server.js GROQ_TASK_KEY.summary) so they land on their own
+        // account's rate-limit budget. Wraps if fewer keys are configured.
+        const keys = cfg.groqApiKey.split(',').map(s => s.trim()).filter(Boolean);
+        const key = keys[(Number(process.env.LABELING_GROQ_KEY_INDEX) || 2) % keys.length] || keys[0];
         return async (system, user, maxTokens) => {
             const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: cfg.models.groq,
