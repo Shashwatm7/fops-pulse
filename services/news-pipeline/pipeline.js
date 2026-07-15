@@ -240,8 +240,15 @@ export class NewsPipeline {
         // Prevetted feeds skip it: Google already vetted relevance, and a
         // food-seed similarity check would wrongly drop legit risk news (the
         // same class of miss as the copper/gold seed gap).
+        // Cosine similarity of THIS article against the profile's seed vectors
+        // (the user-expanded "query"). Computed for every keyword-survivor and
+        // carried onto the accepted article as a first-class field, so it's
+        // available downstream for ranking/alerting later — independent of the
+        // gate. null for prevetted (they skip semantics) or seedless profiles.
+        let semanticScore = null;
         if (this.semanticEnabled && !prevetted) {
             const semCheck = await applySemanticFilter(article, profile, score);
+            semanticScore = semCheck.similarity;
             if (!semCheck.passed) {
                 console.log(`[USER-SCANNER] Rejected (Stage 6 - Semantic ${semCheck.similarity}): ${article.title}`);
                 memoizeRejection();
@@ -281,6 +288,9 @@ export class NewsPipeline {
                 priority,
                 relevanceScore: score,
                 breakdown,
+                // Cosine similarity to the profile seeds (0-1), recorded on
+                // every keyword-filtered article for downstream ranking/alerts.
+                semanticSimilarity: semanticScore,
                 // regionMatches is absent when a prevetted article bypassed a
                 // failed region gate — default to [] so downstream .length is safe.
                 matchedRegions: regionCheck.regionMatches || [],
