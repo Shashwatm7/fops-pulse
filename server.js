@@ -155,7 +155,20 @@ app.get('/api/rate-limits', requireAuth, (req, res) => {
     res.json(global.apiRateLimits || { remaining: 'N/A', reset: 'N/A' });
 });
 
-const GROQ_KEY = process.env.GROQ_API_KEY;
+// Groq API key POOL: GROQ_API_KEY may hold several comma-separated keys (one
+// per Groq account). Dividing tasks across keys spreads load over separate
+// rate-limit budgets. Each task is pinned to a key (below), so a task's load
+// lands on one account and the same task always uses the same key. With a
+// single key, every task shares it (original behavior).
+const GROQ_KEYS = (process.env.GROQ_API_KEY || '').split(',').map(s => s.trim()).filter(Boolean);
+// Task -> key index. Extend as you add keys; wraps (mod) when you have fewer
+// keys than tasks. Keep this in sync with LABELING_GROQ_KEY_INDEX for summaries.
+const GROQ_TASK_KEY = { planner: 0, deepdive: 1, summary: 2, drivers: 3, precedent: 4 };
+function groqKeyFor(task) {
+    if (GROQ_KEYS.length === 0) return null;
+    const idx = (GROQ_TASK_KEY[task] ?? 0) % GROQ_KEYS.length;
+    return GROQ_KEYS[idx];
+}
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
@@ -251,16 +264,22 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
     }
 }
 
-export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
+export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true, task = null) {
     // Groq-only path (planner recommendations + deep-dive). Gemini is NOT a
     // fallback here — deliberately removed so the two providers' rate-limit
     // budgets stay separate. Groq's own 70B->8B degradation is the only net.
-    if (global.aiCircuitBreaker && Date.now() < global.aiCircuitBreaker) {
-        throw new Error('Groq circuit-breaker active (rate limited); retry later.');
-    }
+    // Pick the pooled key for this task (spreads load across accounts).
+    const KEY = groqKeyFor(task);
 
+    // Circuit breaker is PER-KEY: a 429 on one account must not block tasks
+    // pinned to a different account's key. Keyed by the key string (in-memory
+    // only, never logged).
+    if (!global.aiCircuitBreakers) global.aiCircuitBreakers = {};
+    if (KEY && global.aiCircuitBreakers[KEY] && Date.now() < global.aiCircuitBreakers[KEY]) {
+        throw new Error('Groq circuit-breaker active for this key (rate limited); retry later.');
+    }
     try {
-        if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
+        if (!KEY) throw new Error('Missing GROQ_API_KEY');
         const finalUserContent = jsonMode ? userContent + "\n\nOutput ONLY valid JSON." : userContent;
         const response = await axios.post(
             'https://api.groq.com/openai/v1/chat/completions',
@@ -276,7 +295,7 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
             },
             {
                 headers: {
-                    'Authorization': `Bearer ${GROQ_KEY}`,
+                    'Authorization': `Bearer ${KEY}`,
                     'Content-Type': 'application/json',
                 }
             }
@@ -312,13 +331,15 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 if (minMatch) waitMs += parseFloat(minMatch[1]) * 60000;
                 if (secMatch) waitMs += parseFloat(secMatch[1]) * 1000;
                 global.apiRateLimits = { remaining: '0', reset: waitStr, lastUpdated: Date.now() };
-                global.aiCircuitBreaker = Date.now() + waitMs + 2000;
+                // Trip the breaker only for THIS key's account, not globally.
+                if (!global.aiCircuitBreakers) global.aiCircuitBreakers = {};
+                if (KEY) global.aiCircuitBreakers[KEY] = Date.now() + waitMs + 2000;
             }
         }
         // Gemini fallback removed by design. Degrade once to Groq 8B, then give up.
         console.log(`[FAILOVER] Primary Groq failed (${model}): ${errMsg}. Trying Groq llama-3.1-8b-instant.`);
         try {
-            if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
+            if (!KEY) throw new Error('Missing GROQ_API_KEY');
             const groqBackup2 = await axios.post(
                 'https://api.groq.com/openai/v1/chat/completions',
                 {
@@ -331,7 +352,7 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                         { role: 'user', content: userContent },
                     ],
                 },
-                { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }
+                { headers: { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' } }
             );
             const usage = groqBackup2.data.usage;
             if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
@@ -1668,7 +1689,8 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             true,
             1000,
             0.1,
-            false
+            false,
+            'deepdive'
         );
         
         let deepDive = '';
@@ -1681,7 +1703,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text on Groq...');
             const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
             // Deep-dive stays on Groq — its parse-retry does too (no Gemini).
-            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.1);
+            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.1, true, 'deepdive');
         }
 
         if (!deepDive) {
@@ -1820,7 +1842,7 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // and callGroq() runs the LLM on Groq 70B, degrading to Groq 8B on rate
         // limits (Gemini removed — planner recommendations stay on Groq).
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
-        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.1);
+        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.1, true, 'planner');
 
         let parsed;
         try {
