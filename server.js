@@ -1487,7 +1487,7 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                 // and deep-dive. Falls back to 8B/Gemini on rate limits via
                 // callGroq's existing failover chain.
                 // Market drivers -> Gemini (everything-else routing).
-                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.3);
+                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.1);
                 const driverParsed = JSON.parse(driverRes);
 
                 // Backstop the prompt rule in code: a price move is never a
@@ -1667,7 +1667,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             contextBundle,
             true,
             1000,
-            0.5,
+            0.1,
             false
         );
         
@@ -1681,7 +1681,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text on Groq...');
             const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
             // Deep-dive stays on Groq — its parse-retry does too (no Gemini).
-            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.5);
+            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.1);
         }
 
         if (!deepDive) {
@@ -1820,7 +1820,7 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // and callGroq() runs the LLM on Groq 70B, degrading to Groq 8B on rate
         // limits (Gemini removed — planner recommendations stay on Groq).
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
-        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.35);
+        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.1);
 
         let parsed;
         try {
