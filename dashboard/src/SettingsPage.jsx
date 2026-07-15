@@ -18,7 +18,6 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const [alertThreshold, setAlertThreshold] = useState('');
   
   const [allCommodities, setAllCommodities] = useState([]);
-  const [allRegions, setAllRegions] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState(profile?.customer_id || '');
   const [saving, setSaving] = useState(false);
@@ -34,16 +33,11 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
   const addCommodity = (key) => {
     if (key && !commodities.includes(key)) setCommodities([...commodities, key]);
   };
-  const addStandardRegion = (name) => {
-    if (name && !regions.includes(name)) setRegions([...regions, name]);
-  };
-
   useEffect(() => {
     fetch('/api/auth/templates')
       .then(res => res.json())
       .then(data => {
         setAllCommodities(data.commodities);
-        setAllRegions(data.regions);
         setCustomers(data.customers || []);
       });
   }, []);
@@ -182,16 +176,8 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
             </span>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-          <select className="form-select" style={{ minWidth: '220px' }} value="" onChange={e => addStandardRegion(e.target.value)}>
-            <option value="">+ Add tracked region…</option>
-            {allRegions.filter(r => !regions.includes(r.name)).map(r => (
-              <option key={r.name} value={r.name}>{r.name}</option>
-            ))}
-          </select>
-        </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} placeholder="Or add a custom city/region (e.g. Omaha, NE)" />
+          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomRegion(); } }} placeholder="Add a region — any city, country, or area (e.g. Middle East, Punjab, Rotterdam)" />
           <datalist id="region-suggestions">
             <option value="Omaha, NE" />
             <option value="Des Moines, IA" />
