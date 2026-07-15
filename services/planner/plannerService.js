@@ -109,23 +109,14 @@ function extractTopNewsIntelligence(news, focusProduct, userCommodities, focusRe
 
 // Pipeline-accepted articles (9-stage profile scanner) with NLP summaries and
 // entities — the highest-confidence news signal available to the planner.
+// Titles-only: the TITLES of the top pipeline-accepted articles (same set as
+// the Alerts tab). NLP summaries and entities are no longer ingested, so the
+// planner input is just the ranked headlines — the token-efficient signal.
 function formatAcceptedNewsInsights(insights) {
     if (!insights || insights.length === 0) return 'None available from the latest scans.';
-    const lines = [];
-    insights.forEach((item, idx) => {
-        const entities = item.entities || {};
-        const entityBits = [];
-        if (entities.places && entities.places.length) entityBits.push('Places: ' + entities.places.slice(0, 4).join(', '));
-        if (entities.organizations && entities.organizations.length) entityBits.push('Orgs: ' + entities.organizations.slice(0, 4).join(', '));
-        if (entities.values && entities.values.length) entityBits.push('Figures: ' + entities.values.slice(0, 4).join(', '));
-        lines.push(
-            `${idx + 1}. [${item.severity ?? '?'}, relevance ${item.relevanceScore ?? '?'}/100] ${item.title || ''}\n` +
-            `   Source: ${item.newsSource || 'Unknown'}\n` +
-            `   NLP summary: ${item.summary || 'n/a'}\n` +
-            `   ${entityBits.length ? entityBits.join(' | ') : 'No entities extracted'}`
-        );
-    });
-    return lines.join('\n');
+    return insights
+        .map((item, idx) => `${idx + 1}. [${item.severity ?? '?'}, relevance ${item.relevanceScore ?? '?'}/100] ${item.title || ''}`)
+        .join('\n');
 }
 
 // The user's live exposure-scored risk alerts — the strongest distilled
@@ -141,17 +132,11 @@ function formatActiveAlerts(alerts) {
 }
 
 function formatNewsIntelligence(extractedArticles) {
-    if (!extractedArticles || extractedArticles.length === 0) return 'No locally extracted relevant news facts available.';
-    const lines = [];
-    extractedArticles.forEach((item, idx) => {
-        lines.push(
-            `${idx + 1}. Source: ${item.source} | Title: ${item.title}\n` +
-            `   Useful extracted info: ${item.usefulInfo}\n` +
-            `   Supply signals: ${item.supplySignals.join(', ') || 'none'} | ` +
-            `Numbers/dates: ${item.values.join(', ') || 'none'}`
-        );
-    });
-    return lines.join('\n');
+    if (!extractedArticles || extractedArticles.length === 0) return 'No relevant news titles available.';
+    // Titles only — no extracted usefulInfo/signals/figures.
+    return extractedArticles
+        .map((item, idx) => `${idx + 1}. ${item.title} (${item.source || 'unknown'})`)
+        .join('\n');
 }
 
 // Builds the (systemPrompt, contextBundle) pair for the planner LLM call.
@@ -214,14 +199,16 @@ Live Commodity Prices: ${shortPrices}
 === ACTIVE RISK ALERTS (already exposure-scored against this user's supply chain) ===
 ${activeAlertsBlock}
 
-=== MARKET INTELLIGENCE ===
-TIER 1 — Pipeline-Verified News Insights (each passed a 9-stage relevance
-pipeline matched to this user's supply chain; NLP summaries and entities
-are machine-extracted from the full article text):
+=== MARKET INTELLIGENCE (HEADLINES ONLY) ===
+Only article TITLES are provided below — no body text, summaries, or extracted
+figures. Treat each headline as a signal of WHAT is happening; do NOT invent
+numbers, percentages, or details that are not in the headline itself.
+
+TIER 1 — Pipeline-Verified Headlines (each title passed a 9-stage relevance
+pipeline matched to this user's supply chain):
 ${acceptedInsightsBlock}
 
-TIER 2 — Locally Extracted Useful Info From Top Relevant News (lighter
-keyword extraction from raw headlines/descriptions):
+TIER 2 — Other Relevant Headlines (lighter keyword match):
 ${topNewsIntelligenceBlock}
 ${feedbackContext}`.trim();
 
