@@ -9,6 +9,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "smoke:gemini": "node scripts/gemini-smoke.mjs",
     "start": "node migrate.js && node server.js",
     "build": "cd dashboard && npm install && npm run build"
   },

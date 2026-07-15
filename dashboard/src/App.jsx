@@ -233,9 +233,6 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
     try { await onAdd?.(loc); } finally { setBusy(false); }
   };
 
-  const flagColor = (a) => a === 'DROUGHT_RISK' ? '#f59e0b' : a === 'HEAT_STRESS' ? '#ef4444' : a === 'FLOOD_RISK' ? '#38bdf8' : 'var(--text-muted)';
-  const flagLabel = (a) => a === 'DROUGHT_RISK' ? 'Drought risk' : a === 'HEAT_STRESS' ? 'Heat stress' : a === 'FLOOD_RISK' ? 'Flood risk' : 'Normal';
-
   const list = regions || [];
 
   return (
@@ -298,11 +295,6 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
                     </div>
                   </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    {c && (
-                      <span style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: flagColor(r.alert), border: `1px solid ${flagColor(r.alert)}`, borderRadius: '5px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
-                        {flagLabel(r.alert)}
-                      </span>
-                    )}
                     <button
                       onClick={() => onRemove?.(r.name)}
                       title="Remove region"

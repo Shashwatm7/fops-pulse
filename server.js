@@ -226,6 +226,11 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
                     generationConfig: {
                         temperature: temperature,
                         maxOutputTokens: maxTokens,
+                        // gemini-2.5-flash is a thinking model: without this,
+                        // internal reasoning eats maxOutputTokens and small
+                        // requests (e.g. the 16-token precedent classifier)
+                        // return empty (finishReason MAX_TOKENS). Disable it.
+                        thinkingConfig: { thinkingBudget: 0 },
                         ...jsonConfig
                     }
                 }
@@ -247,29 +252,11 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
 }
 
 export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true) {
-    // INTERCEPT DISABLED: Let Groq handle its own models to prevent Gemini rate limits crashing the drivers.
-    if (model === 'llama-3.3-70b-versatile' && false) {
-        const hash = crypto.createHash('sha256').update(systemPrompt + userContent).digest('hex');
-        if (!global.llmCache) global.llmCache = {};
-        
-        const cached = global.llmCache[hash];
-        if (cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
-            console.log(`[GEMINI CACHE HIT] Returned cached response for article.`);
-            return cached.data;
-        }
-
-        console.log(`[GEMINI API CALL] Routing scanner evaluation to Gemini 2.5 Flash...`);
-        const result = await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
-        global.llmCache[hash] = { data: result, timestamp: Date.now() };
-        return result;
-    }
-
+    // Groq-only path (planner recommendations + deep-dive). Gemini is NOT a
+    // fallback here — deliberately removed so the two providers' rate-limit
+    // budgets stay separate. Groq's own 70B->8B degradation is the only net.
     if (global.aiCircuitBreaker && Date.now() < global.aiCircuitBreaker) {
-        console.warn(`[CIRCUIT-BREAKER] Groq API blocked. Falling back to Gemini 2.5 Flash for model ${model}`);
-        if (process.env.GEMINI_API_KEY) {
-            return await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
-        }
-        throw new Error('Circuit Breaker active and no Gemini API Key available');
+        throw new Error('Groq circuit-breaker active (rate limited); retry later.');
     }
 
     try {
@@ -328,56 +315,37 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 global.aiCircuitBreaker = Date.now() + waitMs + 2000;
             }
         }
-        console.log(`[FAILOVER] Primary Groq failed (${model}): ${errMsg}. Falling back to Gemini 2.5 Flash.`);
-        if (process.env.GEMINI_API_KEY) {
-            try {
-                return await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
-            } catch (geminiErr) {
-                console.log(`[FAILOVER] Gemini 2.5 Flash also failed. Trying Groq Llama 3.3 70B...`);
-            }
-        }
+        // Gemini fallback removed by design. Degrade once to Groq 8B, then give up.
+        console.log(`[FAILOVER] Primary Groq failed (${model}): ${errMsg}. Trying Groq llama-3.1-8b-instant.`);
         try {
-                if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
-                const groqBackup2 = await axios.post(
-                    'https://api.groq.com/openai/v1/chat/completions',
-                    {
-                        model: 'llama-3.1-8b-instant',
-                        max_tokens: maxTokens,
-                        temperature: temperature,
-                        ...(jsonMode && { response_format: { type: 'json_object' } }),
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'user', content: userContent },
-                        ],
-                    },
-                    {
-                        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }
-                    }
-                );
-                const usage = groqBackup2.data.usage;
-                if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
-                console.log(`[TOKENS] Groq llama-3.1-8b-instant | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
-                return groqBackup2.data.choices[0].message.content;
-            } catch (fallbackErr2) {
-                if (fallbackErr2.response?.headers) {
-                    const remaining = fallbackErr2.response.headers['x-ratelimit-remaining-requests'];
-                    const reset = fallbackErr2.response.headers['x-ratelimit-reset-requests'];
-                    if (remaining !== undefined && reset !== undefined) {
-                        global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
-                    }
-                }
-                if (process.env.GEMINI_API_KEY) {
-                    console.log(`[FAILOVER] Groq Mixtral failed. Using Gemini 2.5 Flash fallback...`);
-                    try {
-                    const result = await callGeminiFlash(systemPrompt, userContent, jsonMode, maxTokens, temperature);
-                    console.log(`[TOKENS] Gemini 2.5 Flash Fallback executed successfully.`);
-                    return result;
-                } catch (geminiErr) {
-                    console.error('[FAILOVER] Gemini also failed:', geminiErr.response?.data?.error?.message || geminiErr.message);
+            if (!GROQ_KEY) throw new Error('Missing GROQ_API_KEY');
+            const groqBackup2 = await axios.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    model: 'llama-3.1-8b-instant',
+                    max_tokens: maxTokens,
+                    temperature: temperature,
+                    ...(jsonMode && { response_format: { type: 'json_object' } }),
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent },
+                    ],
+                },
+                { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }
+            );
+            const usage = groqBackup2.data.usage;
+            if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
+            console.log(`[TOKENS] Groq llama-3.1-8b-instant | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
+            return groqBackup2.data.choices[0].message.content;
+        } catch (fallbackErr2) {
+            if (fallbackErr2.response?.headers) {
+                const remaining = fallbackErr2.response.headers['x-ratelimit-remaining-requests'];
+                const reset = fallbackErr2.response.headers['x-ratelimit-reset-requests'];
+                if (remaining !== undefined && reset !== undefined) {
+                    global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
                 }
             }
-
-            throw new Error('AI providers unavailable. Check GROQ_API_KEY or GEMINI_API_KEY quota/configuration.');
+            throw new Error('Groq unavailable (70B and 8B both failed). Check GROQ_API_KEY quota.');
         }
     }
 }
@@ -985,12 +953,10 @@ app.get('/api/weather', requireAuth, async (req, res) => {
             const temps = days.map(d => d.day.maxtemp_c).filter(v => v != null);
             const precip = days.map(d => d.day.totalprecip_mm);
             const totalRain = precip.reduce((a, b) => a + (b || 0), 0);
-            const maxTemp = temps.length ? Math.max(...temps) : 0;
             const result = {
                 ...r,
                 avgTempC: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : 'N/A',
                 totalPrecipMm: totalRain.toFixed(1),
-                alert: totalRain < 5 ? 'DROUGHT_RISK' : maxTemp > 38 ? 'HEAT_STRESS' : 'NORMAL',
                 // Real-time current conditions straight from WeatherAPI (no
                 // aggregation, no proxy) for the live Command Center strip.
                 current: data.current ? {
@@ -1520,7 +1486,8 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                 // 70B for reasoning quality — same fix applied to the planner
                 // and deep-dive. Falls back to 8B/Gemini on rate limits via
                 // callGroq's existing failover chain.
-                const driverRes = await callGroq('llama-3.3-70b-versatile', driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.3, false);
+                // Market drivers -> Gemini (everything-else routing).
+                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.3);
                 const driverParsed = JSON.parse(driverRes);
 
                 // Backstop the prompt rule in code: a price move is never a
@@ -1692,8 +1659,8 @@ CRITICAL INSTRUCTIONS:
 
 Return a JSON object: {"deepDive": "your concise, structured, and informative plain text analysis"}`;
 
-        // 70B for reasoning quality; callGroq's failover chain (Gemini, then
-        // 8B) protects against free-tier rate limits.
+        // 70B for reasoning quality; callGroq degrades to Groq 8B on rate
+        // limits (Gemini is no longer a fallback — deep-dive stays on Groq).
         const analysisRaw = await callGroq(
             'llama-3.3-70b-versatile',
             analysisPrompt,
@@ -1711,9 +1678,10 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : String(analysis.deepDive || '');
             if (deepDive.length < 50) throw new Error('Response too short or hallucinated number');
         } catch (parseErr) {
-            console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text for Ollama...');
+            console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text on Groq...');
             const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
-            deepDive = await callGeminiFlash(fallbackPrompt, contextBundle, false, 1500, 0.5);
+            // Deep-dive stays on Groq — its parse-retry does too (no Gemini).
+            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.5);
         }
 
         if (!deepDive) {
@@ -1849,8 +1817,8 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
 
         // Ported from the old Python FastAPI microservice: plannerService builds
         // the (systemPrompt, contextBundle) pair with pure regex/string logic,
-        // and callGroq() runs the LLM with the shared Groq 70B → Gemini → Groq 8B
-        // failover chain (same model, temperature, and json_mode as before).
+        // and callGroq() runs the LLM on Groq 70B, degrading to Groq 8B on rate
+        // limits (Gemini removed — planner recommendations stay on Groq).
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
         const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.35);
 
@@ -3334,7 +3302,8 @@ async function aiFallbackMatch(text) {
         const { system, user } = buildMatcherPrompt(text);
         // Plain text mode (jsonMode adds instruction tokens), 16-token output,
         // temperature 0 for cache-stable classification.
-        const raw = await callGroq('llama-3.1-8b-instant', system, user, false, 16, 0, false);
+        // Precedent classification -> Gemini (everything-else routing).
+        const raw = await callGeminiFlash(system, user, false, 16, 0);
         const matched = parseMatcherResponse(raw);
         llmMatchCache.set(key, matched ? matched.id : null);
         return matched;

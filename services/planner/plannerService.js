@@ -2,9 +2,9 @@
 // microservice (ai_service/planner.py). This module is PURE: it does the
 // regex extraction, news ranking, and prompt/context construction, then
 // hands the finished (systemPrompt, contextBundle) pair back to the caller.
-// The actual LLM call is done by server.js's callGroq() (Groq 70B → Gemini →
-// Groq 8B failover), so we no longer maintain a second HTTP client / key
-// rotation / failover chain here.
+// The actual LLM call is done by server.js's callGroq() (Groq 70B, degrading
+// to Groq 8B on rate limits), so we no longer maintain a second HTTP client /
+// key rotation / failover chain here.
 
 function escapeRegExp(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
