@@ -121,8 +121,24 @@ Ground every field strictly in the supplied article text and entity list; never 
 
 // Shared between the prompt and the grounding filter so figures are checked
 // against exactly the content the model saw.
+// Cap the article body sent to the LLM. News is inverted-pyramid (key facts
+// up top), so the lede + first paragraphs carry the actionable content; the
+// tail is usually boilerplate/background. Capping here slashes input tokens
+// (a full body can be 5-20K chars) and, since summaryPrompt() and the
+// grounding check both call summaryContent(), they stay consistent — a figure
+// the model can cite is exactly a figure present in the capped text.
+const MAX_BODY_CHARS = Number(process.env.SUMMARY_MAX_BODY_CHARS) || 4000;
+function capBody(text) {
+    if (text.length <= MAX_BODY_CHARS) return text;
+    const cut = text.slice(0, MAX_BODY_CHARS);
+    // Prefer to end on a sentence boundary so we never split a number.
+    const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\n'), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+    const body = stop > MAX_BODY_CHARS * 0.6 ? cut.slice(0, stop + 1) : cut;
+    return body + ' ... [article truncated]';
+}
+
 function summaryContent(article, bodyText) {
-    if (bodyText && bodyText.length > 120) return bodyText;
+    if (bodyText && bodyText.length > 120) return capBody(bodyText);
     const snippet = (article.description || '').slice(0, 800);
     if (snippet.trim().length >= 40) return snippet;
     return 'UNAVAILABLE — the full article text could not be retrieved. Only the title above is known. Do not state any figures; key_figures must be [].';

@@ -4,9 +4,10 @@
 // the labeling pipeline — ingestion is fully rule-based.)
 
 export const labelingConfig = {
-    // Default 'gemini': summaries are "everything else", routed off Groq to keep
-    // Groq's rate-limit budget for planner recommendations + deep-dive.
-    provider: process.env.LLM_PROVIDER || 'gemini',   // 'gemini' | 'groq' | 'anthropic'
+    // Default 'groq': summaries run on Groq (its free RPM/TPM/RPD are far more
+    // generous than Gemini free tier's 5 RPM). Input is capped in summaryContent
+    // so the token cost stays low. Set LLM_PROVIDER=gemini|anthropic to override.
+    provider: process.env.LLM_PROVIDER || 'groq',   // 'groq' | 'gemini' | 'anthropic'
     groqApiKey: process.env.GROQ_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     geminiApiKey: process.env.GEMINI_API_KEY || '',
