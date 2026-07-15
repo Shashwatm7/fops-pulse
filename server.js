@@ -13,7 +13,7 @@ import authRouter, { requireAuth, requireAdmin } from './auth.js';
 import { tuning, TUNING_META, updateTuning } from './services/tuning.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
-import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
+import { fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
@@ -1288,6 +1288,22 @@ app.post('/api/trigger-scan', requireAuth, async (req, res) => {
     }
 });
 
+// Single source of truth for "which regions the user tracks for news".
+// Unifies the three region fields the Settings tab manages so the news feed
+// (/api/news), the profile scanner (Alerts tab), and the planner/deep-dive
+// all filter news by the SAME list. custom_regions entries may be strings or
+// {name} objects; focus_region is included as a fallback anchor.
+function trackedRegionNames(profile) {
+    const custom = (profile?.custom_regions || [])
+        .map(r => (typeof r === 'string' ? r : (r?.name || '')))
+        .filter(Boolean);
+    return [...new Set([
+        ...(profile?.regions || []),
+        ...custom,
+        profile?.focus_region,
+    ].filter(Boolean))];
+}
+
 app.get('/api/news', requireAuth, async (req, res) => {
     try {
         let userKeywords = req.userProfile?.news_keywords || ['frozen food', 'cold chain', 'frozen goods'];
@@ -1313,9 +1329,12 @@ app.get('/api/news', requireAuth, async (req, res) => {
         // Dynamically build Google News queries. Append market context to avoid consumer/recipe news.
         // Cap to keep RSS fan-out bounded (these run as parallel fetches).
         const querySuffix = ' AND (market OR "supply chain" OR trade OR agriculture OR prices OR export)';
+        // Region selection consistent with the Alerts scanner + Settings tab:
+        // pin the focus product to EVERY tracked region, not just focus_region.
+        const newsRegions = trackedRegionNames(req.userProfile);
         const googleQueries = [
             ...userKeywords.slice(0, 16).map(kw => `"${kw}"${querySuffix}`),
-            `"${focusProduct}" "${focusRegion}"${querySuffix}`
+            ...(newsRegions.length ? newsRegions : [focusRegion]).map(r => `"${focusProduct}" "${r}"${querySuffix}`)
         ];
         const allArticles = [];
 
@@ -1616,18 +1635,15 @@ app.post('/api/analyze-deep-dive', requireAuth, async (req, res) => {
         } catch (e) { console.error('Failed to load AI feedback history:', e.message); }
 
 
-        // Pipeline-verified insights only (token-efficient): NLP summaries of
-        // articles that passed the 9-stage profile scanner, from the alerts
-        // store. Falls back to 3 raw headlines only when no insights exist.
+        // Titles-only: the TITLES of the top articles that passed the 9-stage
+        // profile scanner (same set shown in the Alerts tab). No NLP summaries
+        // or entities are ingested anymore — this is the token-efficient input.
         let newsBlock = '';
         try {
             const insightRows = await getRecentAlertsBySource(req.session.userId, 'PROFILE_NEWS', 72, 5);
             newsBlock = insightRows.map((r, i) => {
                 const title = (r.title || '').replace(/^🎯 Profile Alert:\s*/, '');
-                const summary = String(r.payload?.description || '').replace(/^NLP Summary:\s*/, '').slice(0, 220);
-                const ent = r.payload?.entities || {};
-                const facts = [...(ent.places || []).slice(0, 3), ...(ent.values || []).slice(0, 3)].join(', ');
-                return `${i + 1}. [${r.severity} ${r.relevance_score ?? '?'}/100] ${title}${summary ? ` — ${summary}` : ''}${facts ? ` (Key facts: ${facts})` : ''}`;
+                return `${i + 1}. [${r.severity} ${r.relevance_score ?? '?'}/100] ${title}`;
             }).join('\n');
         } catch (e) { console.error('Deep-dive insights load failed:', e.message); }
         if (!newsBlock) {
@@ -1652,9 +1668,9 @@ ${Array.isArray(deterministicAction) ? deterministicAction.join(' | ') : (determ
 
 === USER PROFILE ===
 Targeted Commodities: ${req.userProfile?.commodities?.join(', ') || focusProduct}
-Targeted Regions: ${[...(req.userProfile?.regions || []), focusRegion].join(', ')}
+Targeted Regions: ${trackedRegionNames(req.userProfile).join(', ')}
 
-=== PIPELINE-VERIFIED NEWS INSIGHTS ===
+=== PIPELINE-VERIFIED NEWS HEADLINES (titles only — no body/figures) ===
 ${newsBlock}
 
 === REGIONAL WEATHER (tracked growing regions) ===
@@ -1679,7 +1695,7 @@ CRITICAL INSTRUCTIONS:
 - Do not infer impacts between commodities unless there is a clearly established causal relationship supported by the provided data.
 - Never mention or recommend actions based on commodities that the user did not select.
 ===================================
-1. You MUST ground the analysis in the "PIPELINE-VERIFIED NEWS INSIGHTS" (each passed a relevance pipeline for this user's supply chain — cite their specific events and figures) and the "REGIONAL WEATHER" conditions. Do NOT hallucinate news or weather.
+1. You MUST ground the analysis in the "PIPELINE-VERIFIED NEWS HEADLINES" (each title passed a relevance pipeline for this user's supply chain — reference the specific events named in the headlines) and the "REGIONAL WEATHER" conditions. Only TITLES are provided, no article bodies — cite the event/topic of a headline, but do NOT invent figures or details not present in the title. Do NOT hallucinate news or weather.
 2. DO NOT use generic filler phrases like "variance index" or "macroeconomic indicators".
 3. Provide a highly structured, concise, and deeply informative analysis (around 100-150 words). Dive into the nuances and strategic implications of the data. Format the output as plain text with line breaks (\\n). Use dashes (-) for bullet points. DO NOT output any HTML tags.
 4. SYNTHESIZE the data into actionable insights. Tell the user WHY the data matters at a strategic executive level.
@@ -2862,9 +2878,11 @@ async function scanSingleUser(user, pipeline) {
     // Apply region target to custom keywords
     customKeywords = customKeywords.map(k => `${k}${regionTarget}`);
 
-    // Gather selected commodities and regions
+    // Gather selected commodities and regions. Regions use the shared
+    // trackedRegionNames() set (regions + custom_regions + focus_region) so the
+    // scanner queries the SAME geography the news feed and Settings tab use.
     const targets = [...(profile.commodities || []), profile.focus_product].filter(Boolean);
-    const regions = [...(profile.regions || []), profile.focus_region].filter(Boolean);
+    const regions = trackedRegionNames(profile);
 
     // Keys are UPPER_SNAKE (e.g. LIVE_CATTLE) — use spaces in search queries,
     // quoting multi-word phrases so Google matches "live cattle" as a phrase,
@@ -3008,19 +3026,14 @@ async function scanSingleUser(user, pipeline) {
       alertedArticles.add(`user:${user.id}:${titleKey}`);
       alertedArticles.add(titleKey);
 
-      // Extract insights locally (LLM-free) — only for articles actually
-      // alerted, so we don't fetch full text for capped ones.
-      const extractedData = await fetchAndExtractArticle(a.url);
-      let nlpDescription = a.description;
-      let entities = null;
-      if (extractedData) {
-        nlpDescription = `NLP Summary: ${extractedData.summary}`;
-        entities = extractedData.entities;
-        await pool.query(
-          `UPDATE alerts SET payload = $1 WHERE user_id = $2 AND dedup_key = $3`,
-          [JSON.stringify({ source: a.source, entities, description: nlpDescription }), user.id, `profile:${titleKey}`]
-        ).catch(() => {});
-      }
+      // Titles-only ingestion: we no longer fetch the full article body,
+      // run extractive summarization, or extract entities for alerted
+      // articles. The title (persisted above) is the ingested signal. This
+      // removes a per-alert body fetch and keeps the downstream LLM context
+      // (deep-dive + planner) to titles only. The alert payload keeps the
+      // free RSS snippet from the insert above; no NLP summary is written.
+      const nlpDescription = a.description;
+      const entities = null;
 
       triggeredAlerts.push({
         id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),

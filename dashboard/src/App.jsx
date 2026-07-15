@@ -1580,13 +1580,6 @@ export default function Dashboard() {
                   </a>
                 </div>
               )}
-              {a.entities && (
-                <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {a.entities.organizations?.map((org, idx) => <span key={`org-${idx}`} style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🏢 {org}</span>)}
-                  {a.entities.places?.map((place, idx) => <span key={`place-${idx}`} style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>📍 {place}</span>)}
-                  {a.entities.values?.map((val, idx) => <span key={`val-${idx}`} style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>💲 {val}</span>)}
-                </div>
-              )}
               {a.regions?.length > 0 && <div className="alert-regions">{(a.regions || []).map((r, j) => <span key={j} className="region-tag">{r}</span>)}</div>}
             </div>
           ))}
@@ -1773,13 +1766,6 @@ export default function Dashboard() {
                       {d.ports_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Ports:</b> {d.ports_affected.join(', ')}</div>}
                       {d.action_note && <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', color: '#34d399' }}>→ {d.action_note}</div>}
                       {(insight.urgency) && <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-dim)' }}>Urgency: {insight.urgency}</div>}
-                    </div>
-                  )}
-                  {a.entities && (
-                    <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {a.entities.organizations?.map((org, idx) => <span key={`org-${idx}`} style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '2px 6px', borderRadius: '4px' }}>🏢 {org}</span>)}
-                      {a.entities.places?.map((place, idx) => <span key={`place-${idx}`} style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>📍 {place}</span>)}
-                      {a.entities.values?.map((val, idx) => <span key={`val-${idx}`} style={{ fontSize: '10px', background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 6px', borderRadius: '4px' }}>💲 {val}</span>)}
                     </div>
                   )}
                 </div>
