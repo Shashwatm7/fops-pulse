@@ -9,7 +9,8 @@ import path from 'path';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
 import nlp from 'compromise';
-import authRouter, { requireAuth } from './auth.js';
+import authRouter, { requireAuth, requireAdmin } from './auth.js';
+import { tuning, TUNING_META, updateTuning } from './services/tuning.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
 import { fetchAndExtractArticle, fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
@@ -153,6 +154,18 @@ app.get('/api/token-usage', requireAuth, (req, res) => {
 
 app.get('/api/rate-limits', requireAuth, (req, res) => {
     res.json(global.apiRateLimits || { remaining: 'N/A', reset: 'N/A' });
+});
+
+// ── Admin: runtime tuning (Rocchio γ, thresholds, LLM temp) ──────
+// Runtime-only: values apply on the next scan/analyze but reset to env
+// defaults on restart. Admin-gated.
+app.get('/api/admin/tuning', requireAuth, requireAdmin, (req, res) => {
+    res.json({ success: true, values: { ...tuning }, meta: TUNING_META });
+});
+app.post('/api/admin/tuning', requireAuth, requireAdmin, (req, res) => {
+    const applied = updateTuning(req.body || {});
+    console.log(`[TUNING] ${req.user.username} updated:`, applied);
+    res.json({ success: true, applied, values: { ...tuning } });
 });
 
 // Groq API key POOL: GROQ_API_KEY may hold several comma-separated keys (one
@@ -1508,7 +1521,7 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                 // and deep-dive. Falls back to 8B/Gemini on rate limits via
                 // callGroq's existing failover chain.
                 // Market drivers -> Gemini (everything-else routing).
-                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, 0.1);
+                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, tuning.llmTemperature);
                 const driverParsed = JSON.parse(driverRes);
 
                 // Backstop the prompt rule in code: a price move is never a
@@ -1688,7 +1701,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             contextBundle,
             true,
             1000,
-            0.1,
+            tuning.llmTemperature,
             false,
             'deepdive'
         );
@@ -1703,7 +1716,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
             console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text on Groq...');
             const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
             // Deep-dive stays on Groq — its parse-retry does too (no Gemini).
-            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, 0.1, true, 'deepdive');
+            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, tuning.llmTemperature, true, 'deepdive');
         }
 
         if (!deepDive) {
@@ -1842,7 +1855,7 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // and callGroq() runs the LLM on Groq 70B, degrading to Groq 8B on rate
         // limits (Gemini removed — planner recommendations stay on Groq).
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
-        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, 0.1, true, 'planner');
+        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, tuning.llmTemperature, true, 'planner');
 
         let parsed;
         try {
@@ -2787,11 +2800,9 @@ async function initScannerPipeline() {
     scoreThreshold: 75,
     llmThresholdLow: 25,
     llmThresholdHigh: 85,
-    // Semantic rescue: keyword-rejected articles with seed similarity at or
-    // above this are accepted anyway (see pipeline.js for the calibration —
-    // relevant rejected articles scored ~0.42, noise ceiling 0.265). Stricter
-    // than the stage-6 gate (0.30) since rescue bypasses all keyword checks.
-    rescueThreshold: Number.parseFloat(process.env.SEMANTIC_RESCUE_THRESHOLD) || 0.4
+    // rescueThreshold intentionally omitted so the pipeline reads the LIVE
+    // runtime tuning value (admin-adjustable) instead of a construction-time
+    // constant — this singleton is built once and reused across scans.
   });
   return userScannerPipeline;
 }
