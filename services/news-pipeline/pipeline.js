@@ -5,6 +5,7 @@ import { matchRegion } from './stages/4_region_matcher.js';
 import { calculateRelevanceScore } from './stages/5_relevance_scorer.js';
 import { applySemanticFilter, semanticSimilarity } from './stages/6_semantic_filter.js';
 import { classifyPriority } from './stages/8_priority_classifier.js';
+import { tuning } from '../tuning.js';
 
 export class NewsPipeline {
     constructor(config) {
@@ -24,7 +25,7 @@ export class NewsPipeline {
         // openings, local fires, sports) was 0.265. Above the stage-6 gate
         // (0.30) because rescue bypasses every keyword check. Injectable for
         // tests; env-tunable via SEMANTIC_RESCUE_THRESHOLD.
-        this.rescueThreshold = config.rescueThreshold ?? 0.4;
+        this.rescueThreshold = config.rescueThreshold; // undefined -> read live tuning at rescue
         this.similarityFn = config.similarityFn || semanticSimilarity;
         // Rejection memo: userArticleKey → profile fingerprint of the profile
         // version that rejected it. Prevents re-LOGGING the same rejection on
@@ -134,7 +135,8 @@ export class NewsPipeline {
                 console.error('[USER-SCANNER] Rescue similarity failed (rejection stands):', err.message);
                 return null;
             }
-            if (sim == null || sim < this.rescueThreshold) return null;
+            const rescueThreshold = this.rescueThreshold ?? tuning.rescueThreshold;
+            if (sim == null || sim < rescueThreshold) return null;
 
             // Similarity-derived score, floored at 60 (Medium): a rescue is a
             // judgment that this article matters despite no keyword — an
@@ -148,7 +150,7 @@ export class NewsPipeline {
             if (priority === 'Ignored') return null;
 
             const simStr = sim.toFixed(3);
-            console.log(`[USER-SCANNER] Rescued (semantic ${simStr} ≥ ${this.rescueThreshold}, was stage ${rejectedStage}): ${article.title}`);
+            console.log(`[USER-SCANNER] Rescued (semantic ${simStr} ≥ ${rescueThreshold}, was stage ${rejectedStage}): ${article.title}`);
             return await doReturn({
                 accepted: true,
                 score: rescueScore,

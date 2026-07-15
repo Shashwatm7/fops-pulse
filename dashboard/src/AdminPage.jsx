@@ -6,6 +6,9 @@ export default function AdminPage({ onBack }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tuning, setTuning] = useState(null);   // runtime tuning values
+  const [tuningMeta, setTuningMeta] = useState(null); // bounds/labels per field
+  const [tuningStatus, setTuningStatus] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -20,6 +23,11 @@ export default function AdminPage({ onBack }) {
         const data = await res.json();
         if (res.ok) setStats(data.layers);
         else setError(data.error || 'Failed to fetch storage stats');
+      } else if (activeTab === 'tuning') {
+        const res = await fetch('/api/admin/tuning', { credentials: 'include' });
+        const data = await res.json();
+        if (res.ok) { setTuning(data.values); setTuningMeta(data.meta); }
+        else setError(data.error || 'Failed to fetch tuning');
       }
     } catch (err) {
       setError(err.message);
@@ -52,6 +60,21 @@ export default function AdminPage({ onBack }) {
     } catch (err) { console.error(err); }
   };
 
+  const handleSaveTuning = async () => {
+    setTuningStatus('Saving...');
+    try {
+      const res = await fetch('/api/admin/tuning', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(tuning),
+      });
+      const data = await res.json();
+      if (res.ok) { setTuning(data.values); setTuningStatus('Applied — takes effect on the next scan/analyze.'); }
+      else setTuningStatus(data.error || 'Save failed');
+    } catch (err) { setTuningStatus(err.message); }
+  };
+
   return (
     <div style={styles.container}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -64,10 +87,14 @@ export default function AdminPage({ onBack }) {
           style={activeTab === 'users' ? styles.tabActive : styles.tab} 
           onClick={() => setActiveTab('users')}
         >👥 User Management</button>
-        <button 
-          style={activeTab === 'storage' ? styles.tabActive : styles.tab} 
+        <button
+          style={activeTab === 'storage' ? styles.tabActive : styles.tab}
           onClick={() => setActiveTab('storage')}
         >🗄️ Storage Architecture</button>
+        <button
+          style={activeTab === 'tuning' ? styles.tabActive : styles.tab}
+          onClick={() => setActiveTab('tuning')}
+        >🎛️ Fine-tuning</button>
       </div>
 
       {loading && <div style={{ color: 'var(--text-muted)' }}>Loading {activeTab}...</div>}
@@ -158,6 +185,48 @@ export default function AdminPage({ onBack }) {
             </div>
           </div>
 
+        </div>
+      )}
+
+      {!loading && !error && activeTab === 'tuning' && tuning && tuningMeta && (
+        <div style={{ ...styles.card, padding: '24px', maxWidth: '640px' }}>
+          <div style={styles.layerTitle}>Pipeline & LLM parameters</div>
+          <div style={styles.layerDesc}>
+            Runtime only — changes apply on the next scan/analyze and reset to defaults on restart.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '18px' }}>
+            {Object.keys(tuningMeta).map(key => {
+              const m = tuningMeta[key];
+              return (
+                <div key={key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>{m.label}</label>
+                    <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #67e8f9)' }}>
+                      {Number(tuning[key]).toFixed(2)}
+                      <span style={{ color: 'var(--text-dim)', marginLeft: '8px', fontSize: '11px' }}>default {Number(m.default).toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <input
+                    type="range" min={m.min} max={m.max} step={m.step}
+                    value={tuning[key]}
+                    onChange={e => { setTuning({ ...tuning, [key]: Number(e.target.value) }); setTuningStatus(''); }}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)' }}>
+                    <span>{m.min}</span><span>{m.max}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '22px' }}>
+            <button style={styles.actionBtn} onClick={handleSaveTuning}>Apply</button>
+            <button style={styles.actionBtn} onClick={() => {
+              const reset = {}; Object.keys(tuningMeta).forEach(k => reset[k] = tuningMeta[k].default);
+              setTuning(reset); setTuningStatus('Reset to defaults (not yet applied — click Apply).');
+            }}>Reset to defaults</button>
+            {tuningStatus && <span style={{ fontSize: '12px', color: 'var(--accent-emerald, #10b981)' }}>{tuningStatus}</span>}
+          </div>
         </div>
       )}
     </div>

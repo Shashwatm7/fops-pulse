@@ -9,6 +9,7 @@
  * stub did), so this only tightens filtering where seeds are configured.
  */
 import { embed } from '../../labeling/embeddingService.js';
+import { tuning } from '../../tuning.js';
 
 const DEFAULT_THRESHOLD = 0.30; // empirically: relevant >=0.44, noise <=0.14
 
@@ -19,8 +20,8 @@ const DEFAULT_THRESHOLD = 0.30; // empirically: relevant >=0.44, noise <=0.14
 // prototype is a centroid of the known false-positive classes (recipes,
 // restaurant reviews, box-office, sports, ...) — this is what Rocchio adds:
 // it pushes down food-adjacent NOISE that slipped past keyword matching.
-// GAMMA is small (non-relevant feedback is noisier than relevant); tunable.
-const GAMMA = Number(process.env.ROCCHIO_GAMMA) || 0.5;
+// GAMMA is small (non-relevant feedback is noisier than relevant). Read LIVE
+// from the runtime tuning store so an admin can adjust it without a restart.
 
 // Natural-sentence noise seeds (sentences embed better than keyword bags),
 // covering the false-positive topics the pipeline has actually seen.
@@ -122,8 +123,9 @@ export async function applySemanticFilter(article, profile, score) {
         // closeness to the noise prototype. `similarity` still reports raw
         // maxPos (the interpretable relevance recorded on the article); the
         // gate decides on the Rocchio-adjusted score.
-        const rocchio = maxPos - GAMMA * negSim;
-        const threshold = profile.semanticThreshold || DEFAULT_THRESHOLD;
+        const gamma = tuning.rocchioGamma;
+        const rocchio = maxPos - gamma * negSim;
+        const threshold = profile.semanticThreshold || tuning.semanticThreshold || DEFAULT_THRESHOLD;
 
         if (rocchio < threshold) {
             // 3 decimals so a 0.295 doesn't render as "0.30 < 0.3" (looks buggy).
@@ -131,7 +133,7 @@ export async function applySemanticFilter(article, profile, score) {
                 passed: false,
                 similarity: +maxPos.toFixed(3),
                 rocchio: +rocchio.toFixed(3),
-                reason: `Rocchio ${rocchio.toFixed(3)} (sim ${maxPos.toFixed(3)} - ${GAMMA}*noise ${negSim.toFixed(3)}) < threshold ${threshold}`,
+                reason: `Rocchio ${rocchio.toFixed(3)} (sim ${maxPos.toFixed(3)} - ${gamma}*noise ${negSim.toFixed(3)}) < threshold ${threshold}`,
             };
         }
         return { passed: true, similarity: +maxPos.toFixed(3), rocchio: +rocchio.toFixed(3) };
