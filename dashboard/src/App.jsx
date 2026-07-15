@@ -1580,7 +1580,6 @@ export default function Dashboard() {
                   </a>
                 </div>
               )}
-              {a.regions?.length > 0 && <div className="alert-regions">{(a.regions || []).map((r, j) => <span key={j} className="region-tag">{r}</span>)}</div>}
             </div>
           ))}
 
