@@ -1028,60 +1028,24 @@ app.get('/api/weather', requireAuth, async (req, res) => {
 app.post('/api/regions/add', requireAuth, async (req, res) => {
     try {
         const { name, crop } = req.body;
-        if (!name) return res.status(400).json({ error: 'Region name is required' });
+        const regionName = (name || '').trim();
+        if (!regionName) return res.status(400).json({ error: 'Region name is required' });
 
-        const apiKey = process.env.WEATHER_API_KEY;
-        if (!apiKey) return res.status(503).json({ error: 'Weather service not configured' });
-
-        // Resolve against WeatherAPI's OWN location catalog (search.json) so we
-        // only ever store a place WeatherAPI genuinely covers — no nearest-point
-        // proxy. Handle "City, Country" by country-constraining the match.
-        const parts = name.split(',').map(s => s.trim());
-        const queryName = parts[0];
-        const countryHint = parts.length > 1 ? parts.slice(1).join(',').trim().toLowerCase() : null;
-
-        const { data } = await axios.get('http://api.weatherapi.com/v1/search.json', {
-            params: { key: apiKey, q: queryName }
-        });
-
-        if (!Array.isArray(data) || data.length === 0) {
-            return res.status(404).json({ error: `"${queryName}" is not a location covered by the weather service. Try a nearby town or city.` });
-        }
-
-        // Common ISO/abbreviation aliases so "UAE"/"KSA"/"US" match WeatherAPI's
-        // full country names.
-        const COUNTRY_ALIASES = {
-            uae: 'united arab emirates', ksa: 'saudi arabia', us: 'united states',
-            usa: 'united states', uk: 'united kingdom',
-        };
-        let location = data[0];
-        if (countryHint) {
-            const hint = COUNTRY_ALIASES[countryHint] || countryHint;
-            const exact = data.find(r =>
-                r.country?.toLowerCase().includes(hint) || hint.includes(r.country?.toLowerCase()));
-            if (!exact) {
-                return res.status(404).json({
-                    error: `No "${queryName}" found in "${parts.slice(1).join(',').trim()}". Covered matches: ${data.slice(0, 5).map(r => `${r.name}, ${r.country}`).join('; ')}`,
-                });
-            }
-            location = exact;
-        }
-        const newRegion = {
-            name: location.region ? `${location.name}, ${location.region}` : location.name,
-            country: location.country,
-            lat: location.lat,
-            lon: location.lon,
-            crop: crop || 'Mixed Agriculture',
-            wxLocation: location.region ? `${location.name}, ${location.region}` : location.name,
-        };
+        // News/focus region: a free-text geographic TAG used for news query
+        // building and the scanner's Stage-4 region gate. Deliberately NOT
+        // validated against WeatherAPI — news regions and live weather stations
+        // are separate systems (live weather uses /api/weather-regions/* and the
+        // weather_regions column). This lets a planner track broad geographies
+        // like "Middle East" or "Southeast Asia" that WeatherAPI has no single
+        // station for.
+        const newRegion = { name: regionName, crop: crop || 'Mixed Agriculture' };
 
         const currentProfile = req.userProfile;
         const customRegions = currentProfile.custom_regions || [];
-        
-        // Check if already exists to prevent duplicates
-        if (!customRegions.find(r => r.name === newRegion.name && r.country === newRegion.country)) {
+        const nameOf = (r) => (typeof r === 'string' ? r : r?.name);
+        // De-dupe case-insensitively against both string and object entries.
+        if (!customRegions.some(r => nameOf(r)?.toLowerCase() === regionName.toLowerCase())) {
             customRegions.push(newRegion);
-            // Save to DB
             await updateUserProfile(req.user.id, { ...currentProfile, custom_regions: customRegions });
         }
 
