@@ -20,7 +20,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -208,12 +208,9 @@ app.get('/api/admin/tuning/seeds-preview/:userId', requireAuth, requireAdmin, as
 const GROQ_KEYS = (process.env.GROQ_API_KEY || '').split(',').map(s => s.trim()).filter(Boolean);
 // Task -> key index. Extend as you add keys; wraps (mod) when you have fewer
 // keys than tasks. Keep this in sync with LABELING_GROQ_KEY_INDEX for summaries.
+// callGroq tries this task's key FIRST, then rotates through the rest of the
+// pool on rate-limit (see callGroq). With N keys the preferred index wraps mod N.
 const GROQ_TASK_KEY = { planner: 0, deepdive: 1, summary: 2, drivers: 3, precedent: 4 };
-function groqKeyFor(task) {
-    if (GROQ_KEYS.length === 0) return null;
-    const idx = (GROQ_TASK_KEY[task] ?? 0) % GROQ_KEYS.length;
-    return GROQ_KEYS[idx];
-}
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
@@ -309,83 +306,105 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
     }
 }
 
+// Is this Groq error a rate-limit / quota error (vs. a real request/model
+// error that retrying on another key won't fix)?
+function isGroqRateLimit(err) {
+    if (err.response?.status === 429) return true;
+    const m = err.response?.data?.error?.message || err.message || '';
+    return /rate.?limit|quota|too many requests|try again in/i.test(m);
+}
+
+// Parse Groq's "Please try again in 1m2.5s" into ms so we can open that key's
+// breaker for exactly that long (default 60s when unparseable).
+function groqRetryMs(errMsg) {
+    const match = (errMsg || '').match(/try again in (.*?)(?:\.|$)/i);
+    if (!match) return 60000;
+    let ms = 0;
+    const min = match[1].match(/([\d.]+)m/);
+    const sec = match[1].match(/([\d.]+)s/);
+    if (min) ms += parseFloat(min[1]) * 60000;
+    if (sec) ms += parseFloat(sec[1]) * 1000;
+    return ms > 0 ? ms : 60000;
+}
+
 export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, task = null) {
-    // Groq-only path (planner recommendations + deep-dive). NO fallback of any
-    // kind: not Gemini, not a smaller Groq model, not canned text. If the call
-    // fails, the error propagates to the route, which returns it to the
-    // frontend as an error message. Pick the pooled key for this task.
-    const KEY = groqKeyFor(task);
-
-    // Circuit breaker is PER-KEY: a 429 on one account must not block tasks
-    // pinned to a different account's key. Keyed by the key string (in-memory
-    // only, never logged).
+    // Groq-only path (planner recommendations + deep-dive). NO degraded fallback:
+    // not Gemini, not a smaller Groq model, not canned text. But we DO rotate
+    // across the key pool — same model on every key, just a different account's
+    // rate-limit budget. The task's pinned key is tried FIRST (preserves load
+    // distribution); if its breaker is open or it 429s, we fail over to the next
+    // pool key whose breaker is closed. Only when EVERY key is rate-limited does
+    // the error propagate to the route.
+    if (GROQ_KEYS.length === 0) throw new Error('Missing GROQ_API_KEY');
     if (!global.aiCircuitBreakers) global.aiCircuitBreakers = {};
-    if (KEY && global.aiCircuitBreakers[KEY] && Date.now() < global.aiCircuitBreakers[KEY]) {
-        throw new Error('Groq circuit-breaker active for this key (rate limited); retry later.');
-    }
-    try {
-        if (!KEY) throw new Error('Missing GROQ_API_KEY');
-        const finalUserContent = jsonMode ? userContent + "\n\nOutput ONLY valid JSON." : userContent;
-        const response = await axios.post(
-            'https://api.groq.com/openai/v1/chat/completions',
-            {
-                model,
-                max_tokens: maxTokens,
-                temperature: temperature,
-                ...(jsonMode && { response_format: { type: 'json_object' } }),
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: finalUserContent },
-                ],
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${KEY}`,
-                    'Content-Type': 'application/json',
-                }
-            }
-        );
-        const usage = response.data.usage;
-        if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
-        
-        // Track API limits
-        const remaining = response.headers['x-ratelimit-remaining-requests'];
-        const reset = response.headers['x-ratelimit-reset-requests'];
-        if (remaining !== undefined && reset !== undefined) {
-            global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
-        }
 
-        console.log(`[TOKENS] Groq ${model} | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
-        return response.data.choices[0].message.content;
-    } catch (err) {
-        if (err.response?.headers) {
-            const remaining = err.response.headers['x-ratelimit-remaining-requests'] || err.response.headers['x-ratelimit-remaining-tokens'];
-            const reset = err.response.headers['x-ratelimit-reset-requests'] || err.response.headers['x-ratelimit-reset-tokens'];
+    const preferredIdx = (GROQ_TASK_KEY[task] ?? 0) % GROQ_KEYS.length;
+    const orderedKeys = [GROQ_KEYS[preferredIdx], ...GROQ_KEYS.filter((_, i) => i !== preferredIdx)];
+    const now = Date.now();
+    const candidates = orderedKeys.filter(k => !(global.aiCircuitBreakers[k] && now < global.aiCircuitBreakers[k]));
+    if (candidates.length === 0) {
+        throw new Error('Groq circuit-breaker active for all keys (rate limited); retry later.');
+    }
+
+    const finalUserContent = jsonMode ? userContent + "\n\nOutput ONLY valid JSON." : userContent;
+    let lastErr = null;
+
+    for (let i = 0; i < candidates.length; i++) {
+        const KEY = candidates[i];
+        try {
+            const response = await axios.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    model,
+                    max_tokens: maxTokens,
+                    temperature: temperature,
+                    ...(jsonMode && { response_format: { type: 'json_object' } }),
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: finalUserContent },
+                    ],
+                },
+                { headers: { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' } }
+            );
+            const usage = response.data.usage;
+            if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
+
+            const remaining = response.headers['x-ratelimit-remaining-requests'];
+            const reset = response.headers['x-ratelimit-reset-requests'];
             if (remaining !== undefined && reset !== undefined) {
                 global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
             }
-        }
-        const errMsg = err.response?.data?.error?.message || err.message;
-        if (errMsg.includes('Please try again in')) {
-            const match = errMsg.match(/Please try again in (.*?)\./);
-            if (match) {
-                const waitStr = match[1];
-                let waitMs = 0;
-                const minMatch = waitStr.match(/([\d.]+)m/);
-                const secMatch = waitStr.match(/([\d.]+)s/);
-                if (minMatch) waitMs += parseFloat(minMatch[1]) * 60000;
-                if (secMatch) waitMs += parseFloat(secMatch[1]) * 1000;
-                global.apiRateLimits = { remaining: '0', reset: waitStr, lastUpdated: Date.now() };
-                // Trip the breaker only for THIS key's account, not globally.
-                if (!global.aiCircuitBreakers) global.aiCircuitBreakers = {};
-                if (KEY) global.aiCircuitBreakers[KEY] = Date.now() + waitMs + 2000;
+            console.log(`[TOKENS] Groq ${model} key#${GROQ_KEYS.indexOf(KEY)}${i > 0 ? ' (failover)' : ''} | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
+            return response.data.choices[0].message.content;
+        } catch (err) {
+            if (err.response?.headers) {
+                const remaining = err.response.headers['x-ratelimit-remaining-requests'] || err.response.headers['x-ratelimit-remaining-tokens'];
+                const reset = err.response.headers['x-ratelimit-reset-requests'] || err.response.headers['x-ratelimit-reset-tokens'];
+                if (remaining !== undefined && reset !== undefined) {
+                    global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
+                }
             }
+            const errMsg = err.response?.data?.error?.message || err.message;
+            if (isGroqRateLimit(err)) {
+                // Trip THIS key's breaker for its stated cooldown, then fail over
+                // to the next pool key (same model).
+                const waitMs = groqRetryMs(errMsg);
+                global.aiCircuitBreakers[KEY] = Date.now() + waitMs + 2000;
+                global.apiRateLimits = { remaining: '0', reset: `${Math.ceil(waitMs / 1000)}s`, lastUpdated: Date.now() };
+                console.warn(`[GROQ] key#${GROQ_KEYS.indexOf(KEY)} rate-limited (${Math.ceil(waitMs / 1000)}s); ${i < candidates.length - 1 ? 'rotating to next key' : 'no keys left'}`);
+                lastErr = err;
+                continue; // rotate to the next available key
+            }
+            // Non-rate-limit error (bad request, model error): retrying another
+            // key won't help — surface it. No degraded fallback by design.
+            console.error(`[GROQ] ${model} generation failed: ${errMsg}`);
+            throw new Error(`Groq ${model} generation failed: ${errMsg}`);
         }
-        // No fallback by design: surface the failure to the caller rather than
-        // silently degrading to a smaller model or canned text.
-        console.error(`[GROQ] ${model} generation failed: ${errMsg}`);
-        throw new Error(`Groq ${model} generation failed: ${errMsg}`);
     }
+    // Every candidate key was rate-limited during this call.
+    const msg = lastErr?.response?.data?.error?.message || lastErr?.message || 'all keys rate-limited';
+    console.error(`[GROQ] ${model} generation failed after trying ${candidates.length} key(s): ${msg}`);
+    throw new Error(`Groq ${model} generation failed: ${msg}`);
 }
 
 // ── ROUTE: Token Usage Stats ─────────────────────────────────
@@ -1374,9 +1393,27 @@ app.post('/api/discovery-promote', requireAuth, async (req, res) => {
     }
 });
 
-app.get('/api/scan-status', requireAuth, (req, res) => {
-    const st = (global.scanState || {})[req.session.userId];
-    res.json({ success: true, running: !!st?.running, stats: st?.stats || null, finishedAt: st?.finishedAt || null });
+app.get('/api/scan-status', requireAuth, async (req, res) => {
+    const uid = req.session.userId;
+    const st = (global.scanState || {})[uid];
+    // In-memory state is authoritative while it exists (it carries the live
+    // `running` flag). If it's gone — server restarted/recycled since the scan —
+    // fall back to the DB-persisted last result so a completed scan doesn't read
+    // as "no stats recorded".
+    if (st) {
+        return res.json({ success: true, running: !!st.running, stats: st.stats || null, finishedAt: st.finishedAt || null });
+    }
+    try {
+        const prof = await getUserProfile(uid);
+        if (prof?.last_scan_result) {
+            return res.json({ success: true, running: false, stats: prof.last_scan_result, finishedAt: prof.last_scan_at || null, persisted: true });
+        }
+    } catch (e) {
+        console.error('scan-status persisted lookup failed:', e.message);
+    }
+    // Genuinely no record (never scanned): known:false lets the UI avoid a
+    // scary "finished with no stats" message.
+    res.json({ success: true, running: false, stats: null, finishedAt: null, known: false });
 });
 
 app.post('/api/trigger-scan', requireAuth, async (req, res) => {
@@ -3253,6 +3290,14 @@ async function scanSingleUser(user, pipeline) {
     console.error(`[USER-SCANNER] Failure for user ${user.id}:`, err);
     stats.error = err.message;
     return stats;
+  } finally {
+    // Persist the outcome so a server restart (Render free-tier recycle /
+    // redeploy) can't erase the scan result and make the status poll report
+    // "no stats recorded". Runs on every return path above.
+    if (user?.id) {
+      try { await setLastScanResult(user.id, stats); }
+      catch (e) { console.error(`[USER-SCANNER] Failed to persist scan result for ${user.id}:`, e.message); }
+    }
   }
 }
 

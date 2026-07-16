@@ -775,6 +775,14 @@ export default function Dashboard() {
       await refetchForex();
     } catch (e) { console.error('remove currency failed', e); }
   }, [refetchForex]);
+  // Categorized news feed (Alerts tab). Refetched on tab-open AND on every
+  // dashboard refresh, so a scan's new articles show up without a tab switch.
+  const refetchCategorizedNews = useCallback(async () => {
+    try {
+      const d = await fetch(`${API_BASE}/news/categorized`, { credentials: 'include' }).then(r => r.json());
+      if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); }
+    } catch (e) { console.error('categorized news refetch failed', e); }
+  }, []);
   const [analysis, setAnalysis] = useState(null);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -1170,6 +1178,10 @@ export default function Dashboard() {
       // be slow on first ingest, so it must not hold up the Command Center).
       refetchPorts();
 
+      // Categorized news feed (Alerts tab): refetch so a refresh picks up new
+      // scan results without needing a tab switch.
+      refetchCategorizedNews();
+
       // Morning brief: independent, non-blocking
       fetch(`${API_BASE}/morning-brief`, fetchOpts)
         .then(r => r.json())
@@ -1214,7 +1226,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user, refetchPorts]);
+  }, [user, refetchPorts, refetchCategorizedNews]);
 
   useEffect(() => {
     if (user && user.is_onboarded && !showSettings && !showAdmin) refresh();
@@ -1246,11 +1258,8 @@ export default function Dashboard() {
   // containing the same articles) ──
   useEffect(() => {
     if (tab !== 'alerts' || !user) return;
-    fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => { if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); } })
-      .catch(() => {});
-  }, [tab, user]);
+    refetchCategorizedNews();
+  }, [tab, user, refetchCategorizedNews]);
 
   // Keep the Morning Brief's tracked-commodity prices fresh while the
   // Command Center is open. Server prices re-fetch from Yahoo every 15 min;

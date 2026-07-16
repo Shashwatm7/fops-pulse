@@ -159,7 +159,12 @@ export default function PipelineAnalyticsPage({ onBack }) {
                 const r = await fetch('/api/scan-status', { credentials: 'include' });
                 const d = await r.json();
                 if (!d.running) {
-                    setScanResult(d.stats || { error: 'Scan finished with no stats recorded.' });
+                    // d.stats present -> real result (live or DB-persisted).
+                    // known:false -> no record at all (never scanned / state lost
+                    // before any result was saved); show a neutral note, not an error.
+                    setScanResult(d.stats || (d.known === false
+                        ? { note: 'No recent scan on record. Trigger a scan, or check the results in the Alerts and News tabs.' }
+                        : { error: 'Scan finished with no stats recorded.' }));
                     fetchLogs();
                     setScanning(false);
                     return;
@@ -242,6 +247,8 @@ export default function PipelineAnalyticsPage({ onBack }) {
                         </div>
                     ) : scanResult.error ? (
                         <div style={{ color: 'var(--danger)' }}>Error: {scanResult.error}</div>
+                    ) : scanResult.note ? (
+                        <div style={{ color: 'var(--text-dim)' }}>{scanResult.note}</div>
                     ) : scanResult.skippedReason ? (
                         <div style={{ color: 'var(--accent-amber)' }}>Skipped: {scanResult.skippedReason}</div>
                     ) : (
