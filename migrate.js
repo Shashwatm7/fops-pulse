@@ -36,7 +36,8 @@ async function runMigrations() {
       'migrations/018_summary_key_figures.sql',
       'migrations/019_bust_hallucinated_summaries.sql',
       'migrations/020_drop_review_queue.sql',
-      'migrations/021_add_weather_regions.sql'
+      'migrations/021_add_weather_regions.sql',
+      'migrations/022_tracked_ports.sql'
     ];
     let failures = 0;
     for (const file of migrationFiles) {

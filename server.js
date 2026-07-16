@@ -20,7 +20,8 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts } from './db.js';
+import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
@@ -1156,6 +1157,89 @@ app.post('/api/weather-regions/remove', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Remove weather region error:', err.message);
         res.status(500).json({ error: 'Failed to remove weather region' });
+    }
+});
+
+// ── Port congestion (GCC): tracked-port list + IMF PortWatch activity ────
+// Manages user_profiles.tracked_ports (Command Center port-congestion strip),
+// mirroring the weather-regions pattern. Metric is a THROUGHPUT ANOMALY from
+// PortWatch port-call counts — not true queue/dwell (PortWatch has no dwell).
+
+// A new user's tracked_ports defaults to the major GCC gateways so the strip
+// is non-empty on first load. Stored entries are {portid, portname, country}.
+function resolveTrackedPorts(profile) {
+    const raw = profile?.tracked_ports;
+    if (Array.isArray(raw) && raw.length > 0) {
+        return raw.map(p => (typeof p === 'string' ? lookupPort(p) : p)).filter(Boolean);
+    }
+    return DEFAULT_TRACKED_PORTIDS.map(lookupPort).filter(Boolean);
+}
+
+// GET /api/ports/search?q= — type-ahead over the static GCC port catalog.
+app.get('/api/ports/search', requireAuth, (req, res) => {
+    const q = (req.query.q || '').trim().toLowerCase();
+    if (q.length < 1) return res.json({ success: true, results: GCC_PORTS.slice(0, 12) });
+    const results = GCC_PORTS.filter(p =>
+        p.portname.toLowerCase().includes(q) || p.country.toLowerCase().includes(q)
+    ).slice(0, 12);
+    res.json({ success: true, results });
+});
+
+// GET /api/ports — each tracked port with its latest activity + throughput anomaly.
+app.get('/api/ports', requireAuth, async (req, res) => {
+    try {
+        const tracked = resolveTrackedPorts(req.userProfile);
+        const ports = await Promise.all(tracked.map(async (p) => {
+            let a = await getPortActivity(p.portid);
+            // Lazily ingest a port that has no snapshots yet (first time it is
+            // tracked, before the scheduled refresh has run).
+            if (!a.hasData) {
+                await ingestPortActivity([p.portid]).catch(() => {});
+                a = await getPortActivity(p.portid);
+            }
+            return a;
+        }));
+        res.json({ success: true, ports });
+    } catch (err) {
+        console.error('Ports fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/ports/add — track a GCC port by portid.
+app.post('/api/ports/add', requireAuth, async (req, res) => {
+    try {
+        const portid = (req.body?.portid || '').trim();
+        if (!portid || !isGccPort(portid)) {
+            return res.status(400).json({ error: 'A valid GCC portid is required' });
+        }
+        const meta = lookupPort(portid);
+        const list = resolveTrackedPorts(req.userProfile).slice();
+        if (list.some(p => p.portid === portid)) {
+            return res.json({ success: true, tracked_ports: list, duplicate: true });
+        }
+        list.push({ portid: meta.portid, portname: meta.portname, country: meta.country });
+        await setTrackedPorts(req.user.id, list);
+        // Warm the cache so the port appears with data on the next fetch.
+        ingestPortActivity([portid]).catch(err => console.error('Port warm-ingest failed:', err.message));
+        res.json({ success: true, port: meta, tracked_ports: list });
+    } catch (err) {
+        console.error('Add port error:', err.message);
+        res.status(500).json({ error: 'Failed to add port' });
+    }
+});
+
+// POST /api/ports/remove — untrack a port by portid.
+app.post('/api/ports/remove', requireAuth, async (req, res) => {
+    try {
+        const portid = (req.body?.portid || '').trim();
+        if (!portid) return res.status(400).json({ error: 'portid is required' });
+        const list = resolveTrackedPorts(req.userProfile).filter(p => p.portid !== portid);
+        await setTrackedPorts(req.user.id, list);
+        res.json({ success: true, tracked_ports: list });
+    } catch (err) {
+        console.error('Remove port error:', err.message);
+        res.status(500).json({ error: 'Failed to remove port' });
     }
 });
 
@@ -2296,6 +2380,19 @@ setInterval(() => {
         state.changePct = 0;
     }
 }, 3600000);
+
+// ── IMF PortWatch refresh (GCC port activity) ──
+// PortWatch updates weekly (Tuesdays). Ingest all GCC ports shortly after boot,
+// then weekly. The /api/ports route also lazily ingests any single port that
+// still has no snapshot, so the panel works before the first scheduled run.
+setTimeout(() => {
+    ingestPortActivity()
+        .then(r => console.log(`PortWatch boot ingest: ${r.ok} ok, ${r.fail} failed`))
+        .catch(err => console.error('PortWatch boot ingest failed:', err.message));
+}, 20 * 1000);
+setInterval(() => {
+    ingestPortActivity().catch(err => console.error('PortWatch weekly ingest failed:', err.message));
+}, 7 * 24 * 60 * 60 * 1000);
 
 // SSE clients
 const sseClients = new Set();
