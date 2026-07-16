@@ -59,14 +59,20 @@ export default function AdminPage({ onBack }) {
 
   const handleToggleAdmin = async (id, currentStatus) => {
     try {
-      await fetch(`/api/auth/admin/users/${id}`, {
+      // Role changes live at /users/:id/role — the old bare /users/:id URL
+      // matched no route, so the button silently no-opped.
+      const res = await fetch(`/api/auth/admin/users/${id}/role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ is_admin: !currentStatus })
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Role change failed (HTTP ${res.status})`);
+      }
       fetchData();
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); alert(err.message); }
   };
 
   const loadSeedPreview = async (userId) => {
