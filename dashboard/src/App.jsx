@@ -1484,6 +1484,15 @@ export default function Dashboard() {
                 </div>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                   <span className="alert-severity-badge" style={{ background: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-bg)`, color: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-text)` }}>{a.severity || 'CRITICAL'}</span>
+                  {(() => {
+                    let p = a.payload; if (typeof p === 'string') { try { p = JSON.parse(p); } catch { p = {}; } }
+                    const sim = p?.semanticSimilarity;
+                    return (sim != null && !isNaN(sim)) ? (
+                      <span title="Embedding match to your profile (cosine similarity)" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', background: 'rgba(139,92,246,0.12)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>
+                        ⛭ {Math.round(sim * 100)}%
+                      </span>
+                    ) : null;
+                  })()}
                   {a.id && (
                     <button
                       onClick={() => acknowledgeAlert(a.id)}
