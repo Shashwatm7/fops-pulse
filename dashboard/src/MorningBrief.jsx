@@ -93,7 +93,7 @@ export default function MorningBrief({ brief, username, onViewAlerts, onSelectCo
         </div>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.16s' }}>
-          <div style={colTitle}>Tracked Commodities <span style={{ letterSpacing: 0, textTransform: 'none', color: 'var(--text-dim)', fontWeight: 400 }}>· vs prev close · click for chart</span></div>
+          <div style={colTitle}>Price Ticker <span style={{ letterSpacing: 0, textTransform: 'none', color: 'var(--text-dim)', fontWeight: 400 }}>· vs prev close · click for chart</span></div>
           {priceMovers.length === 0 ? (
             <div style={emptyStyle}>No live price data for your tracked commodities right now.</div>
           ) : priceMovers.map(m => {
