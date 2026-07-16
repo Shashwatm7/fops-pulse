@@ -2927,6 +2927,10 @@ async function scanSingleUser(user, pipeline) {
       fp: profile.focus_product || '', fr: profile.focus_region || '',
       fc: profile.focus_countries || [], k: profile.news_keywords || [],
       b: profile.custom_blocklist || [], s: profile.ml_seeds || [],
+      // Custom regions are part of relevance (region gate + scoring bonus +
+      // query building). Omitting them meant adding a region in Settings left
+      // every past rejection memoized — the new region never produced alerts.
+      cr: (profile.custom_regions || []).map(r => (typeof r === 'string' ? r : r?.name || '')),
     })).digest('hex').slice(0, 16);
 
     // Within-scan dedupe: the same story often comes back from several
