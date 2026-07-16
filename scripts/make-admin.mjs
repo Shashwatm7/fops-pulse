@@ -2,19 +2,23 @@
 // Render's (no psql binary needed; uses the repo's pg package).
 //
 // Usage (Render): copy "External Database URL" from the Render DB Info page,
-// then run from the repo root:
-//     DATABASE_URL="<paste External Database URL>" node scripts/make-admin.mjs you@email.com
-// Usage (local):
-//     DATABASE_URL="postgresql://localhost:5433/fops_pulse" node scripts/make-admin.mjs you@email.com
+// then run from the repo root — URL and email as plain arguments, either order:
+//     node scripts/make-admin.mjs you@email.com "<paste External Database URL>"
+// The URL may also come from the DATABASE_URL env var instead:
+//     DATABASE_URL="<postgres url>" node scripts/make-admin.mjs you@email.com
 //
 // Deliberately does NOT load .env: the URL must be passed explicitly so you
 // always know which database you are pointing at.
 import pg from 'pg';
 
-const email = process.argv[2];
-const url = process.env.DATABASE_URL;
+// Accept [email, url] in either order (a URL starts with postgres…).
+const args = process.argv.slice(2);
+const isUrl = (s) => /^postgres(ql)?:\/\//i.test(s || '');
+const email = args.find(a => !isUrl(a));
+const url = args.find(isUrl) || process.env.DATABASE_URL;
 if (!email || !url) {
-    console.error('Usage: DATABASE_URL="<postgres url>" node scripts/make-admin.mjs <email>');
+    console.error('Usage: node scripts/make-admin.mjs <email> "<postgres url>"');
+    console.error('   or: DATABASE_URL="<postgres url>" node scripts/make-admin.mjs <email>');
     process.exit(2);
 }
 
