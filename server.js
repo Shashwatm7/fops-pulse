@@ -2145,8 +2145,15 @@ async function tickPrices() {
             }
 
             state.current = rounded;
-            state.change = +(rounded - state.open).toFixed(4);
-            state.changePct = state.open > 0 ? +((state.change / state.open) * 100).toFixed(3) : 0;
+            // Report change vs the PREVIOUS CLOSE — the same basis used by the
+            // Price Ticker (morning brief) and the anomaly/alerts. Previously
+            // this used state.open (the first price seen at server boot), so the
+            // live commodity cards showed a different % than the ticker and the
+            // alerts for the same commodity. When prevClose is unknown, show no
+            // move rather than a fabricated one.
+            const ref = state.prevClose > 0 ? state.prevClose : null;
+            state.change = ref ? +(rounded - ref).toFixed(4) : 0;
+            state.changePct = ref ? +(((rounded - ref) / ref) * 100).toFixed(3) : 0;
             state.high = Math.max(state.high, rounded);
             state.low = Math.min(state.low, rounded);
 
@@ -2431,14 +2438,17 @@ initLivePrices();
 // actually fire near the crossing instead of up to 24h late.
 setInterval(tickPrices, 15 * 60 * 1000);
 
-// Reset open/high/low every hour
+// Reset intraday high/low every hour. change/changePct are NOT zeroed — they
+// track vs the previous close (same basis as the ticker and alerts), so we
+// recompute them here rather than resetting to a "since reset" baseline.
 setInterval(() => {
     for (const state of Object.values(livePrices)) {
         state.open = state.current;
         state.high = state.current;
         state.low = state.current;
-        state.change = 0;
-        state.changePct = 0;
+        const ref = state.prevClose > 0 ? state.prevClose : null;
+        state.change = ref && state.current > 0 ? +(state.current - ref).toFixed(4) : 0;
+        state.changePct = ref && state.current > 0 ? +(((state.current - ref) / ref) * 100).toFixed(3) : 0;
     }
 }, 3600000);
 
@@ -3995,10 +4005,23 @@ const PORT = process.env.PORT || 3001;
 
 // ── Serve React Frontend in Production ───────────────────────
 const distPath = path.join(process.cwd(), 'dashboard', 'dist');
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+        // index.html must always revalidate — it names the current hashed chunk
+        // filenames. Caching it makes the browser request dead chunk hashes after
+        // a redeploy ("Failed to fetch dynamically imported module"). Hashed assets
+        // under /assets/ are content-addressed, so cache them immutably.
+        if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+    },
+}));
 
 // Catch-all route to serve React's index.html for client-side routing
 app.use((req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(distPath, 'index.html'));
 });
 
