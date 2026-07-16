@@ -767,10 +767,17 @@ app.post('/api/track', requireAuth, async (req, res) => {
 });
 
 
-// ── ROUTE: forex (FREE — open.er-api.com, no key) ───────────────────
+// ── ROUTE: forex spot rates (Open Exchange Rates) ───────────────────
+// Source: openexchangerates.org (requires OPEN_EXCHANGE_APP_ID). Free tier is
+// USD-base, hourly. No fallback: if the key is missing or the call fails, we
+// return an error rather than serving stale/degraded rates.
 app.get('/api/forex', requireAuth, async (req, res) => {
     try {
-        const { data } = await axios.get('https://open.er-api.com/v6/latest/USD');
+        const appId = process.env.OPEN_EXCHANGE_APP_ID;
+        if (!appId) return res.status(503).json({ error: 'Forex not configured: OPEN_EXCHANGE_APP_ID is missing' });
+        const { data } = await axios.get('https://openexchangerates.org/api/latest.json', {
+            params: { app_id: appId, base: 'USD' },
+        });
         const relevant = {};
         const currencies = {
             // ── Middle East (import-side) ──
@@ -794,13 +801,17 @@ app.get('/api/forex', requireAuth, async (req, res) => {
             MYR: { name: 'Malaysian Ringgit', commodities: ['Palm Oil'] },
         };
         for (const [code, meta] of Object.entries(currencies)) {
-            if (data.rates[code]) {
+            if (data.rates?.[code] != null) {
                 relevant[code] = { rate: data.rates[code], ...meta };
             }
         }
-        res.json({ success: true, base: 'USD', lastUpdate: data.time_last_update_utc, rates: relevant });
+        const lastUpdate = data.timestamp ? new Date(data.timestamp * 1000).toUTCString() : null;
+        res.json({ success: true, base: data.base || 'USD', lastUpdate, rates: relevant });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        // Surface Open Exchange Rates' own error text (e.g. invalid/inactive key).
+        const msg = err.response?.data?.description || err.message;
+        console.error('Forex (Open Exchange Rates) error:', msg);
+        res.status(err.response?.status === 401 ? 503 : 500).json({ error: `Forex fetch failed: ${msg}` });
     }
 });
 
