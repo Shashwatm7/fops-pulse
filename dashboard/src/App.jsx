@@ -477,6 +477,48 @@ function PortCongestionStrip({ ports, onAdd, onRemove }) {
   );
 }
 
+// ── FX Spot Rates strip ─────────────────────────────────────────────
+// Read-only: a fixed set of import/export currencies (no add/remove). Source is
+// Open Exchange Rates via /api/forex; `rates` is a { CODE: {rate,name,commodities} }
+// map. All rates are quoted per 1 USD.
+function ForexStrip({ rates }) {
+  const list = rates ? Object.entries(rates) : [];
+  return (
+    <div className="mb-xl">
+      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Globe2 size={13} /> FX Spot Rates
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
+          Open Exchange Rates · per USD{list.length ? ` · ${list.length} currencies` : ''}
+        </span>
+      </div>
+      {list.length === 0 ? (
+        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+          No FX data. Check that OPEN_EXCHANGE_APP_ID is configured.
+        </div>
+      ) : (
+        <div className="grid-auto">
+          {list.map(([code, d], i) => (
+            <div key={code} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{code}</span>
+                <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
+                  {typeof d.rate === 'number' ? d.rate.toFixed(d.rate < 5 ? 4 : 2) : d.rate}
+                </span>
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{d.name}</div>
+              {d.commodities?.length > 0 && (
+                <div style={{ fontSize: '9px', color: 'var(--text-dim, var(--text-muted))', marginTop: '8px', lineHeight: 1.4 }}>
+                  {d.commodities.join(' · ')}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiFeedbackWidget({ featureName, context, aiResponse }) {
   const [status, setStatus] = useState('idle'); // idle, rating, submitted, error
   const [isHelpful, setIsHelpful] = useState(null);
@@ -1353,15 +1395,6 @@ export default function Dashboard() {
   const counterfactuals = analysis?.counterfactuals || [];
   const missingData = analysis?.missingData || [];
 
-  // ── Forex ticker chips (rendered twice for seamless marquee) ──
-  const forexChips = forex ? Object.entries(forex).map(([code, data]) => (
-    <div key={code} className="forex-chip">
-      <span className="forex-code">{code}</span>
-      <span className="forex-rate">{typeof data.rate === 'number' ? data.rate.toFixed(2) : data.rate}</span>
-      <span className="forex-commodities">{data.commodities?.join(', ')}</span>
-    </div>
-  )) : null;
-
   if (authLoading) return <div style={{padding:'40px', color:'white'}}>Loading Authentication...</div>;
   if (!user) return <LoginPage onLogin={({ user: u, profile: p }) => { setUser(u); setProfile(p); }} />;
   if (!user.is_onboarded) return <OnboardingWizard user={user} onComplete={(p) => { setProfile(p); setUser({...user, is_onboarded: true}); }} />;
@@ -1569,6 +1602,8 @@ export default function Dashboard() {
           <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
 
           <PortCongestionStrip ports={ports} onAdd={addPort} onRemove={removePort} />
+
+          <ForexStrip rates={forex} />
 
           <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 
