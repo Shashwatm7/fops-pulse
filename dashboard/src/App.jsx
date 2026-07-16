@@ -7,7 +7,7 @@ import {
   Activity, BarChart2, Globe2, Zap, Target, PlaySquare,
   Settings, Shield, RefreshCw, LogOut, Sparkles, Plus,
   LayoutDashboard, ClipboardList, ThumbsUp, ThumbsDown, Bell,
-  Droplets, Thermometer, Wind
+  Droplets, Thermometer, Wind, Ship
 } from 'lucide-react';
 import './App.css';
 import LoginPage from './LoginPage.jsx';
@@ -340,6 +340,143 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
   );
 }
 
+// ── Port Congestion (GCC) strip ─────────────────────────────────────
+// Mirrors WeatherStrip: a user-managed list of ports with inline add/remove.
+// Data is IMF PortWatch daily port-call throughput (weekly, ~1wk lag) — NOT
+// true dwell/queue. Each card shows recent calls/day vs a 28-day baseline and a
+// status band derived from that anomaly.
+const PORT_STATUS_COLOR = {
+  'Severely reduced': '#fb7185',
+  'Reduced': '#f59e0b',
+  'Normal': '#34d399',
+  'Elevated': '#38bdf8',
+  'Surging': '#a78bfa',
+  'No data': 'var(--text-muted)',
+  'Insufficient baseline': 'var(--text-muted)',
+};
+
+function PortCongestionStrip({ ports, onAdd, onRemove }) {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const debounceRef = useRef(null);
+
+  const runSearch = (q) => {
+    setQuery(q);
+    setOpen(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const d = await fetch(`${API_BASE}/ports/search?q=${encodeURIComponent(q.trim())}`, { credentials: 'include' }).then(r => r.json());
+        setSuggestions(d.results || []);
+      } catch { setSuggestions([]); }
+    }, 200);
+  };
+
+  const pick = async (p) => {
+    setBusy(true);
+    setSuggestions([]);
+    setQuery('');
+    setOpen(false);
+    try { await onAdd?.(p); } finally { setBusy(false); }
+  };
+
+  const list = ports || [];
+
+  return (
+    <div className="mb-xl">
+      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Ship size={13} /> Port Congestion (GCC)
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
+          IMF PortWatch · port calls & trade vs baseline · weekly, ~1wk lag{list.length ? ` · ${list.length} port${list.length > 1 ? 's' : ''}` : ''}
+        </span>
+      </div>
+
+      {/* type-to-search add box (GCC port catalog) */}
+      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            value={query}
+            onChange={e => runSearch(e.target.value)}
+            onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
+            placeholder="Add a GCC port — search by name or country…"
+            disabled={busy}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
+          />
+          {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
+        </div>
+        {open && suggestions.length > 0 && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            {suggestions.map((s, i) => (
+              <div
+                key={s.portid}
+                onClick={() => pick(s)}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >{s.portname} <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.country}</span></div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {list.length === 0 ? (
+        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+          No ports tracked. Search above to add GCC ports (Jebel Ali, Dammam, Jeddah, Hamad…).
+        </div>
+      ) : (
+        <div className="grid-auto">
+          {list.map((p, i) => {
+            const color = PORT_STATUS_COLOR[p.status] || 'var(--text-muted)';
+            const delta = p.callsDeltaPct;
+            const deltaStr = delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta}%`;
+            return (
+              <div key={p.portid || i} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative', borderLeft: `3px solid ${color}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.portname}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{p.country}</div>
+                  </div>
+                  <button
+                    onClick={() => onRemove?.(p.portid)}
+                    title="Remove port"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+                  >&times;</button>
+                </div>
+                {p.hasData ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{p.status}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '8px' }}>
+                      <span style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{p.recentCallsPerDay ?? '—'}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>calls/day</span>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color, marginLeft: 'auto' }}>{deltaStr}</span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      vs {p.baselineCallsPerDay ?? '—'}/day baseline (28d)
+                      {p.importDeltaPct != null && ` · imports ${p.importDeltaPct > 0 ? '+' : ''}${p.importDeltaPct}%`}
+                    </div>
+                    {p.latestDate && (
+                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
+                        latest {String(p.latestDate).slice(0, 10)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px' }}>No recent PortWatch data.</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiFeedbackWidget({ featureName, context, aiResponse }) {
   const [status, setStatus] = useState('idle'); // idle, rating, submitted, error
   const [isHelpful, setIsHelpful] = useState(null);
@@ -464,6 +601,34 @@ export default function Dashboard() {
       await refetchWeather();
     } catch (e) { console.error('remove weather region failed', e); }
   }, [refetchWeather]);
+  // Command Center port-congestion strip: user-managed GCC port list (IMF
+  // PortWatch). Add/remove hit dedicated endpoints, then refetch.
+  const [ports, setPorts] = useState([]);
+  const refetchPorts = useCallback(async () => {
+    try {
+      const d = await fetch(`${API_BASE}/ports`, { credentials: 'include' }).then(r => r.json());
+      setPorts(d.ports || []);
+    } catch (e) { console.error('ports refetch failed', e); }
+  }, []);
+  const addPort = useCallback(async (p) => {
+    try {
+      const d = await fetch(`${API_BASE}/ports/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ portid: p.portid }),
+      }).then(r => r.json());
+      if (d.error) { alert(d.error); return; }
+      await refetchPorts();
+    } catch (e) { console.error('add port failed', e); }
+  }, [refetchPorts]);
+  const removePort = useCallback(async (portid) => {
+    try {
+      await fetch(`${API_BASE}/ports/remove`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ portid }),
+      });
+      await refetchPorts();
+    } catch (e) { console.error('remove port failed', e); }
+  }, [refetchPorts]);
   const [analysis, setAnalysis] = useState(null);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -855,6 +1020,10 @@ export default function Dashboard() {
       setSopPlans(sops);
       setMlForecasts(mlFore);
 
+      // Port congestion strip: independent, non-blocking (PortWatch fetch can
+      // be slow on first ingest, so it must not hold up the Command Center).
+      refetchPorts();
+
       // Morning brief: independent, non-blocking
       fetch(`${API_BASE}/morning-brief`, fetchOpts)
         .then(r => r.json())
@@ -899,7 +1068,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, refetchPorts]);
 
   useEffect(() => {
     if (user && user.is_onboarded && !showSettings && !showAdmin) refresh();
@@ -1398,6 +1567,8 @@ export default function Dashboard() {
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
           <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
+
+          <PortCongestionStrip ports={ports} onAdd={addPort} onRemove={removePort} />
 
           <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 

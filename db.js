@@ -121,6 +121,15 @@ export async function setWeatherRegions(userId, weatherRegions) {
   );
 }
 
+// Set ONLY the tracked_ports list — used by the dedicated port add/remove
+// endpoints (Command Center port-congestion strip), mirroring setWeatherRegions.
+export async function setTrackedPorts(userId, trackedPorts) {
+  return pool.query(
+    'UPDATE user_profiles SET tracked_ports = $1 WHERE user_id = $2',
+    [JSON.stringify(trackedPorts || []), userId]
+  );
+}
+
 export async function setOnboarded(userId) {
   return pool.query('UPDATE users SET is_onboarded = TRUE WHERE id = $1', [userId]);
 }
