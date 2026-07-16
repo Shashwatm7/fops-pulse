@@ -130,6 +130,15 @@ export async function setTrackedPorts(userId, trackedPorts) {
   );
 }
 
+// Set ONLY the tracked_currencies list — used by the FX add/remove endpoints
+// (Command Center FX Spot Rates strip), mirroring setTrackedPorts.
+export async function setTrackedCurrencies(userId, codes) {
+  return pool.query(
+    'UPDATE user_profiles SET tracked_currencies = $1 WHERE user_id = $2',
+    [JSON.stringify(codes || []), userId]
+  );
+}
+
 export async function setOnboarded(userId) {
   return pool.query('UPDATE users SET is_onboarded = TRUE WHERE id = $1', [userId]);
 }

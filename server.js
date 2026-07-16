@@ -20,7 +20,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -767,42 +767,41 @@ app.post('/api/track', requireAuth, async (req, res) => {
 });
 
 
-// ── ROUTE: forex spot rates (Open Exchange Rates) ───────────────────
+// ── Forex spot rates (Open Exchange Rates) ──────────────────────────
 // Source: openexchangerates.org (requires OPEN_EXCHANGE_APP_ID). Free tier is
-// USD-base, hourly. No fallback: if the key is missing or the call fails, we
-// return an error rather than serving stale/degraded rates.
+// USD-base, hourly, and returns ALL currencies in one call. No fallback: if the
+// key is missing or the call fails, we error rather than serve stale rates.
+// The panel is user-selectable — user_profiles.tracked_currencies holds the
+// codes to show. The currency-name catalog (currencies.json) is keyless.
+
+const DEFAULT_CURRENCIES = ['AED', 'SAR', 'EUR', 'INR', 'BRL', 'CNY'];
+let _currencyCatalog = null; // { CODE: "Full name", ... }, cached in memory
+
+async function getCurrencyCatalog() {
+    if (_currencyCatalog) return _currencyCatalog;
+    const { data } = await axios.get('https://openexchangerates.org/api/currencies.json', { timeout: 10000 });
+    _currencyCatalog = data || {};
+    return _currencyCatalog;
+}
+
+const trackedCurrencyCodes = (profile) => {
+    const raw = profile?.tracked_currencies;
+    return Array.isArray(raw) && raw.length ? raw : DEFAULT_CURRENCIES;
+};
+
+// GET /api/forex — spot rates (per USD) for the user's selected currencies only.
 app.get('/api/forex', requireAuth, async (req, res) => {
     try {
         const appId = process.env.OPEN_EXCHANGE_APP_ID;
         if (!appId) return res.status(503).json({ error: 'Forex not configured: OPEN_EXCHANGE_APP_ID is missing' });
-        const { data } = await axios.get('https://openexchangerates.org/api/latest.json', {
-            params: { app_id: appId, base: 'USD' },
-        });
+        const [{ data }, catalog] = await Promise.all([
+            axios.get('https://openexchangerates.org/api/latest.json', { params: { app_id: appId, base: 'USD' } }),
+            getCurrencyCatalog().catch(() => ({})),
+        ]);
         const relevant = {};
-        const currencies = {
-            // ── Middle East (import-side) ──
-            AED: { name: 'UAE Dirham', commodities: ['Frozen Food', 'Meat', 'Poultry', 'Seafood'] },
-            SAR: { name: 'Saudi Riyal', commodities: ['Frozen Food', 'Wheat', 'Rice', 'Meat'] },
-            QAR: { name: 'Qatari Riyal', commodities: ['Frozen Food', 'Meat', 'Dairy'] },
-            KWD: { name: 'Kuwaiti Dinar', commodities: ['Frozen Food', 'Meat', 'Poultry'] },
-            BHD: { name: 'Bahraini Dinar', commodities: ['Frozen Food', 'Seafood'] },
-            OMR: { name: 'Omani Rial', commodities: ['Frozen Food', 'Seafood', 'Meat'] },
-            EGP: { name: 'Egyptian Pound', commodities: ['Wheat', 'Corn', 'Frozen Food'] },
-            JOD: { name: 'Jordanian Dinar', commodities: ['Frozen Food', 'Wheat', 'Meat'] },
-            // ── Export-side (food suppliers to ME) ──
-            BRL: { name: 'Brazilian Real', commodities: ['Soybeans', 'Coffee', 'Sugar', 'Corn', 'Poultry'] },
-            INR: { name: 'Indian Rupee', commodities: ['Rice', 'Wheat', 'Sugar', 'Milk'] },
-            EUR: { name: 'Euro', commodities: ['Wheat', 'Milk', 'Sugar', 'Frozen Vegetables'] },
-            CNY: { name: 'Chinese Yuan', commodities: ['Soybeans', 'Rice', 'Corn', 'Seafood'] },
-            IDR: { name: 'Indonesian Rupiah', commodities: ['Palm Oil', 'Rice', 'Coffee'] },
-            THB: { name: 'Thai Baht', commodities: ['Rice', 'Sugar', 'Frozen Seafood'] },
-            AUD: { name: 'Australian Dollar', commodities: ['Wheat', 'Cattle', 'Frozen Meat'] },
-            ARS: { name: 'Argentine Peso', commodities: ['Soybeans', 'Corn', 'Wheat', 'Frozen Beef'] },
-            MYR: { name: 'Malaysian Ringgit', commodities: ['Palm Oil'] },
-        };
-        for (const [code, meta] of Object.entries(currencies)) {
+        for (const code of trackedCurrencyCodes(req.userProfile)) {
             if (data.rates?.[code] != null) {
-                relevant[code] = { rate: data.rates[code], ...meta };
+                relevant[code] = { rate: data.rates[code], name: catalog[code] || code };
             }
         }
         const lastUpdate = data.timestamp ? new Date(data.timestamp * 1000).toUTCString() : null;
@@ -812,6 +811,57 @@ app.get('/api/forex', requireAuth, async (req, res) => {
         const msg = err.response?.data?.description || err.message;
         console.error('Forex (Open Exchange Rates) error:', msg);
         res.status(err.response?.status === 401 ? 503 : 500).json({ error: `Forex fetch failed: ${msg}` });
+    }
+});
+
+// GET /api/forex/search?q= — type-ahead over the full currency catalog (by code
+// or name), excluding ones already tracked.
+app.get('/api/forex/search', requireAuth, async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim().toLowerCase();
+        const catalog = await getCurrencyCatalog();
+        const tracked = new Set(trackedCurrencyCodes(req.userProfile));
+        const all = Object.entries(catalog).map(([code, name]) => ({ code, name }));
+        const matched = (q
+            ? all.filter(c => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
+            : all
+        ).filter(c => !tracked.has(c.code)).slice(0, 12);
+        res.json({ success: true, results: matched });
+    } catch (err) {
+        console.error('Forex search error:', err.message);
+        res.status(500).json({ success: false, error: 'Search failed' });
+    }
+});
+
+// POST /api/forex/add — track a currency by code.
+app.post('/api/forex/add', requireAuth, async (req, res) => {
+    try {
+        const code = (req.body?.code || '').trim().toUpperCase();
+        if (!/^[A-Z]{3}$/.test(code)) return res.status(400).json({ error: 'A 3-letter currency code is required' });
+        const catalog = await getCurrencyCatalog();
+        if (!catalog[code]) return res.status(404).json({ error: `Unknown currency: ${code}` });
+        const list = trackedCurrencyCodes(req.userProfile).slice();
+        if (list.includes(code)) return res.json({ success: true, tracked_currencies: list, duplicate: true });
+        list.push(code);
+        await setTrackedCurrencies(req.user.id, list);
+        res.json({ success: true, code, tracked_currencies: list });
+    } catch (err) {
+        console.error('Add currency error:', err.message);
+        res.status(500).json({ error: 'Failed to add currency' });
+    }
+});
+
+// POST /api/forex/remove — untrack a currency by code.
+app.post('/api/forex/remove', requireAuth, async (req, res) => {
+    try {
+        const code = (req.body?.code || '').trim().toUpperCase();
+        if (!code) return res.status(400).json({ error: 'code is required' });
+        const list = trackedCurrencyCodes(req.userProfile).filter(c => c !== code);
+        await setTrackedCurrencies(req.user.id, list);
+        res.json({ success: true, tracked_currencies: list });
+    } catch (err) {
+        console.error('Remove currency error:', err.message);
+        res.status(500).json({ error: 'Failed to remove currency' });
     }
 });
 

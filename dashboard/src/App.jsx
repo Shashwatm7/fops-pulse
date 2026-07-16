@@ -478,39 +478,98 @@ function PortCongestionStrip({ ports, onAdd, onRemove }) {
 }
 
 // ── FX Spot Rates strip ─────────────────────────────────────────────
-// Read-only: a fixed set of import/export currencies (no add/remove). Source is
-// Open Exchange Rates via /api/forex; `rates` is a { CODE: {rate,name,commodities} }
-// map. All rates are quoted per 1 USD.
-function ForexStrip({ rates }) {
+// User-selectable, mirroring the port strip: search the OXR currency catalog
+// and add/remove currencies inline. Cards show code, name, and rate per USD
+// only (no commodities). Source is Open Exchange Rates via /api/forex.
+function ForexStrip({ rates, onAdd, onRemove }) {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const debounceRef = useRef(null);
+
+  const runSearch = (q) => {
+    setQuery(q);
+    setOpen(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const d = await fetch(`${API_BASE}/forex/search?q=${encodeURIComponent(q.trim())}`, { credentials: 'include' }).then(r => r.json());
+        setSuggestions(d.results || []);
+      } catch { setSuggestions([]); }
+    }, 200);
+  };
+
+  const pick = async (c) => {
+    setBusy(true);
+    setSuggestions([]);
+    setQuery('');
+    setOpen(false);
+    try { await onAdd?.(c); } finally { setBusy(false); }
+  };
+
   const list = rates ? Object.entries(rates) : [];
+
   return (
     <div className="mb-xl">
       <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Globe2 size={13} /> FX Spot Rates
         <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
-          Open Exchange Rates · per USD{list.length ? ` · ${list.length} currencies` : ''}
+          Open Exchange Rates · per USD{list.length ? ` · ${list.length} currenc${list.length > 1 ? 'ies' : 'y'}` : ''}
         </span>
       </div>
+
+      {/* type-to-search add box (OXR currency catalog) */}
+      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            value={query}
+            onChange={e => runSearch(e.target.value)}
+            onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
+            placeholder="Add a currency — search by code or name…"
+            disabled={busy}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
+          />
+          {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
+        </div>
+        {open && suggestions.length > 0 && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            {suggestions.map((s, i) => (
+              <div
+                key={s.code}
+                onClick={() => pick(s)}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              ><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{s.code}</span> <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.name}</span></div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {list.length === 0 ? (
         <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
-          No FX data. Check that OPEN_EXCHANGE_APP_ID is configured.
+          No currencies selected. Search above to add rates (AED, EUR, INR…).
         </div>
       ) : (
         <div className="grid-auto">
           {list.map(([code, d], i) => (
-            <div key={code} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px' }}>
+            <div key={code} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{code}</span>
-                <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
-                  {typeof d.rate === 'number' ? d.rate.toFixed(d.rate < 5 ? 4 : 2) : d.rate}
+                <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
+                    {typeof d.rate === 'number' ? d.rate.toFixed(d.rate < 5 ? 4 : 2) : d.rate}
+                  </span>
+                  <button
+                    onClick={() => onRemove?.(code)}
+                    title="Remove currency"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px' }}
+                  >&times;</button>
                 </span>
               </div>
               <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{d.name}</div>
-              {d.commodities?.length > 0 && (
-                <div style={{ fontSize: '9px', color: 'var(--text-dim, var(--text-muted))', marginTop: '8px', lineHeight: 1.4 }}>
-                  {d.commodities.join(' · ')}
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -671,6 +730,34 @@ export default function Dashboard() {
       await refetchPorts();
     } catch (e) { console.error('remove port failed', e); }
   }, [refetchPorts]);
+
+  // Command Center FX strip: user-selected currency list. Add/remove hit
+  // dedicated endpoints, then refetch the rates.
+  const refetchForex = useCallback(async () => {
+    try {
+      const d = await fetch(`${API_BASE}/forex`, { credentials: 'include' }).then(r => r.json());
+      setForex(d.rates || null);
+    } catch (e) { console.error('forex refetch failed', e); }
+  }, []);
+  const addCurrency = useCallback(async (c) => {
+    try {
+      const d = await fetch(`${API_BASE}/forex/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ code: c.code }),
+      }).then(r => r.json());
+      if (d.error) { alert(d.error); return; }
+      await refetchForex();
+    } catch (e) { console.error('add currency failed', e); }
+  }, [refetchForex]);
+  const removeCurrency = useCallback(async (code) => {
+    try {
+      await fetch(`${API_BASE}/forex/remove`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ code }),
+      });
+      await refetchForex();
+    } catch (e) { console.error('remove currency failed', e); }
+  }, [refetchForex]);
   const [analysis, setAnalysis] = useState(null);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -1603,7 +1690,7 @@ export default function Dashboard() {
 
           <PortCongestionStrip ports={ports} onAdd={addPort} onRemove={removePort} />
 
-          <ForexStrip rates={forex} />
+          <ForexStrip rates={forex} onAdd={addCurrency} onRemove={removeCurrency} />
 
           <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 
