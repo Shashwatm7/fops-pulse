@@ -698,10 +698,16 @@ app.get('/api/history', requireAuth, async (req, res) => {
             };
         }).filter(d => d.price > 0).sort((a, b) => new Date(a.time) - new Date(b.time));
 
-        // If 1D, we fetched 3 days to bypass weekends. Now slice down to just the last ~1 day of points.
-        // 1 day at 15m intervals = 96 points max.
-        if (range === '1D') {
-            normalized = normalized.slice(-96);
+        // If 1D, we fetched 3 days to bypass weekends. Trim to the most recent
+        // ~24h of TRADING by time — NOT by a fixed point count. A count-based
+        // slice (last 96 bars) assumed ~24h of continuous 15m data, but futures
+        // that only trade a few hours a day (grains, softs) have far fewer bars
+        // per session, so 96 bars spanned 3-4 calendar days. Bounding by time
+        // shows exactly one session's worth regardless of the contract's hours.
+        if (range === '1D' && normalized.length) {
+            const lastMs = new Date(normalized[normalized.length - 1].time).getTime();
+            const cutoff = lastMs - 24 * 60 * 60 * 1000;
+            normalized = normalized.filter(d => new Date(d.time).getTime() >= cutoff);
         }
 
         res.json({ success: true, symbol, range, data: normalized });
