@@ -9,7 +9,7 @@
  * stub did), so this only tightens filtering where seeds are configured.
  */
 import { embed } from '../../labeling/embeddingService.js';
-import { tuning } from '../../tuning.js';
+import { tuning, touched } from '../../tuning.js';
 
 const DEFAULT_THRESHOLD = 0.30; // empirically: relevant >=0.44, noise <=0.14
 
@@ -20,25 +20,22 @@ const DEFAULT_THRESHOLD = 0.30; // empirically: relevant >=0.44, noise <=0.14
 // prototype is a centroid of the known false-positive classes (recipes,
 // restaurant reviews, box-office, sports, ...) — this is what Rocchio adds:
 // it pushes down food-adjacent NOISE that slipped past keyword matching.
-// GAMMA is small (non-relevant feedback is noisier than relevant). Read LIVE
-// from the runtime tuning store so an admin can adjust it without a restart.
+// GAMMA is small (non-relevant feedback is noisier than relevant). GAMMA, the
+// noise-seed list, and global extra positive seeds are all read LIVE from the
+// runtime tuning store so an admin can adjust them without a restart.
 
-// Natural-sentence noise seeds (sentences embed better than keyword bags),
-// covering the false-positive topics the pipeline has actually seen.
-const NOISE_SEEDS = [
-    'A recipe with cooking tips and ingredients for a home-cooked meal.',
-    'A restaurant review, cafe menu, and dining recommendations.',
-    'Celebrity gossip, horoscopes, lottery numbers and box-office movie reviews.',
-    'Sports match highlights, video game and esports coverage.',
-    'Diet, nutrition and personal health and wellness advice.',
-    'Gardening and home vegetable garden tips.',
-];
-
-let noiseCentroid = null; // lazy, embedded once per process
+// Noise centroid cache, keyed by the seed list content so an admin edit via
+// the tuning panel re-embeds on the next article instead of serving stale.
+let noiseCentroid = null;
+let noiseCentroidKey = null;
 async function getNoiseCentroid() {
-    if (noiseCentroid !== null) return noiseCentroid;
+    const seeds = Array.isArray(tuning.noiseSeeds) ? tuning.noiseSeeds : [];
+    const key = seeds.join('|');
+    if (noiseCentroidKey === key && noiseCentroid !== null) return noiseCentroid;
+    noiseCentroidKey = key;
+    if (seeds.length === 0) { noiseCentroid = false; return false; } // false = disabled
     const vecs = [];
-    for (const s of NOISE_SEEDS) {
+    for (const s of seeds) {
         try { vecs.push(await embed(s)); } catch { /* skip */ }
     }
     if (vecs.length === 0) { noiseCentroid = false; return false; } // false = unavailable
@@ -52,6 +49,23 @@ async function getNoiseCentroid() {
     for (let i = 0; i < dim; i++) mean[i] /= norm;
     noiseCentroid = mean;
     return mean;
+}
+
+// The profile's expanded query + any admin-added global seeds. Exported so
+// the admin seeds-preview endpoint shows exactly what the gate compares against.
+export function effectiveSeeds(profile) {
+    return [...(profile.mlSeeds || []), ...(Array.isArray(tuning.extraSeeds) ? tuning.extraSeeds : [])];
+}
+
+// Gate threshold: per-profile calibration (curated 0.30 / auto 0.25) applies
+// until an admin explicitly moves the tuning slider — from then on the admin
+// value overrides every profile. (Previously profile always won, which made
+// the admin slider a silent no-op.) Exported for the preview endpoint.
+export function effectiveThreshold(profile) {
+    return (touched.has('semanticThreshold') ? tuning.semanticThreshold : null)
+        ?? profile.semanticThreshold
+        ?? tuning.semanticThreshold
+        ?? DEFAULT_THRESHOLD;
 }
 
 // Cache seed embeddings keyed by the seed set so we embed them once, not per
@@ -94,8 +108,8 @@ async function getSeedVectors(seeds) {
  * (the gate fails open, the rescue fails closed).
  */
 export async function semanticSimilarity(article, profile) {
-    const seeds = profile.mlSeeds || [];
-    if (!Array.isArray(seeds) || seeds.length === 0) return null;
+    const seeds = effectiveSeeds(profile);
+    if (seeds.length === 0) return null;
     const seedVecs = await getSeedVectors(seeds);
     if (seedVecs.length === 0) return null;
     const text = `${article.title || ''}. ${article.descNorm || article.description || ''}`.slice(0, 500);
@@ -105,8 +119,8 @@ export async function semanticSimilarity(article, profile) {
 
 export async function applySemanticFilter(article, profile, score) {
     try {
-        const seeds = profile.mlSeeds || [];
-        if (!Array.isArray(seeds) || seeds.length === 0) return { passed: true, similarity: null };
+        const seeds = effectiveSeeds(profile);
+        if (seeds.length === 0) return { passed: true, similarity: null };
         const seedVecs = await getSeedVectors(seeds);
         if (seedVecs.length === 0) return { passed: true, similarity: null };
 
@@ -125,7 +139,7 @@ export async function applySemanticFilter(article, profile, score) {
         // gate decides on the Rocchio-adjusted score.
         const gamma = tuning.rocchioGamma;
         const rocchio = maxPos - gamma * negSim;
-        const threshold = profile.semanticThreshold || tuning.semanticThreshold || DEFAULT_THRESHOLD;
+        const threshold = effectiveThreshold(profile);
 
         if (rocchio < threshold) {
             // 3 decimals so a 0.295 doesn't render as "0.30 < 0.3" (looks buggy).
