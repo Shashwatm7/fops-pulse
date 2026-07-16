@@ -193,7 +193,7 @@ export function groundKeyFigures(figures, sourceText) {
  */
 export async function summarizeArticle(article, entities, customer = null, bodyText = null) {
     const client = makeClient();
-    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer, bodyText), 700);
+    const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer, bodyText), 1200);
     const parsed = JSON.parse(raw);
     // Never let an invented number reach the user: figures must literally
     // appear in what the model was shown (title + body/snippet).
