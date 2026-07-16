@@ -404,9 +404,16 @@ export async function getRecentAiFeedback(userId, featureName = null, limit = 5)
 // ═══════════════════════════════════════════════════════════════
 
 export async function insertPipelineAuditLog(userId, article, stageDropped, rejectionReason, score, isAccepted) {
+  // Parse the article's publish date (RSS pubDate string / ISO) to a real
+  // timestamp; NULL when absent or unparseable so it never breaks the insert.
+  let publishedAt = null;
+  if (article.publishedAt) {
+    const d = new Date(article.publishedAt);
+    if (!isNaN(d.getTime())) publishedAt = d;
+  }
   const sql =
-    `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features, published_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`;
   const params = [
     userId,
@@ -417,7 +424,8 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
     rejectionReason,
     score != null ? score : null,
     isAccepted,
-    article.extracted_features ? JSON.stringify(article.extracted_features) : null
+    article.extracted_features ? JSON.stringify(article.extracted_features) : null,
+    publishedAt
   ];
   try {
     const { rows } = await pool.query(sql, params);
@@ -429,8 +437,9 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
     if (err.code === '42703') {
       try {
         await pool.query('ALTER TABLE pipeline_audit_logs ADD COLUMN IF NOT EXISTS extracted_features JSONB');
+        await pool.query('ALTER TABLE pipeline_audit_logs ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ');
         const { rows } = await pool.query(sql, params);
-        console.log('[DB] Self-healed missing extracted_features column on pipeline_audit_logs.');
+        console.log('[DB] Self-healed missing column(s) on pipeline_audit_logs.');
         return rows[0]?.id ?? null;
       } catch (retryErr) {
         console.error('[DB] Failed to insert pipeline audit log after self-heal:', retryErr.message);
@@ -470,7 +479,7 @@ export async function getRejectedArticlesForDiscovery(userId, days = 7, limit = 
 export async function getRecentAcceptedArticles(userId, hours = 48, limit = 40) {
   const { rows } = await pool.query(
     `SELECT DISTINCT ON (article_title)
-            article_title AS title, article_url AS url, source, relevance_score, scanned_at
+            article_title AS title, article_url AS url, source, relevance_score, scanned_at, published_at
      FROM pipeline_audit_logs
      WHERE user_id = $1
        AND is_accepted = TRUE

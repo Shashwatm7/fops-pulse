@@ -680,6 +680,7 @@ export default function Dashboard() {
   const [newsStreamFilter, setNewsStreamFilter] = useState('all'); // all | risk | commodity
   const [newsCatFilter, setNewsCatFilter] = useState('all');
   const [newsRegionFilter, setNewsRegionFilter] = useState('all');
+  const [newsDateFilter, setNewsDateFilter] = useState('all'); // all | 24h | 7d | 30d — by publish date
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
   const [alertLimit, setAlertLimit] = useState(6);
@@ -1928,8 +1929,14 @@ export default function Dashboard() {
                   <option value="all">All regions</option>
                   {allRegions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
-                {(newsSearch || newsStreamFilter !== 'all' || newsCatFilter !== 'all' || newsRegionFilter !== 'all') && (
-                  <button onClick={() => { setNewsSearch(''); setNewsStreamFilter('all'); setNewsCatFilter('all'); setNewsRegionFilter('all'); }} style={{ fontSize: '12px' }}>Clear</button>
+                <select value={newsDateFilter} onChange={e => setNewsDateFilter(e.target.value)} title="Filter by publish date" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  <option value="all">Any date</option>
+                  <option value="24h">Published ≤ 24h</option>
+                  <option value="7d">Published ≤ 7 days</option>
+                  <option value="30d">Published ≤ 30 days</option>
+                </select>
+                {(newsSearch || newsStreamFilter !== 'all' || newsCatFilter !== 'all' || newsRegionFilter !== 'all' || newsDateFilter !== 'all') && (
+                  <button onClick={() => { setNewsSearch(''); setNewsStreamFilter('all'); setNewsCatFilter('all'); setNewsRegionFilter('all'); setNewsDateFilter('all'); }} style={{ fontSize: '12px' }}>Clear</button>
                 )}
               </div>
             );
@@ -1939,10 +1946,20 @@ export default function Dashboard() {
             const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
             // Apply the filter bar.
             const q = newsSearch.trim().toLowerCase();
+            // Publish-date window: when a window is selected, an article with no
+            // publish date is excluded (freshness can't be verified). Older rows
+            // scanned before publish dates were captured will lack one until re-scanned.
+            const dateWindowMs = { '24h': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5 }[newsDateFilter] || null;
+            const matchesDate = (n) => {
+              if (!dateWindowMs) return true;
+              const t = n.publishedAt ? new Date(n.publishedAt).getTime() : NaN;
+              return Number.isFinite(t) && (Date.now() - t) <= dateWindowMs;
+            };
             const matches = (n) =>
               (newsStreamFilter === 'all' || n.stream === newsStreamFilter) &&
               (newsCatFilter === 'all' || n.categoryLabel === newsCatFilter) &&
               (newsRegionFilter === 'all' || (n.regions || []).includes(newsRegionFilter)) &&
+              matchesDate(n) &&
               (!q || n.title.toLowerCase().includes(q) || (n.source || '').toLowerCase().includes(q) || (n.entities || []).some(e => e.label.toLowerCase().includes(q)));
             const filtered = categorizedNews.filter(matches);
             const riskItems = filtered.filter(n => n.stream === 'risk');
@@ -1968,6 +1985,11 @@ export default function Dashboard() {
                     {n.categoryEmoji} {n.categoryLabel}
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
+                  {n.publishedAt && (
+                    <span title="Published" style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                      · {new Date(n.publishedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
                 </div>
                 {n.entities?.length > 0 && (() => {
                   const icon = { commodity: '🌾', region: '📍', chokepoint: '⚓', port: '🚢', route: '🛳️', supplier: '🏭' };
