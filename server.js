@@ -3124,7 +3124,16 @@ async function scanSingleUser(user, pipeline) {
     }
     // Only Medium+ articles are alert-worthy — Low-scoring ones never become
     // alerts (keeps alerts scarce; the display quota also drops LOW).
-    const alertable = acceptedArticles.filter(a => ALERTABLE_PRIORITIES.has(a.priority));
+    // Freshness gate: a recent scan can surface stories published days ago; we
+    // do NOT raise a news alert for an article published more than 24h before
+    // now. No/unparseable publish date -> can't verify freshness -> not alerted.
+    const ALERT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const isFresh = (a) => {
+      const t = a.publishedAt ? new Date(a.publishedAt).getTime() : NaN;
+      return Number.isFinite(t) && (nowMs - t) <= ALERT_MAX_AGE_MS;
+    };
+    const alertable = acceptedArticles.filter(a => ALERTABLE_PRIORITIES.has(a.priority) && isFresh(a));
     alertable.sort((x, y) => y.relevanceScore - x.relevanceScore);
     const toAlert = alertable.slice(0, MAX_USER_SCANNER_ALERTS);
 
@@ -3146,7 +3155,7 @@ async function scanSingleUser(user, pipeline) {
         // Carry the pipeline's embedding score onto the alert (0-1 cosine of the
         // article vs the profile's seed vectors; null for prevetted/seedless).
         // Same signal already recorded on accepted articles — now on alerts too.
-        payload: { source: a.source, entities: null, description: a.description, semanticSimilarity: a.semanticSimilarity ?? null },
+        payload: { source: a.source, entities: null, description: a.description, semanticSimilarity: a.semanticSimilarity ?? null, publishedAt: a.publishedAt ?? null },
         dedupKey: `profile:${titleKey}`,
       });
       if (!inserted) continue; // already alerted in a previous scan/restart
@@ -3669,6 +3678,7 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
                 source: r.source,
                 score: Number(r.relevance_score) || 0,
                 scannedAt: r.scanned_at,
+                publishedAt: r.published_at || null,
                 category: cat.key,
                 categoryLabel: cat.label,
                 categoryEmoji: cat.emoji,
