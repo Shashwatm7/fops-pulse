@@ -16,7 +16,23 @@ import SettingsPage from './SettingsPage.jsx';
 import PipelineAnalyticsPage from './PipelineAnalyticsPage.jsx';
 import AdminPage from './AdminPage.jsx';
 import MorningBrief from './MorningBrief.jsx';
-const CommodityChartModal = lazy(() => import('./CommodityChartModal.jsx'));
+// Lazy import that self-heals after a redeploy: if the chunk hash no longer
+// exists (stale index.html), reload the page once to pull the fresh index.html
+// and its current chunk names, instead of crashing the UI.
+function lazyWithReload(factory) {
+  const KEY = 'chunk-reload-once';
+  return lazy(() => factory()
+    .then((mod) => { sessionStorage.removeItem(KEY); return mod; }) // success re-arms the guard
+    .catch((err) => {
+      if (!sessionStorage.getItem(KEY)) {
+        sessionStorage.setItem(KEY, '1');
+        window.location.reload();
+        return new Promise(() => {}); // hold until the reload takes over
+      }
+      throw err; // already reloaded once and still failing — surface the real error
+    }));
+}
+const CommodityChartModal = lazyWithReload(() => import('./CommodityChartModal.jsx'));
 import TagInput from './TagInput.jsx';
 
 const CustomTooltip = ({ active, payload, label, symbol }) => {
