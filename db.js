@@ -130,6 +130,15 @@ export async function setTrackedPorts(userId, trackedPorts) {
   );
 }
 
+// Persist the last profile-scan result (survives server restarts, unlike the
+// in-memory global.scanState). Read back by /api/scan-status as a fallback.
+export async function setLastScanResult(userId, stats) {
+  return pool.query(
+    'UPDATE user_profiles SET last_scan_result = $1, last_scan_at = NOW() WHERE user_id = $2',
+    [JSON.stringify(stats || {}), userId]
+  );
+}
+
 // Set ONLY the tracked_currencies list — used by the FX add/remove endpoints
 // (Command Center FX Spot Rates strip), mirroring setTrackedPorts.
 export async function setTrackedCurrencies(userId, codes) {
@@ -558,7 +567,21 @@ export async function getActiveAlerts(userId, limit = 30) {
      LIMIT $2`,
     [userId, limit]
   );
-  return rows;
+  // Article-freshness filter: hide an alert whose underlying article was
+  // PUBLISHED more than 24h ago, even if the alert row itself is younger. The
+  // publish date is carried in payload.publishedAt (news alerts). Alerts with
+  // no publish date (e.g. price alerts, or pre-freshness-gate rows) are kept —
+  // the created_at 24h expiry above already bounds them.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return rows.filter(r => {
+    let pubMs = null;
+    try {
+      const p = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
+      if (p.publishedAt) { const d = new Date(p.publishedAt); if (!isNaN(d.getTime())) pubMs = d.getTime(); }
+    } catch { /* keep on unparseable payload */ }
+    return pubMs == null || (now - pubMs) <= DAY_MS;
+  });
 }
 
 export async function getRecentAlertsBySource(userId, source, hours = 72, limit = 8) {
