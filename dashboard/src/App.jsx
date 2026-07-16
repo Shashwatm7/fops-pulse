@@ -1696,7 +1696,7 @@ export default function Dashboard() {
 
           {driversError && drivers.length === 0 && (
             <div className="mb-xl">
-              <div className="section-label">Market Drivers</div>
+              <div className="section-label">Market Indicators</div>
               <div className="intel-card" style={{ padding: '16px', borderLeft: '3px solid var(--sev-critical-text, #fb7185)', color: 'var(--text-secondary)' }}>
                 ⚠ {driversError}
               </div>
@@ -1704,7 +1704,7 @@ export default function Dashboard() {
           )}
           {drivers.length > 0 && (
             <div className="mb-xl">
-              <div className="section-label">Market Drivers</div>
+              <div className="section-label">Market Indicators</div>
               <div className="grid-auto">
                 {(drivers || []).map((d, i) => (
                   <div key={i} className={`intel-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
@@ -1726,14 +1726,6 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-
-          {counterfactuals.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Counterfactual Analysis</div>
-              <div className="grid-auto">{(counterfactuals || []).map((cf, i) => (<div key={i} className={`intel-card cf-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}><div className="cf-question">{cf.question}</div><div className="cf-answer">{cf.answer}</div></div>))}</div>
             </div>
           )}
 
