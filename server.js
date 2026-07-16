@@ -277,11 +277,11 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
     }
 }
 
-export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, allowDeterministicFallback = true, task = null) {
-    // Groq-only path (planner recommendations + deep-dive). Gemini is NOT a
-    // fallback here — deliberately removed so the two providers' rate-limit
-    // budgets stay separate. Groq's own 70B->8B degradation is the only net.
-    // Pick the pooled key for this task (spreads load across accounts).
+export async function callGroq(model, systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1, task = null) {
+    // Groq-only path (planner recommendations + deep-dive). NO fallback of any
+    // kind: not Gemini, not a smaller Groq model, not canned text. If the call
+    // fails, the error propagates to the route, which returns it to the
+    // frontend as an error message. Pick the pooled key for this task.
     const KEY = groqKeyFor(task);
 
     // Circuit breaker is PER-KEY: a 429 on one account must not block tasks
@@ -349,38 +349,10 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 if (KEY) global.aiCircuitBreakers[KEY] = Date.now() + waitMs + 2000;
             }
         }
-        // Gemini fallback removed by design. Degrade once to Groq 8B, then give up.
-        console.log(`[FAILOVER] Primary Groq failed (${model}): ${errMsg}. Trying Groq llama-3.1-8b-instant.`);
-        try {
-            if (!KEY) throw new Error('Missing GROQ_API_KEY');
-            const groqBackup2 = await axios.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    model: 'llama-3.1-8b-instant',
-                    max_tokens: maxTokens,
-                    temperature: temperature,
-                    ...(jsonMode && { response_format: { type: 'json_object' } }),
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent },
-                    ],
-                },
-                { headers: { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' } }
-            );
-            const usage = groqBackup2.data.usage;
-            if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
-            console.log(`[TOKENS] Groq llama-3.1-8b-instant | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
-            return groqBackup2.data.choices[0].message.content;
-        } catch (fallbackErr2) {
-            if (fallbackErr2.response?.headers) {
-                const remaining = fallbackErr2.response.headers['x-ratelimit-remaining-requests'];
-                const reset = fallbackErr2.response.headers['x-ratelimit-reset-requests'];
-                if (remaining !== undefined && reset !== undefined) {
-                    global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
-                }
-            }
-            throw new Error('Groq unavailable (70B and 8B both failed). Check GROQ_API_KEY quota.');
-        }
+        // No fallback by design: surface the failure to the caller rather than
+        // silently degrading to a smaller model or canned text.
+        console.error(`[GROQ] ${model} generation failed: ${errMsg}`);
+        throw new Error(`Groq ${model} generation failed: ${errMsg}`);
     }
 }
 
@@ -1504,7 +1476,7 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                 // and deep-dive. Falls back to 8B/Gemini on rate limits via
                 // callGroq's existing failover chain.
                 // Market drivers -> Gemini (everything-else routing).
-                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 1000, tuning.llmTemperature);
+                const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 2000, tuning.llmTemperature);
                 const driverParsed = JSON.parse(driverRes);
 
                 // Backstop the prompt rule in code: a price move is never a
@@ -1519,14 +1491,11 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
                     throw new Error("LLM returned empty or invalid drivers format");
                 }
             } catch (e) {
+                // No fallback: surface the failure as an explicit error the
+                // frontend renders, rather than a fake NEUTRAL "driver" card.
                 console.error('Failed to generate Market Drivers via LLM:', e.message);
-                analysis.drivers = [{
-                    factor: 'SYSTEM: AI Generation Failed',
-                    direction: 'NEUTRAL',
-                    strength: 1,
-                    explanation: `Market driver generation encountered an error: ${e.message}`,
-                    evidence: ['Please refresh the page to try again.']
-                }];
+                analysis.drivers = [];
+                analysis.driversError = `Market drivers unavailable: ${e.message}`;
             }
         }
         
@@ -1661,10 +1630,10 @@ CRITICAL INSTRUCTIONS:
 ===================================
 1. You MUST ground the analysis in the "PIPELINE-VERIFIED NEWS HEADLINES" (each title passed a relevance pipeline for this user's supply chain — reference the specific events named in the headlines) and the "REGIONAL WEATHER" conditions. Only TITLES are provided, no article bodies — cite the event/topic of a headline, but do NOT invent figures or details not present in the title. Do NOT hallucinate news or weather.
 2. DO NOT use generic filler phrases like "variance index" or "macroeconomic indicators".
-3. Provide a highly structured, concise, and deeply informative analysis (around 100-150 words). Dive into the nuances and strategic implications of the data. Format the output as plain text with line breaks (\\n). Use dashes (-) for bullet points. DO NOT output any HTML tags.
+3. Provide a highly structured, deeply informative analysis (around 300-450 words). Dive into the nuances and strategic implications of the data. Format the output as plain text with line breaks (\\n). Use dashes (-) for bullet points. DO NOT output any HTML tags.
 4. SYNTHESIZE the data into actionable insights. Tell the user WHY the data matters at a strategic executive level.
 5. Explain the *hidden risks* and *geopolitical drivers* behind the action plan based purely on the provided news and market data.
-6. Provide 2 to 3 specific, highly actionable strategic bullet points directly relating to the selected commodity.
+6. Provide 3 to 5 specific, highly actionable strategic bullet points directly relating to the selected commodity.
 7. QUALITY BAR: every bullet must cite a specific number, date, source, or named event from the data sections above. BANNED: "monitor the situation", "stay informed", "diversify", "enhance resilience", and "mitigate risks" without naming the risk and mechanism in the same sentence. If the data is thin, write fewer, sharper bullets — never pad.
 8. ADD NEW INFORMATION, don't restate: the user already saw the action plan above. Do not just rephrase it back to them. Every bullet must surface something the action plan did NOT already say — a second-order effect, a hidden risk, a precedent, or a driver behind the action, not a summary of the action itself.
 9. NO FABRICATED NUMBERS: state a % or $ figure only if it is copied from the data or a shown arithmetic derivation from a number in the data. Otherwise use qualitative language instead of inventing a precise-sounding figure.
@@ -1673,35 +1642,22 @@ CRITICAL INSTRUCTIONS:
 
 Return a JSON object: {"deepDive": "your concise, structured, and informative plain text analysis"}`;
 
-        // 70B for reasoning quality; callGroq degrades to Groq 8B on rate
-        // limits (Gemini is no longer a fallback — deep-dive stays on Groq).
+        // 70B, no fallback. A parse failure or empty/too-short response throws
+        // and is returned to the frontend as an error — no retry, no canned text.
         const analysisRaw = await callGroq(
             'llama-3.3-70b-versatile',
             analysisPrompt,
             contextBundle,
             true,
-            1000,
+            3000,
             tuning.llmTemperature,
-            false,
             'deepdive'
         );
-        
-        let deepDive = '';
-        try {
-            console.log('AI Deep Dive Raw Output:', analysisRaw);
-            const analysis = JSON.parse(analysisRaw);
-            deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : String(analysis.deepDive || '');
-            if (deepDive.length < 50) throw new Error('Response too short or hallucinated number');
-        } catch (parseErr) {
-            console.warn('Deep Dive JSON parse failed or was too short. Retrying with plain text on Groq...');
-            const fallbackPrompt = `Write a highly detailed, structured, and informative plain text analysis of the commodity market based on the data provided. Use dashes for bullet points. Return ONLY the text, NO JSON. Do not include any intro like "Here is the analysis".`;
-            // Deep-dive stays on Groq — its parse-retry does too (no Gemini).
-            deepDive = await callGroq('llama-3.3-70b-versatile', fallbackPrompt, contextBundle, false, 1500, tuning.llmTemperature, true, 'deepdive');
-        }
 
-        if (!deepDive) {
-            deepDive = `[DETERMINISTIC FALLBACK] Our AI engine analyzed the latest market indicators, but was unable to format the highly detailed deep-dive response due to local model constraints. However, based on the ${commodity} metrics provided, we recommend monitoring the current support/resistance levels closely as geopolitical and weather factors continue to exert pressure.`;
-        }
+        console.log('AI Deep Dive Raw Output:', analysisRaw);
+        const analysis = JSON.parse(analysisRaw);
+        const deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : String(analysis.deepDive || '');
+        if (deepDive.length < 50) throw new Error('AI Deep-Dive returned an empty or too-short response.');
 
         res.json({ success: true, deepDive });
     } catch (err) {
@@ -1830,12 +1786,11 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
 
         console.log('[AI PLANNER] Generating recommendations in-process (Node)...');
 
-        // Ported from the old Python FastAPI microservice: plannerService builds
-        // the (systemPrompt, contextBundle) pair with pure regex/string logic,
-        // and callGroq() runs the LLM on Groq 70B, degrading to Groq 8B on rate
-        // limits (Gemini removed — planner recommendations stay on Groq).
+        // plannerService builds the (systemPrompt, contextBundle) pair with pure
+        // regex/string logic; callGroq() runs it on Groq 70B with NO fallback —
+        // a failure propagates to the catch below and returns an error to the UI.
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
-        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 1500, tuning.llmTemperature, true, 'planner');
+        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 3000, tuning.llmTemperature, 'planner');
 
         let parsed;
         try {

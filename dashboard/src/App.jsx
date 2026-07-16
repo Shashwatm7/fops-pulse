@@ -1148,6 +1148,7 @@ export default function Dashboard() {
 
   const summary = analysis?.summary;
   const drivers = analysis?.drivers || [];
+  const driversError = analysis?.driversError;
   const alerts = (analysis?.alerts || []).sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99));
 
   const [precedents, setPrecedents] = useState({});
@@ -1400,6 +1401,14 @@ export default function Dashboard() {
 
           <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 
+          {driversError && drivers.length === 0 && (
+            <div className="mb-xl">
+              <div className="section-label">Market Drivers</div>
+              <div className="intel-card" style={{ padding: '16px', borderLeft: '3px solid var(--sev-critical-text, #fb7185)', color: 'var(--text-secondary)' }}>
+                ⚠ {driversError}
+              </div>
+            </div>
+          )}
           {drivers.length > 0 && (
             <div className="mb-xl">
               <div className="section-label">Market Drivers</div>
