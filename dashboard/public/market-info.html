@@ -83,27 +83,11 @@
   <div class="tiles" id="tiles"></div>
 
   <section class="card">
-    <h2>Profitability by sub-segment</h2>
-    <p class="desc">Median 3-year EBITDA margin. Dairy and agri-processing (flour milling) carry the fattest
-      margins; livestock is dragged negative by loss-making meat and fisheries names.</p>
-    <div id="c_sector"></div>
-  </section>
-
-  <section class="card">
     <h2>Food-consumption demand, indexed to 2024</h2>
     <p class="desc">Volume growth 2024E&rarr;2029F, each market rebased to 100 at 2024. Oman (+20%) and Bahrain
       (+18%) grow fastest; the UAE and Qatar are near-flat as populations plateau.</p>
     <div id="c_food"></div>
     <div class="legend" id="l_food"></div>
-  </section>
-
-  <section class="card">
-    <h2>Scale vs profitability</h2>
-    <p class="desc">Revenue (log scale) against EBITDA margin, bubble sized by market cap, coloured by segment.
-      The two revenue giants &mdash; Savola and Almarai &mdash; sit at opposite margin extremes; the most
-      profitable names are mid-scale (Arabian Mills 41%, Baladna 29%).</p>
-    <div id="c_scatter"></div>
-    <div class="legend" id="l_scatter"></div>
   </section>
 
   <section class="card">
@@ -134,6 +118,15 @@
         <div id="c_mna"></div>
       </div>
     </div>
+  </section>
+
+  <section class="card">
+    <h2>Scale vs profitability</h2>
+    <p class="desc">Revenue (log scale) against EBITDA margin, bubble sized by market cap, coloured by segment.
+      The two revenue giants &mdash; Savola and Almarai &mdash; sit at opposite margin extremes; the most
+      profitable names are mid-scale (Arabian Mills 41%, Baladna 29%).</p>
+    <div id="c_scatter"></div>
+    <div class="legend" id="l_scatter"></div>
   </section>
 
   <section class="card">
@@ -347,9 +340,6 @@ function scatter(host,legHost){
 // ---- render all ----
 function renderAll(){
   tiles();
-  hbar(document.getElementById("c_sector"),
-    SECTOR.map(function(s){return [SEGSHORT[s[0]],s[1],SEGCOL[s[0]],"<b>"+SEGSHORT[s[0]]+"</b><br>median EBITDA margin "+fmt(s[1],1)+"%"];}),
-    {suffix:"%",padL:120,rowH:34});
   lines(document.getElementById("c_food"),document.getElementById("l_food"));
   scatter(document.getElementById("c_scatter"),document.getElementById("l_scatter"));
   var cons=COUNTRIES.slice().sort(function(a,b){return FOOD[b][3]-FOOD[a][3];})
