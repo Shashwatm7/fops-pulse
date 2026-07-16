@@ -2933,7 +2933,10 @@ async function scanSingleUser(user, pipeline) {
         reason: alertReason,
         url: a.url,
         relevanceScore: a.relevanceScore,
-        payload: { source: a.source, entities: null, description: a.description },
+        // Carry the pipeline's embedding score onto the alert (0-1 cosine of the
+        // article vs the profile's seed vectors; null for prevetted/seedless).
+        // Same signal already recorded on accepted articles — now on alerts too.
+        payload: { source: a.source, entities: null, description: a.description, semanticSimilarity: a.semanticSimilarity ?? null },
         dedupKey: `profile:${titleKey}`,
       });
       if (!inserted) continue; // already alerted in a previous scan/restart
