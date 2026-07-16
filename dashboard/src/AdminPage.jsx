@@ -9,6 +9,9 @@ export default function AdminPage({ onBack }) {
   const [tuning, setTuning] = useState(null);   // runtime tuning values
   const [tuningMeta, setTuningMeta] = useState(null); // bounds/labels per field
   const [tuningStatus, setTuningStatus] = useState('');
+  const [previewUserId, setPreviewUserId] = useState('');
+  const [seedPreview, setSeedPreview] = useState(null); // expanded-query preview
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -28,6 +31,12 @@ export default function AdminPage({ onBack }) {
         const data = await res.json();
         if (res.ok) { setTuning(data.values); setTuningMeta(data.meta); }
         else setError(data.error || 'Failed to fetch tuning');
+        // Users list feeds the expanded-query preview picker.
+        try {
+          const ur = await fetch('/api/auth/admin/users', { credentials: 'include' });
+          const ud = await ur.json();
+          if (ur.ok) setUsers(ud.users);
+        } catch { /* preview picker just stays empty */ }
       }
     } catch (err) {
       setError(err.message);
@@ -60,6 +69,22 @@ export default function AdminPage({ onBack }) {
     } catch (err) { console.error(err); }
   };
 
+  const loadSeedPreview = async (userId) => {
+    setPreviewUserId(userId);
+    setSeedPreview(null);
+    if (!userId) return;
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/admin/tuning/seeds-preview/${userId}`, { credentials: 'include' });
+      const data = await res.json();
+      setSeedPreview(res.ok ? data : { error: data.error || 'Preview failed' });
+    } catch (err) {
+      setSeedPreview({ error: err.message });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const handleSaveTuning = async () => {
     setTuningStatus('Saving...');
     try {
@@ -70,7 +95,11 @@ export default function AdminPage({ onBack }) {
         body: JSON.stringify(tuning),
       });
       const data = await res.json();
-      if (res.ok) { setTuning(data.values); setTuningStatus('Applied — takes effect on the next scan/analyze.'); }
+      if (res.ok) {
+        setTuning(data.values);
+        setTuningStatus('Applied — takes effect on the next scan/analyze.');
+        if (previewUserId) loadSeedPreview(previewUserId); // reflect new seeds/threshold
+      }
       else setTuningStatus(data.error || 'Save failed');
     } catch (err) { setTuningStatus(err.message); }
   };
@@ -189,7 +218,8 @@ export default function AdminPage({ onBack }) {
       )}
 
       {!loading && !error && activeTab === 'tuning' && tuning && tuningMeta && (
-        <div style={{ ...styles.card, padding: '24px', maxWidth: '640px' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ ...styles.card, padding: '24px', maxWidth: '640px', flex: '1 1 480px' }}>
           <div style={styles.layerTitle}>Pipeline & LLM parameters</div>
           <div style={styles.layerDesc}>
             Runtime only — changes apply on the next scan/analyze and reset to defaults on restart.
@@ -197,6 +227,25 @@ export default function AdminPage({ onBack }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '18px' }}>
             {Object.keys(tuningMeta).map(key => {
               const m = tuningMeta[key];
+              if (m.type === 'list') {
+                const items = Array.isArray(tuning[key]) ? tuning[key] : [];
+                return (
+                  <div key={key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>{m.label}</label>
+                      <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-dim)' }}>{items.length}/{m.maxItems}</span>
+                    </div>
+                    {m.note && <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '6px' }}>{m.note}</div>}
+                    <textarea
+                      value={items.join('\n')}
+                      onChange={e => { setTuning({ ...tuning, [key]: e.target.value.split('\n') }); setTuningStatus(''); }}
+                      rows={Math.min(8, Math.max(3, items.length + 1))}
+                      placeholder="One seed sentence per line"
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.25)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', lineHeight: 1.5, resize: 'vertical' }}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div key={key}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
@@ -206,6 +255,7 @@ export default function AdminPage({ onBack }) {
                       <span style={{ color: 'var(--text-dim)', marginLeft: '8px', fontSize: '11px' }}>default {Number(m.default).toFixed(2)}</span>
                     </span>
                   </div>
+                  {m.note && <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '6px' }}>{m.note}</div>}
                   <input
                     type="range" min={m.min} max={m.max} step={m.step}
                     value={tuning[key]}
@@ -222,11 +272,56 @@ export default function AdminPage({ onBack }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '22px' }}>
             <button style={styles.actionBtn} onClick={handleSaveTuning}>Apply</button>
             <button style={styles.actionBtn} onClick={() => {
-              const reset = {}; Object.keys(tuningMeta).forEach(k => reset[k] = tuningMeta[k].default);
+              const reset = {}; Object.keys(tuningMeta).forEach(k => {
+                const d = tuningMeta[k].default;
+                reset[k] = Array.isArray(d) ? [...d] : d;
+              });
               setTuning(reset); setTuningStatus('Reset to defaults (not yet applied — click Apply).');
             }}>Reset to defaults</button>
             {tuningStatus && <span style={{ fontSize: '12px', color: 'var(--accent-emerald, #10b981)' }}>{tuningStatus}</span>}
           </div>
+        </div>
+
+        {/* Expanded-query preview: exactly what the semantic gate compares against for a user */}
+        <div style={{ ...styles.card, padding: '24px', maxWidth: '520px', flex: '1 1 380px' }}>
+          <div style={styles.layerTitle}>Expanded query preview</div>
+          <div style={styles.layerDesc}>
+            The exact positive seed set + threshold the stage-6 semantic gate uses for a user
+            (customer seeds merged, auto-seeds per commodity, plus your global extra seeds).
+          </div>
+          <select
+            value={previewUserId}
+            onChange={e => loadSeedPreview(e.target.value)}
+            style={{ width: '100%', background: 'rgba(0,0,0,0.25)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', marginBottom: '14px' }}
+          >
+            <option value="">Select a user…</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
+          </select>
+          {previewLoading && <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Building expanded query…</div>}
+          {seedPreview?.error && <div style={{ color: 'var(--danger)', fontSize: '13px' }}>Error: {seedPreview.error}</div>}
+          {seedPreview && !seedPreview.error && (
+            <div style={{ fontSize: '12px' }}>
+              <div style={{ marginBottom: '10px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #67e8f9)' }}>
+                gate threshold {Number(seedPreview.effectiveThreshold).toFixed(2)} · Rocchio γ {Number(seedPreview.rocchioGamma).toFixed(2)}
+                {seedPreview.customerId && <span style={{ color: 'var(--text-dim)' }}> · customer: {seedPreview.customerId}</span>}
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', margin: '10px 0 6px' }}>
+                Positive seeds ({seedPreview.effectiveSeeds.length})
+              </div>
+              {seedPreview.effectiveSeeds.map((s, i) => (
+                <div key={i} style={{ padding: '6px 8px', marginBottom: '4px', background: i >= seedPreview.profileSeeds.length ? 'rgba(139,92,246,0.08)' : 'rgba(0,0,0,0.2)', borderLeft: `2px solid ${i >= seedPreview.profileSeeds.length ? '#8b5cf6' : 'var(--border-color)'}`, borderRadius: '0 4px 4px 0', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  {s}{i >= seedPreview.profileSeeds.length && <span style={{ color: '#c4b5fd', marginLeft: '6px', fontSize: '10px' }}>(global extra)</span>}
+                </div>
+              ))}
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', margin: '12px 0 6px' }}>
+                Noise seeds ({seedPreview.noiseSeeds.length}) — penalized via Rocchio
+              </div>
+              {seedPreview.noiseSeeds.map((s, i) => (
+                <div key={i} style={{ padding: '6px 8px', marginBottom: '4px', background: 'rgba(251,113,133,0.05)', borderLeft: '2px solid rgba(251,113,133,0.4)', borderRadius: '0 4px 4px 0', color: 'var(--text-dim)', lineHeight: 1.4 }}>{s}</div>
+              ))}
+            </div>
+          )}
+        </div>
         </div>
       )}
     </div>

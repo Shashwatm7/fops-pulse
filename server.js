@@ -12,7 +12,8 @@ import nlp from 'compromise';
 import authRouter, { requireAuth, requireAdmin } from './auth.js';
 import { tuning, TUNING_META, updateTuning } from './services/tuning.js';
 import { NewsPipeline } from './services/news-pipeline/pipeline.js';
-import { canonicalRegionName } from './services/news-pipeline/stages/2_profile_builder.js';
+import { canonicalRegionName, buildWatchlistProfile } from './services/news-pipeline/stages/2_profile_builder.js';
+import { effectiveSeeds, effectiveThreshold } from './services/news-pipeline/stages/6_semantic_filter.js';
 import { fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
@@ -166,6 +167,36 @@ app.post('/api/admin/tuning', requireAuth, requireAdmin, (req, res) => {
     const applied = updateTuning(req.body || {});
     console.log(`[TUNING] ${req.user.username} updated:`, applied);
     res.json({ success: true, applied, values: { ...tuning } });
+});
+// Expanded-query preview: the EXACT positive seed set + threshold the stage-6
+// semantic gate will use for a given user — customer graft included, same code
+// path as the scanner (applyCustomerGraft → buildWatchlistProfile).
+app.get('/api/admin/tuning/seeds-preview/:userId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+        const userId = Number(req.params.userId);
+        const profile = await getUserProfile(userId);
+        if (!profile) return res.status(404).json({ success: false, error: 'No profile for that user' });
+        let customerId = null;
+        if (profile.customer_id) {
+            const customer = await getCustomerProfile(profile.customer_id);
+            if (customer) { applyCustomerGraft(profile, customer); customerId = customer.id; }
+        }
+        const watchlist = buildWatchlistProfile(profile);
+        res.json({
+            success: true,
+            userId,
+            customerId,
+            profileSeeds: watchlist.mlSeeds,          // per-user expanded query
+            extraSeeds: tuning.extraSeeds,            // admin-added global seeds
+            effectiveSeeds: effectiveSeeds(watchlist),// what the gate actually compares against
+            effectiveThreshold: effectiveThreshold(watchlist),
+            noiseSeeds: tuning.noiseSeeds,
+            rocchioGamma: tuning.rocchioGamma,
+        });
+    } catch (err) {
+        console.error('[TUNING] seeds preview failed:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // Groq API key POOL: GROQ_API_KEY may hold several comma-separated keys (one
@@ -2742,6 +2773,29 @@ async function initScannerPipeline() {
   return userScannerPipeline;
 }
 
+// Graft a customer profile's news-relevance fields onto a user profile —
+// identical logic for the scanner and the admin seeds-preview so what the
+// preview shows is exactly what the scanner runs. Mutates `profile`.
+function applyCustomerGraft(profile, customer) {
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+  profile.news_keywords = uniq([
+    ...(profile.news_keywords || []),
+    ...(customer.signal_keywords || []),
+    ...(customer.commodities || []),
+  ]);
+  profile.regions = uniq([
+    ...(profile.regions || []),
+    ...(customer.key_ports || []),
+    ...(customer.supplier_countries || []),
+    'UAE', 'GCC', 'Middle East', 'Red Sea', 'Suez',
+  ]);
+  // Seeds drive the real semantic filter (stage 6).
+  profile.ml_seeds = customer.ml_seeds || [];
+  // Customer-specific blocked topics, unioned with the user's own
+  // blocklist (never overwritten — additive only).
+  profile.custom_blocklist = uniq([...(profile.custom_blocklist || []), ...(customer.blocked_topics || [])]);
+}
+
 async function scanSingleUser(user, pipeline) {
   // Diagnostic stats returned to the caller so "Run Scanner Now" can report
   // exactly what happened instead of a blind "success".
@@ -2765,23 +2819,7 @@ async function scanSingleUser(user, pipeline) {
       if (customer) {
         customerProfile = customer;
         stats.customer = customer.id;
-        const uniq = (arr) => [...new Set(arr.filter(Boolean))];
-        profile.news_keywords = uniq([
-          ...(profile.news_keywords || []),
-          ...(customer.signal_keywords || []),
-          ...(customer.commodities || []),
-        ]);
-        profile.regions = uniq([
-          ...(profile.regions || []),
-          ...(customer.key_ports || []),
-          ...(customer.supplier_countries || []),
-          'UAE', 'GCC', 'Middle East', 'Red Sea', 'Suez',
-        ]);
-        // Seeds drive the real semantic filter (stage 6).
-        profile.ml_seeds = customer.ml_seeds || [];
-        // Customer-specific blocked topics, unioned with the user's own
-        // blocklist (never overwritten — additive only).
-        profile.custom_blocklist = uniq([...(profile.custom_blocklist || []), ...(customer.blocked_topics || [])]);
+        applyCustomerGraft(profile, customer);
       }
     }
 
