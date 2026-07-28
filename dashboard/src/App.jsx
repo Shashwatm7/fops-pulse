@@ -1975,6 +1975,24 @@ export default function Dashboard() {
             const commodityItems = filtered.filter(n => n.stream === 'commodity');
             const otherItems = filtered.filter(n => n.stream === 'other');
 
+            // Per-commodity grouping for the Commodity News stream. Group by the
+            // user's SELECTED commodities, canonicalized to the entity matcher's
+            // lowercase, space-separated form (WHEAT → "wheat", LIVE_CATTLE →
+            // "live cattle") so item.commodities[] can be matched directly. An
+            // article touching several tracked commodities appears under each.
+            const selectedComm = (profile.commodities || []).map(c => ({
+              code: c,
+              canon: String(c).replace(/_/g, ' ').toLowerCase(),
+              label: String(c).replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()),
+            }));
+            const commodityGroups = selectedComm
+              .map(sc => ({ ...sc, items: commodityItems.filter(n => (n.commodities || []).includes(sc.canon)) }))
+              .filter(g => g.items.length > 0);
+            // Commodity-stream articles matching none of the selected commodities
+            // (e.g. a customer-catalog commodity) — kept visible, not grouped.
+            const groupedUrls = new Set(commodityGroups.flatMap(g => g.items.map(i => i.url)));
+            const ungroupedCommodity = commodityItems.filter(n => !groupedUrls.has(n.url));
+
             const card = (n, i) => (
               <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
@@ -2036,7 +2054,33 @@ export default function Dashboard() {
             return (
               <>
                 {section('🚨 Supply Chain Risk', 'Supply-chain-risk factors (disruption, geopolitical, chokepoints, trade policy) touching your regions.', riskItems, '#fb7185')}
-                {section('📊 Commodity News', 'Commodity news with business + region relevance for your tracked commodities.', commodityItems, '#38bdf8')}
+                {/* Commodity News — grouped per selected commodity */}
+                <div className="mb-xl mt-lg">
+                  <div className="section-label" style={{ margin: '0 0 4px', color: '#38bdf8' }}>📊 Commodity News <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {commodityItems.length}</span></div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px' }}>Market, price and production news grouped by your tracked commodities.</div>
+                  {commodityItems.length === 0
+                    ? <div className="intel-card" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '13px' }}>No commodity news in the last 48h.</div>
+                    : (
+                      <>
+                        {commodityGroups.map(g => (
+                          <div key={g.code} style={{ marginBottom: '16px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#7dd3fc', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              🌾 {g.label} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {g.items.length}</span>
+                            </div>
+                            {g.items.map(card)}
+                          </div>
+                        ))}
+                        {ungroupedCommodity.length > 0 && (
+                          <div style={{ marginBottom: '16px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', margin: '0 0 8px' }}>
+                              Other commodities <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {ungroupedCommodity.length}</span>
+                            </div>
+                            {ungroupedCommodity.map(card)}
+                          </div>
+                        )}
+                      </>
+                    )}
+                </div>
                 {otherItems.length > 0 && (
                   <details style={{ marginTop: '8px' }}>
                     <summary style={{ cursor: 'pointer', color: 'var(--text-dim)', fontSize: '12px' }}>

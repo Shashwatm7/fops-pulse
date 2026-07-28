@@ -3063,12 +3063,20 @@ async function scanSingleUser(user, pipeline) {
         return phrase.includes(' ') ? `"${phrase}"` : phrase;
     };
     const commQueries = [...new Set(targets)].map(c => `${asQueryTerm(c)} supply chain OR logistics${regionTarget}`);
+    // Market-framed lane: commodity news that is NOT supply-chain-shaped —
+    // prices, futures, production, harvest, demand. Without this the pool only
+    // ever asked Google for supply-chain articles about each commodity, so the
+    // per-commodity "Commodity News" feed stayed thin. Left UNPINNED by region:
+    // commodity market/price news is global (wheat futures move on world
+    // supply), unlike the region-pinned supply-chain lane above.
+    const commMarketQueries = [...new Set(targets)]
+        .map(c => `${asQueryTerm(c)} AND (price OR prices OR futures OR production OR harvest OR output OR demand OR yield)`);
     // Micro-regions ("Saudi Arabia Al-Hasa") make useless search terms — query
     // by their canonical country/region instead.
     const regQueries = [...new Set(regions.map(r => canonicalRegionName(r)))].map(r => `${r} supply chain OR logistics`);
 
     // Combine all sources into a single search pool
-    const combinedPool = [...new Set([...customKeywords, ...commQueries, ...regQueries])];
+    const combinedPool = [...new Set([...customKeywords, ...commQueries, ...commMarketQueries, ...regQueries])];
     
     // Shuffle array and take top 20 to ensure fair distribution across commodities/regions
     let keywords = combinedPool.sort(() => 0.5 - Math.random()).slice(0, 20);
@@ -3737,6 +3745,10 @@ app.get('/api/news/categorized', requireAuth, async (req, res) => {
                 isDisruption: cat.isDisruption,
                 priority,
                 regions: ent.regions.map(e => e.canonical),
+                // Canonical (lowercase, space-separated) names of every matched
+                // commodity — the UI groups the Commodity News stream by the
+                // user's selected commodities using these.
+                commodities: ent.commodities.map(e => e.canonical),
             };
         });
         // Disruption first, then by priority, then by score.
