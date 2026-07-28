@@ -23,7 +23,11 @@ const DEFAULT_NOISE_SEEDS = [
 
 // Live values (mutable). Seeded from env so ops can still set a boot default.
 export const tuning = {
-    rocchioGamma: num(process.env.ROCCHIO_GAMMA, 0.5),          // Rocchio noise penalty weight
+    // Rocchio noise-penalty weight. DISABLED for now (default 0) — the Stage-6
+    // gate decides on plain max-cosine to the profile seeds vs the threshold,
+    // with NO noise-centroid subtraction. Re-enable Rocchio by setting this > 0
+    // (env ROCCHIO_GAMMA, or the admin tuning slider); 0.5 was the prior default.
+    rocchioGamma: num(process.env.ROCCHIO_GAMMA, 0),
     semanticThreshold: num(process.env.SEMANTIC_THRESHOLD, 0.30), // stage-6 gate cutoff
     rescueThreshold: num(process.env.SEMANTIC_RESCUE_THRESHOLD, 0.40), // keyword-rejected rescue cutoff
     llmTemperature: num(process.env.LLM_TEMPERATURE, 0.1),      // planner/deep-dive/drivers temperature

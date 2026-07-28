@@ -129,17 +129,31 @@ export async function applySemanticFilter(article, profile, score) {
         const text = `${article.title || ''}. ${article.descNorm || article.description || ''}`.slice(0, 500);
         const v = await embed(text);
         const maxPos = Math.max(...seedVecs.map(sv => cosine(v, sv)));
+        const threshold = effectiveThreshold(profile);
 
+        // Rocchio noise-subtraction is gated on gamma. With gamma = 0 (current
+        // default — "Rocchio off for now") we skip the noise centroid entirely
+        // (no wasted embedding) and the gate decides on plain max-cosine to the
+        // profile seeds. `similarity` always reports raw maxPos, so the semantic
+        // badge is unaffected either way.
+        const gamma = tuning.rocchioGamma;
+        if (!(gamma > 0)) {
+            if (maxPos < threshold) {
+                return {
+                    passed: false,
+                    similarity: +maxPos.toFixed(3),
+                    rocchio: +maxPos.toFixed(3),
+                    reason: `Semantic similarity ${maxPos.toFixed(3)} < threshold ${threshold}`,
+                };
+            }
+            return { passed: true, similarity: +maxPos.toFixed(3), rocchio: +maxPos.toFixed(3) };
+        }
+
+        // Rocchio enabled: reward closeness to the query seeds, penalize
+        // closeness to the noise prototype. The gate decides on the adjusted score.
         const neg = await getNoiseCentroid();
         const negSim = neg ? cosine(v, neg) : 0;
-
-        // Rocchio decision score: reward closeness to the query seeds, penalize
-        // closeness to the noise prototype. `similarity` still reports raw
-        // maxPos (the interpretable relevance recorded on the article); the
-        // gate decides on the Rocchio-adjusted score.
-        const gamma = tuning.rocchioGamma;
         const rocchio = maxPos - gamma * negSim;
-        const threshold = effectiveThreshold(profile);
 
         if (rocchio < threshold) {
             // 3 decimals so a 0.295 doesn't render as "0.30 < 0.3" (looks buggy).
