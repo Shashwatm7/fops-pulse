@@ -895,9 +895,11 @@ app.post('/api/forex/remove', requireAuth, async (req, res) => {
 app.get('/api/weather-extended', requireAuth, async (req, res) => {
     const userRegions = req.userProfile?.regions || [];
     const customRegions = req.userProfile?.custom_regions || [];
-    const standardRegions = userRegions.length > 0
-        ? ALL_REGIONS.filter(r => userRegions.includes(r.name))
-        : ALL_REGIONS;
+    // Only the user's explicitly-tracked regions. Previously an empty profile
+    // fell back to the ENTIRE ALL_REGIONS catalog, which surfaced mock/demo
+    // GCC regions the user never selected. Empty profile now means an empty
+    // weather panel until the user adds real locations.
+    const standardRegions = ALL_REGIONS.filter(r => userRegions.includes(r.name));
     const regions = [...standardRegions, ...customRegions];
 
     try {
