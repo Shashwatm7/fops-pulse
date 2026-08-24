@@ -217,12 +217,19 @@ export default function LoginPage({ onLogin }) {
   // Only offer the Microsoft button when the server actually has Entra
   // configured — a dead button is worse than no button.
   const [entraEnabled, setEntraEnabled] = useState(false);
+  // Default true so the password form is never hidden just because the status
+  // check failed — a network blip must not present a sign-in page with no way in.
+  const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(true);
   useEffect(() => {
     fetch(`${API_BASE}/auth/entra/status`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => setEntraEnabled(Boolean(d.enabled)))
+      .then(d => {
+        setEntraEnabled(Boolean(d.enabled));
+        if (typeof d.passwordLoginEnabled === 'boolean') setPasswordLoginEnabled(d.passwordLoginEnabled);
+      })
       .catch(err => console.error('Entra status check failed', err));
   }, []);
+  const ssoOnly = entraEnabled && !passwordLoginEnabled;
 
   // The SSO callback reports failures by redirecting to /?authError=... — show
   // them here instead of dropping the user on a silent login screen.
@@ -600,7 +607,8 @@ export default function LoginPage({ onLogin }) {
           <div style={styles.logoSubtitle}>Supply Chain Intelligence Platform</div>
         </div>
 
-        {/* Mode toggle */}
+        {/* Mode toggle — pointless when Microsoft is the only way in */}
+        {!ssoOnly && (
         <div style={styles.toggleWrap}>
           <button
             type="button"
@@ -617,8 +625,18 @@ export default function LoginPage({ onLogin }) {
             Create Account
           </button>
         </div>
+        )}
+
+        {/* Error still needs somewhere to render when the form is hidden,
+            e.g. an SSO callback bounced back with ?authError=... */}
+        {ssoOnly && error && (
+          <div style={{ margin: '0 0 16px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(251,113,133,0.08)', border: '1px solid rgba(251,113,133,0.3)', color: '#fb7185', fontSize: '13px' }}>
+            {error}
+          </div>
+        )}
 
         {/* Form */}
+        {!ssoOnly && (
         <form onSubmit={handleSubmit} style={styles.form}>
           {/* Sign-up-only fields */}
           {isSignup && (
@@ -706,14 +724,22 @@ export default function LoginPage({ onLogin }) {
             }
           </button>
         </form>
+        )}
 
         {entraEnabled && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 16px' }}>
-              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>OR</span>
-              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-            </div>
+            {!ssoOnly && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 16px' }}>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>OR</span>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+              </div>
+            )}
+            {ssoOnly && (
+              <div style={{ textAlign: 'center', fontSize: '13px', color: 'rgba(255,255,255,0.45)', margin: '4px 0 18px' }}>
+                Sign in with your work account to continue.
+              </div>
+            )}
             {/* Full page navigation, not fetch: the OIDC flow must happen in the
                 browser's top-level context so Microsoft can show its own UI. */}
             <a
@@ -737,6 +763,7 @@ export default function LoginPage({ onLogin }) {
         )}
 
         {/* Footer toggle */}
+        {!ssoOnly && (
         <div style={styles.footer}>
           {isSignup ? 'Already have an account? ' : "Don't have an account? "}
           <button
@@ -749,6 +776,7 @@ export default function LoginPage({ onLogin }) {
             {isSignup ? 'Sign In' : 'Create one'}
           </button>
         </div>
+        )}
       </div>
 
       {/* Version watermark */}

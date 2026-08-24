@@ -13,6 +13,17 @@ import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLAT
 
 const router = Router();
 
+// Hide email/password sign-in entirely and make Microsoft SSO the only way in.
+// Guarded on ENTRA_ENABLED: if SSO is not actually configured this is ignored,
+// because honouring it then would lock every user out of the application with
+// no way back in.
+const PASSWORD_LOGIN_ENABLED = !(process.env.DISABLE_PASSWORD_LOGIN === 'true' && ENTRA_ENABLED);
+if (!PASSWORD_LOGIN_ENABLED) {
+  console.log('[AUTH] Password login disabled — Microsoft SSO only.');
+} else if (process.env.DISABLE_PASSWORD_LOGIN === 'true') {
+  console.warn('[AUTH] DISABLE_PASSWORD_LOGIN=true ignored: Entra SSO is not configured, so disabling passwords would lock everyone out.');
+}
+
 // ── Middleware: require authentication ──────────────────────
 export async function requireAuth(req, res, next) {
   if (!req.session?.userId) {
@@ -40,6 +51,9 @@ export function requireAdmin(req, res, next) {
 // ── POST /api/auth/signup ───────────────────────────────────
 router.post('/signup', async (req, res) => {
   try {
+    if (!PASSWORD_LOGIN_ENABLED) {
+      return res.status(403).json({ error: 'Account creation is disabled. Use Sign in with Microsoft.' });
+    }
     const { username, email, password, company_name } = req.body;
 
     if (!username || !email || !password) {
@@ -81,6 +95,11 @@ router.post('/signup', async (req, res) => {
 // ── POST /api/auth/login ────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
+    // Enforced here, not just hidden in the UI — a hidden form is not a
+    // disabled endpoint.
+    if (!PASSWORD_LOGIN_ENABLED) {
+      return res.status(403).json({ error: 'Password sign-in is disabled. Use Sign in with Microsoft.' });
+    }
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -329,6 +348,7 @@ router.get('/entra/status', (req, res) => {
   const gateArmed = IS_EXTERNAL_ID ? emailDomainsConfigured() : allowlistConfigured();
   res.json({
     enabled: ENTRA_ENABLED,
+    passwordLoginEnabled: PASSWORD_LOGIN_ENABLED,
     mode: IS_EXTERNAL_ID ? 'external-id' : 'workforce-multitenant',
     accessGateConfigured: gateArmed,
     tenantAllowlistConfigured: allowlistConfigured(),
