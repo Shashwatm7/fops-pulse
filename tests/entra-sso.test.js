@@ -121,3 +121,40 @@ test('getMsalClient refuses to build an unconfigured client', async () => {
         if (saved === undefined) delete process.env.ENTRA_CLIENT_ID; else process.env.ENTRA_CLIENT_ID = saved;
     }
 });
+
+// ── Authority selection: workforce multitenant vs External ID (CIAM) ──
+// The same code serves both tenant types; only the authority differs. But the
+// tenant check means different things, and conflating them would be a silent
+// authorization hole.
+
+test('defaults to the multitenant workforce authority, not /common', async () => {
+    delete process.env.ENTRA_AUTHORITY;
+    const { getAuthority, IS_EXTERNAL_ID } = await loadEntra(TENANT_A);
+    assert.equal(getAuthority(), 'https://login.microsoftonline.com/organizations');
+    assert.ok(!getAuthority().endsWith('/common'), 'never /common — that admits personal Microsoft accounts');
+    assert.equal(IS_EXTERNAL_ID, false);
+});
+
+test('an External ID authority is detected', async () => {
+    process.env.ENTRA_AUTHORITY = 'https://drizzlafops.ciamlogin.com/0970e5ef-2f6d-485e-a375-ae65387a0fd3/v2.0';
+    try {
+        const { IS_EXTERNAL_ID } = await loadEntra(TENANT_A);
+        assert.equal(IS_EXTERNAL_ID, true);
+    } finally { delete process.env.ENTRA_AUTHORITY; }
+});
+
+test('under External ID the tid check is not treated as an authorization gate', async () => {
+    process.env.ENTRA_AUTHORITY = 'https://drizzlafops.ciamlogin.com/tenant/v2.0';
+    try {
+        // Every External ID user sits in OUR tenant, so tid is constant and
+        // proves nothing. It must not masquerade as a boundary.
+        const { isTenantAllowed } = await loadEntra('');
+        assert.equal(isTenantAllowed('any-tenant'), true, 'tid is not the gate under CIAM');
+    } finally { delete process.env.ENTRA_AUTHORITY; }
+});
+
+test('workforce mode still fails closed after External ID cases have run', async () => {
+    delete process.env.ENTRA_AUTHORITY;
+    const { isTenantAllowed } = await loadEntra('');
+    assert.equal(isTenantAllowed(TENANT_A), false, 'no allowlist leakage between modes');
+});

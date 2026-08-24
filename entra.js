@@ -16,10 +16,23 @@ export const ENTRA_ENABLED = Boolean(
     process.env.ENTRA_CLIENT_ID && process.env.ENTRA_CLIENT_SECRET && process.env.ENTRA_REDIRECT_URI
 );
 
-// "organizations" = any Entra work/school tenant, but NOT personal Microsoft
-// accounts. Do not use "common" — that admits consumer @outlook.com identities
-// into a B2B procurement tool.
-const AUTHORITY = 'https://login.microsoftonline.com/organizations';
+// Default: multitenant WORKFORCE app. "organizations" = any Entra work/school
+// tenant, but NOT personal Microsoft accounts. Do not use "common" — that
+// admits consumer @outlook.com identities into a B2B procurement tool.
+//
+// Override via ENTRA_AUTHORITY if the app is instead hosted in an Entra
+// External ID (CIAM) tenant, e.g.
+//   https://<subdomain>.ciamlogin.com/<tenant-id>/v2.0
+// The flow, session handling and identity keying are identical either way;
+// only the authority and the meaning of the tenant check differ (see
+// isTenantAllowed).
+const AUTHORITY = process.env.ENTRA_AUTHORITY || 'https://login.microsoftonline.com/organizations';
+
+// True when pointed at an External ID (CIAM) tenant rather than the
+// multitenant workforce endpoint.
+export const IS_EXTERNAL_ID = /ciamlogin\.com/i.test(AUTHORITY);
+
+export function getAuthority() { return AUTHORITY; }
 
 // Basic sign-in only. openid/profile/email are enough for identity; we do not
 // request Graph scopes because we do not read the directory.
@@ -35,8 +48,13 @@ const ALLOWED_TENANTS = (process.env.ENTRA_ALLOWED_TENANT_IDS || '')
 
 export function isTenantAllowed(tid) {
     if (!tid) return false;
-    // Fail CLOSED on an empty allowlist. An unset env var must not silently
-    // mean "let the whole world in".
+    // Under External ID every user is provisioned inside OUR tenant, so `tid`
+    // is the same for everyone and carries no authorization signal. The gate
+    // there has to be per-user, not per-tenant, so we do not pretend this
+    // check is meaningful.
+    if (IS_EXTERNAL_ID) return true;
+    // Multitenant workforce: fail CLOSED on an empty allowlist. An unset env
+    // var must not silently mean "let the whole world in".
     if (ALLOWED_TENANTS.length === 0) return false;
     return ALLOWED_TENANTS.includes(String(tid).toLowerCase());
 }
