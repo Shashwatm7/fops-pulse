@@ -95,10 +95,12 @@ export function extractIdentity(result) {
     const tid = claims.tid;
     const email = claims.preferred_username || claims.email || claims.upn || null;
     const name = claims.name || email || 'Unknown user';
+    // Present on CIAM local accounts; frequently absent on workforce tokens.
+    const emailVerified = typeof claims.email_verified === 'boolean' ? claims.email_verified : undefined;
     if (!oid || !tid) {
         throw new Error('Entra token missing required oid/tid claims');
     }
-    return { oid, tid, email, name };
+    return { oid, tid, email, name, emailVerified };
 }
 
 // ── Admin bootstrap ──────────────────────────────────────────
@@ -111,6 +113,68 @@ export function extractIdentity(result) {
 // only ever consulted for tenants that already passed the allowlist.
 const ADMIN_EMAILS = (process.env.ENTRA_ADMIN_EMAILS || '')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+// ── Email-domain allowlist ───────────────────────────────────
+// This is THE access gate under External ID. A CIAM tenant provisions every
+// user inside our own directory, so `tid` is identical for everyone and cannot
+// separate a customer from a stranger who found the sign-up page. What is left
+// that actually distinguishes them is the verified email domain.
+// Also usable as a second layer in workforce mode (e.g. admit only certain
+// domains within an allowed tenant), where it is optional rather than required.
+const ALLOWED_EMAIL_DOMAINS = (process.env.ENTRA_ALLOWED_EMAIL_DOMAINS || '')
+    .split(',').map(s => s.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
+
+export function emailDomainsConfigured() {
+    return ALLOWED_EMAIL_DOMAINS.length > 0;
+}
+
+export function isEmailDomainAllowed(email) {
+    if (!email || ALLOWED_EMAIL_DOMAINS.length === 0) return false;
+    const lower = String(email).toLowerCase();
+    const at = lower.lastIndexOf('@');
+    if (at === -1 || at === lower.length - 1) return false;
+    // Exact domain match only. Suffix matching would let evil-aramtec.com in.
+    return ALLOWED_EMAIL_DOMAINS.includes(lower.slice(at + 1));
+}
+
+/**
+ * The single authorization decision for a signed-in Entra identity.
+ * MSAL has already proven WHO this is; this decides whether they may in.
+ * @returns {{ok: boolean, reason?: string, detail?: string}}
+ */
+export function authorizeIdentity({ tid, email, emailVerified }) {
+    if (IS_EXTERNAL_ID) {
+        // Anyone who can complete a CIAM sign-up reaches this point, so the
+        // gate must be strict and must fail closed.
+        if (!emailDomainsConfigured()) {
+            return { ok: false, reason: 'misconfigured', detail: 'ENTRA_ALLOWED_EMAIL_DOMAINS is not set; refusing all External ID sign-ins' };
+        }
+        if (!email) {
+            return { ok: false, reason: 'no-email', detail: 'token carried no email claim' };
+        }
+        // Only reject on an EXPLICIT false. Many tenants omit the claim, and
+        // treating "absent" as "unverified" would block every legitimate user.
+        if (emailVerified === false) {
+            return { ok: false, reason: 'unverified-email', detail: `${email} is not a verified address` };
+        }
+        if (!isEmailDomainAllowed(email)) {
+            return { ok: false, reason: 'domain-not-allowed', detail: `${email} is outside the allowed domains` };
+        }
+        return { ok: true };
+    }
+
+    // Multitenant workforce: the client's own tenant vouches for the user, so
+    // the tenant is the boundary. Domain list is an optional extra filter.
+    if (!isTenantAllowed(tid)) {
+        return allowlistConfigured()
+            ? { ok: false, reason: 'tenant-not-allowed', detail: `tenant ${tid} is not authorized` }
+            : { ok: false, reason: 'misconfigured', detail: 'ENTRA_ALLOWED_TENANT_IDS is not set; refusing all sign-ins' };
+    }
+    if (emailDomainsConfigured() && !isEmailDomainAllowed(email)) {
+        return { ok: false, reason: 'domain-not-allowed', detail: `${email} is outside the allowed domains` };
+    }
+    return { ok: true };
+}
 
 export function isBootstrapAdmin(email) {
     if (!email || ADMIN_EMAILS.length === 0) return false;

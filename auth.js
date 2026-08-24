@@ -8,7 +8,7 @@ import {
   listCustomerProfiles, setUserCustomer, getCustomerProfile, touchSettingsChanged,
   findUserByEntraIdentity, linkEntraIdentity, createSsoUser,
 } from './db.js';
-import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, isTenantAllowed, allowlistConfigured, extractIdentity, isBootstrapAdmin } from './entra.js';
+import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, extractIdentity, isBootstrapAdmin, authorizeIdentity, allowlistConfigured, emailDomainsConfigured, IS_EXTERNAL_ID } from './entra.js';
 import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
 const router = Router();
@@ -324,7 +324,16 @@ router.put('/profile', requireAuth, async (req, res) => {
 // established, so requireAuth and every downstream route keep working as-is.
 
 router.get('/entra/status', (req, res) => {
-  res.json({ enabled: ENTRA_ENABLED, tenantAllowlistConfigured: allowlistConfigured() });
+  // Surface whether an access gate is actually armed, so a misconfiguration is
+  // visible before someone discovers it by being locked out (or let in).
+  const gateArmed = IS_EXTERNAL_ID ? emailDomainsConfigured() : allowlistConfigured();
+  res.json({
+    enabled: ENTRA_ENABLED,
+    mode: IS_EXTERNAL_ID ? 'external-id' : 'workforce-multitenant',
+    accessGateConfigured: gateArmed,
+    tenantAllowlistConfigured: allowlistConfigured(),
+    emailDomainAllowlistConfigured: emailDomainsConfigured(),
+  });
 });
 
 router.get('/entra/login', async (req, res) => {
@@ -376,22 +385,24 @@ router.get('/entra/callback', async (req, res) => {
       redirectUri: process.env.ENTRA_REDIRECT_URI,
     });
 
-    const { oid, tid, email, name } = extractIdentity(result);
+    const { oid, tid, email, name, emailVerified } = extractIdentity(result);
 
-    // THE gate. A multitenant app with the /organizations authority will happily
-    // issue a valid token to any work account in any tenant, so a valid token
-    // proves "this is a real Microsoft user", NOT "this user is our customer".
-    if (!isTenantAllowed(tid)) {
-      // Log the rejected tenant id explicitly. It is the value an operator
-      // needs to onboard a new client (add it to ENTRA_ALLOWED_TENANT_IDS),
-      // and without it "we can't sign in" is undiagnosable from the logs.
-      // Tenant ids are not secrets — they are publicly discoverable from a
-      // domain's OIDC metadata — so this is safe to log.
-      console.warn(`[ENTRA] rejected sign-in from tenant ${tid} (user ${email || 'unknown'}). To authorize this organization, add ${tid} to ENTRA_ALLOWED_TENANT_IDS.`);
+    // THE gate. A valid token proves "a real Microsoft sign-in happened", NOT
+    // "this person is our customer". Under External ID anyone who completes
+    // sign-up gets one; under multitenant workforce any work account on earth
+    // does. authorizeIdentity() applies whichever boundary actually holds for
+    // the configured mode, and fails closed when nothing is configured.
+    const decision = authorizeIdentity({ tid, email, emailVerified });
+    if (!decision.ok) {
+      // Log the specifics an operator needs to onboard someone, since a bare
+      // "access denied" makes "we can't sign in" undiagnosable. Tenant ids and
+      // email domains are not secrets.
+      const fix = IS_EXTERNAL_ID ? 'ENTRA_ALLOWED_EMAIL_DOMAINS' : 'ENTRA_ALLOWED_TENANT_IDS';
+      console.warn(`[ENTRA] rejected sign-in (${decision.reason}): ${decision.detail}. tenant=${tid} user=${email || 'unknown'}. To authorize, update ${fix}.`);
       return failRedirect(
-        allowlistConfigured()
-          ? 'Your organization is not authorized for FOps Pulse'
-          : 'Server misconfigured: no tenant allowlist set (ENTRA_ALLOWED_TENANT_IDS)'
+        decision.reason === 'misconfigured'
+          ? `Server misconfigured: ${decision.detail}`
+          : 'Your account is not authorized for FOps Pulse'
       );
     }
 

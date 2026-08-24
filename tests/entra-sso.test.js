@@ -71,6 +71,7 @@ test('extractIdentity reads oid/tid/email/name from id token claims', async () =
     assert.deepEqual(id, {
         oid: 'user-object-id', tid: TENANT_A,
         email: 'planner@aramtec.com', name: 'A Planner',
+        emailVerified: undefined,
     });
 });
 
@@ -177,4 +178,89 @@ test('only listed emails bootstrap as admin, case-insensitively', async () => {
         assert.equal(isBootstrapAdmin('ARON.V@DRIZZLA.COM'), true);
         assert.equal(isBootstrapAdmin('planner@aramtec.com'), false, 'a client user never bootstraps as admin');
     } finally { delete process.env.ENTRA_ADMIN_EMAILS; }
+});
+
+// ── Email-domain gate (the access boundary under External ID) ──
+
+const CIAM = 'https://drizzla.ciamlogin.com/0970e5ef-2f6d-485e-a375-ae65387a0fd3/v2.0';
+async function loadCiam(domains) {
+    process.env.ENTRA_AUTHORITY = CIAM;
+    if (domains === undefined) delete process.env.ENTRA_ALLOWED_EMAIL_DOMAINS;
+    else process.env.ENTRA_ALLOWED_EMAIL_DOMAINS = domains;
+    return loadEntra(TENANT_A);
+}
+function clearCiam() {
+    delete process.env.ENTRA_AUTHORITY;
+    delete process.env.ENTRA_ALLOWED_EMAIL_DOMAINS;
+}
+
+test('External ID with no domain list refuses EVERY sign-in', async () => {
+    try {
+        const { authorizeIdentity } = await loadCiam(undefined);
+        const d = authorizeIdentity({ tid: 'any', email: 'planner@aramtec.com' });
+        assert.equal(d.ok, false);
+        assert.equal(d.reason, 'misconfigured', 'an unset gate must not mean "allow all"');
+    } finally { clearCiam(); }
+});
+
+test('External ID admits only allowed email domains', async () => {
+    try {
+        const { authorizeIdentity } = await loadCiam('aramtec.com, drizzla.com');
+        assert.equal(authorizeIdentity({ tid: 'x', email: 'planner@aramtec.com' }).ok, true);
+        assert.equal(authorizeIdentity({ tid: 'x', email: 'sm@drizzla.com' }).ok, true);
+        const bad = authorizeIdentity({ tid: 'x', email: 'attacker@gmail.com' });
+        assert.equal(bad.ok, false);
+        assert.equal(bad.reason, 'domain-not-allowed');
+    } finally { clearCiam(); }
+});
+
+test('lookalike domains do not pass as suffixes', async () => {
+    try {
+        const { authorizeIdentity } = await loadCiam('aramtec.com');
+        for (const e of ['x@evil-aramtec.com', 'x@aramtec.com.attacker.io', 'x@notaramtec.com', 'x@sub.aramtec.com']) {
+            assert.equal(authorizeIdentity({ tid: 't', email: e }).ok, false, `rejects ${e}`);
+        }
+        assert.equal(authorizeIdentity({ tid: 't', email: 'ok@aramtec.com' }).ok, true);
+    } finally { clearCiam(); }
+});
+
+test('External ID rejects a missing or explicitly unverified email', async () => {
+    try {
+        const { authorizeIdentity } = await loadCiam('aramtec.com');
+        assert.equal(authorizeIdentity({ tid: 't', email: null }).reason, 'no-email');
+        assert.equal(authorizeIdentity({ tid: 't', email: 'p@aramtec.com', emailVerified: false }).reason, 'unverified-email');
+        // Absent claim is common on legitimate tokens and must not lock people out.
+        assert.equal(authorizeIdentity({ tid: 't', email: 'p@aramtec.com', emailVerified: undefined }).ok, true);
+    } finally { clearCiam(); }
+});
+
+test('External ID ignores the tenant allowlist entirely', async () => {
+    try {
+        process.env.ENTRA_AUTHORITY = CIAM;
+        process.env.ENTRA_ALLOWED_EMAIL_DOMAINS = 'aramtec.com';
+        // Deliberately give a tenant list that would NOT match the caller's tid.
+        const { authorizeIdentity } = await loadEntra('some-other-tenant-id');
+        assert.equal(authorizeIdentity({ tid: 'unrelated', email: 'p@aramtec.com' }).ok, true,
+            'tid is not the boundary under CIAM; the email domain is');
+    } finally { clearCiam(); }
+});
+
+test('workforce mode can layer a domain filter on top of the tenant gate', async () => {
+    delete process.env.ENTRA_AUTHORITY;
+    process.env.ENTRA_ALLOWED_EMAIL_DOMAINS = 'aramtec.com';
+    try {
+        const { authorizeIdentity } = await loadEntra(TENANT_A);
+        assert.equal(authorizeIdentity({ tid: TENANT_A, email: 'p@aramtec.com' }).ok, true);
+        assert.equal(authorizeIdentity({ tid: TENANT_A, email: 'p@elsewhere.com' }).reason, 'domain-not-allowed',
+            'right tenant, wrong domain -> denied');
+        assert.equal(authorizeIdentity({ tid: TENANT_B, email: 'p@aramtec.com' }).reason, 'tenant-not-allowed',
+            'right domain, wrong tenant -> denied');
+    } finally { delete process.env.ENTRA_ALLOWED_EMAIL_DOMAINS; }
+});
+
+test('workforce mode with no gates configured still refuses everyone', async () => {
+    delete process.env.ENTRA_AUTHORITY;
+    delete process.env.ENTRA_ALLOWED_EMAIL_DOMAINS;
+    const { authorizeIdentity } = await loadEntra('');
+    assert.equal(authorizeIdentity({ tid: TENANT_A, email: 'p@aramtec.com' }).reason, 'misconfigured');
 });
