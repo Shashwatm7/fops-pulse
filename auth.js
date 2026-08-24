@@ -382,6 +382,12 @@ router.get('/entra/callback', async (req, res) => {
     // issue a valid token to any work account in any tenant, so a valid token
     // proves "this is a real Microsoft user", NOT "this user is our customer".
     if (!isTenantAllowed(tid)) {
+      // Log the rejected tenant id explicitly. It is the value an operator
+      // needs to onboard a new client (add it to ENTRA_ALLOWED_TENANT_IDS),
+      // and without it "we can't sign in" is undiagnosable from the logs.
+      // Tenant ids are not secrets — they are publicly discoverable from a
+      // domain's OIDC metadata — so this is safe to log.
+      console.warn(`[ENTRA] rejected sign-in from tenant ${tid} (user ${email || 'unknown'}). To authorize this organization, add ${tid} to ENTRA_ALLOWED_TENANT_IDS.`);
       return failRedirect(
         allowlistConfigured()
           ? 'Your organization is not authorized for FOps Pulse'
