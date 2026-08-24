@@ -28,7 +28,19 @@ function BriefSkeleton() {
 // "What changed since yesterday" — triage panel at the top of the dashboard.
 // Every value is real fetched data: alerts from Postgres, prices from live
 // Yahoo ticks (current vs prev close). Clicking a commodity opens its chart.
-export default function MorningBrief({ brief, username, onViewAlerts, onSelectCommodity }) {
+export default function MorningBrief({ brief, error, username, onViewAlerts, onSelectCommodity }) {
+  // A failed fetch must not sit on the skeleton forever — an indefinite
+  // spinner reads as "still loading", not "this is broken".
+  if (!brief && error) {
+    return (
+      <div className="mb-xl">
+        <div className="section-label">Morning Brief</div>
+        <div className="intel-card" style={{ color: '#fb7185', fontSize: '13px' }}>
+          ⚠ {error}
+        </div>
+      </div>
+    );
+  }
   if (!brief) return <BriefSkeleton />;
 
   // Show exactly the alerts the Alerts tab shows — the backend already
@@ -62,6 +74,13 @@ export default function MorningBrief({ brief, username, onViewAlerts, onSelectCo
       <div style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
         {greeting()}{username ? `, ${username}` : ''} — here's what changed in your supply chain.
       </div>
+      {error && (
+        // Brief is showing, but the background refresh is failing: say so
+        // rather than letting stale figures look current.
+        <div style={{ fontSize: '12px', color: '#fbbf24', marginBottom: '12px' }}>
+          ⚠ {error} — showing the last successful update.
+        </div>
+      )}
       <div className="intel-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '28px', alignItems: 'start' }}>
 
         <div className="section-enter" style={{ ...colStyle, animationDelay: '0.08s' }}>

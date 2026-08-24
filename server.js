@@ -158,6 +158,37 @@ app.get('/api/rate-limits', requireAuth, (req, res) => {
     res.json(global.apiRateLimits || { remaining: 'N/A', reset: 'N/A' });
 });
 
+// ── AI health probe ──────────────────────────────────────────
+// Answers "is the AI layer actually working?" — the question token-usage
+// cannot answer, because it only counts successes. Returns 503 when a
+// provider is hard-down (model decommissioned or key rejected) so an uptime
+// check can page on it instead of the failure sitting unnoticed in logs.
+app.get('/api/health/ai', requireAuth, (req, res) => {
+    const hardDown = [];
+    for (const [provider, c] of Object.entries(aiFailures.byProvider)) {
+        if (c.modelMissing > 0) hardDown.push(`${provider}: model missing/decommissioned (${c.modelMissing})`);
+        if (c.auth > 0) hardDown.push(`${provider}: auth rejected (${c.auth})`);
+    }
+    const totalFailures = Object.values(aiFailures.byProvider).reduce((n, c) => n + c.total, 0);
+    res.status(hardDown.length ? 503 : 200).json({
+        success: hardDown.length === 0,
+        status: hardDown.length ? 'degraded' : 'ok',
+        hardDown,
+        configuredModels: {
+            groqReasoning: GROQ_MODEL_REASONING,
+            groqSummary: labelingConfig.models.groq,
+            gemini: 'gemini-2.5-flash',
+            geminiEmbedding: EMBEDDING_MODEL,
+        },
+        groqKeysConfigured: GROQ_KEYS.length,
+        successfulCalls: tokenUsage.totalCalls,
+        totalFailures,
+        failuresByProvider: aiFailures.byProvider,
+        recentFailures: aiFailures.recent.slice(0, 10),
+        since: aiFailures.since,
+    });
+});
+
 // ── Admin: runtime tuning (Rocchio γ, thresholds, LLM temp) ──────
 // Runtime-only: values apply on the next scan/analyze but reset to env
 // defaults on restart. Admin-gated.
@@ -211,6 +242,15 @@ const GROQ_KEYS = (process.env.GROQ_API_KEY || '').split(',').map(s => s.trim())
 // callGroq tries this task's key FIRST, then rotates through the rest of the
 // pool on rate-limit (see callGroq). With N keys the preferred index wraps mod N.
 const GROQ_TASK_KEY = { planner: 0, deepdive: 1, summary: 2, drivers: 3, precedent: 4 };
+
+// Groq models, env-overridable. Providers decommission models with little
+// notice — when that happens the call 404s and the feature is simply down, so
+// these must be swappable without a code change. Verify a candidate with
+// `npm run check:models` before switching: it confirms the model exists on the
+// configured key AND honours response_format:json_object, which every caller
+// here depends on. (llama-3.3-70b-versatile / llama-3.1-8b-instant were the
+// previous defaults and are now decommissioned on Groq.)
+const GROQ_MODEL_REASONING = process.env.GROQ_MODEL_REASONING || 'openai/gpt-oss-120b';
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
@@ -220,6 +260,10 @@ const envInt = (name, fallback) => {
 };
 
 const envMs = (name, fallback) => envInt(name, fallback);
+
+// Hard ceiling on any single LLM HTTP call. axios defaults to NO timeout, so
+// without this a hung provider socket pins an Express request open forever.
+const LLM_TIMEOUT_MS = envMs('LLM_TIMEOUT_MS', 45000);
 
 const BACKGROUND_AI_ENABLED = process.env.ENABLE_BACKGROUND_AI === 'true';
 const GEO_SCANNER_ENABLED = process.env.ENABLE_GEO_SCANNER === 'true';
@@ -256,15 +300,72 @@ const ALERTABLE_PRIORITIES = new Set(['Critical', 'High', 'Medium']);
 // ── Token Usage Tracking ─────────────────────────────────────
 let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
 
+// ── AI failure tracking ──────────────────────────────────────
+// tokenUsage only counts SUCCESSES, so a provider that is 100% failing looks
+// identical to one that is simply idle. That blind spot is how three
+// decommissioned Groq models stayed broken unnoticed. Every LLM failure is
+// classified and counted here, and exposed at GET /api/health/ai.
+export const aiFailures = {
+    since: new Date().toISOString(),
+    byProvider: {},   // provider -> { total, rateLimit, modelMissing, auth, timeout, badOutput, other }
+    recent: [],       // last 25 failures, newest first
+};
 
+const BLANK_FAILURE_COUNTS = () => ({ total: 0, rateLimit: 0, modelMissing: 0, auth: 0, timeout: 0, badOutput: 0, other: 0 });
+
+// Classify so "rate limited" (expected, self-healing) is never confused with
+// "model decommissioned" or "key revoked" (needs a human, right now).
+export function classifyAiError(err) {
+    const status = err?.response?.status;
+    const msg = err?.response?.data?.error?.message || err?.message || '';
+    if (status === 429 || /rate.?limit|quota|too many requests|try again in/i.test(msg)) return 'rateLimit';
+    if (status === 404 || /does not exist|do not have access|decommissioned|model_not_found/i.test(msg)) return 'modelMissing';
+    if (status === 401 || status === 403 || /invalid api key|api key not valid|unauthorized|permission/i.test(msg)) return 'auth';
+    if (/ECONNABORTED|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|timeout/i.test(err?.code || msg)) return 'timeout';
+    if (/no usable text|non-JSON|not valid JSON|unexpected token|invalid shape|returned no/i.test(msg)) return 'badOutput';
+    return 'other';
+}
+
+export function recordAiFailure(provider, model, err) {
+    const kind = classifyAiError(err);
+    const bucket = aiFailures.byProvider[provider] || (aiFailures.byProvider[provider] = BLANK_FAILURE_COUNTS());
+    bucket.total++;
+    bucket[kind]++;
+    aiFailures.recent.unshift({
+        at: new Date().toISOString(),
+        provider,
+        model,
+        kind,
+        status: err?.response?.status ?? null,
+        message: String(err?.response?.data?.error?.message || err?.message || '').slice(0, 200),
+    });
+    if (aiFailures.recent.length > 25) aiFailures.recent.length = 25;
+
+    // modelMissing and auth are never transient — they mean the feature is
+    // hard-down until someone changes config. Make them impossible to miss.
+    if (kind === 'modelMissing' || kind === 'auth') {
+        console.error(`[AI-HEALTH] ACTION REQUIRED — ${provider}/${model} ${kind}: ${aiFailures.recent[0].message}`);
+    }
+}
+
+
+
+// Transient = worth retrying on the same key: rate limits, provider 5xx, and
+// socket-level failures (timeout / reset / DNS). A 400/401/403 is a config or
+// prompt error that will fail identically on every attempt.
+function isGeminiTransient(err) {
+    const status = err.response?.status;
+    if (status === 429 || (status >= 500 && status <= 599)) return true;
+    if (!err.response && /ECONNABORTED|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|timeout/i.test(err.code || err.message || '')) return true;
+    return false;
+}
 
 export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1) {
     if (!process.env.GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
-    
-    const maxRetries = 3;
-    let attempt = 0;
 
-    while (attempt < maxRetries) {
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             let sysInstruction = systemPrompt;
             let jsonConfig = {};
@@ -288,22 +389,42 @@ export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true
                         thinkingConfig: { thinkingBudget: 0 },
                         ...jsonConfig
                     }
-                }
+                },
+                { timeout: LLM_TIMEOUT_MS }
             );
-            
+
             const gemUsage = data.usageMetadata;
             if (gemUsage) { tokenUsage.geminiInput += gemUsage.promptTokenCount || 0; tokenUsage.geminiOutput += gemUsage.candidatesTokenCount || 0; tokenUsage.totalCalls++; }
-            
-            let text = data.candidates[0].content.parts[0].text;
+
+            // Guard the envelope: a safety-blocked or truncated completion comes
+            // back with no candidate/parts, and blind indexing turns that into an
+            // opaque "cannot read properties of undefined" TypeError.
+            const candidate = data.candidates?.[0];
+            let text = candidate?.content?.parts?.[0]?.text;
+            if (typeof text !== 'string') {
+                const reason = candidate?.finishReason || data.promptFeedback?.blockReason || 'no candidate returned';
+                throw new Error(`Gemini returned no usable text (finishReason: ${reason})`);
+            }
             if (jsonMode) {
                 text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
             }
             return text;
         } catch (err) {
-            console.error('[GEMINI] API Error:', err.response?.data?.error?.message || err.message);
-            throw err;
+            const detail = err.response?.data?.error?.message || err.message;
+            const transient = isGeminiTransient(err);
+            recordAiFailure('gemini', 'gemini-2.5-flash', err);
+            if (!transient || attempt === maxRetries) {
+                console.error(`[GEMINI] API Error (attempt ${attempt}/${maxRetries}, ${transient ? 'transient, giving up' : 'permanent'}): ${detail}`);
+                throw err;
+            }
+            // Exponential backoff: 500ms, 1000ms.
+            const backoff = 500 * attempt;
+            console.warn(`[GEMINI] transient error (attempt ${attempt}/${maxRetries}), retrying in ${backoff}ms: ${detail}`);
+            await new Promise(r => setTimeout(r, backoff));
         }
     }
+    // Unreachable: the loop either returns or throws on the final attempt.
+    throw new Error('Gemini call exhausted all retries');
 }
 
 // Is this Groq error a rate-limit / quota error (vs. a real request/model
@@ -364,7 +485,7 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                         { role: 'user', content: finalUserContent },
                     ],
                 },
-                { headers: { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' } }
+                { headers: { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' }, timeout: LLM_TIMEOUT_MS }
             );
             const usage = response.data.usage;
             if (usage) { tokenUsage.groqInput += usage.prompt_tokens || 0; tokenUsage.groqOutput += usage.completion_tokens || 0; tokenUsage.totalCalls++; }
@@ -375,8 +496,17 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 global.apiRateLimits = { remaining, reset, lastUpdated: Date.now() };
             }
             console.log(`[TOKENS] Groq ${model} key#${GROQ_KEYS.indexOf(KEY)}${i > 0 ? ' (failover)' : ''} | in:${usage?.prompt_tokens || 0} out:${usage?.completion_tokens || 0} | cumulative: ${tokenUsage.groqInput + tokenUsage.groqOutput} total`);
-            return response.data.choices[0].message.content;
+            // Guard the envelope: a filtered or truncated completion can come
+            // back with no choice, and blind indexing makes that an opaque
+            // TypeError instead of a named provider failure.
+            const content = response.data.choices?.[0]?.message?.content;
+            if (typeof content !== 'string') {
+                const reason = response.data.choices?.[0]?.finish_reason || 'no choice returned';
+                throw new Error(`Groq ${model} returned no usable content (finish_reason: ${reason})`);
+            }
+            return content;
         } catch (err) {
+            recordAiFailure('groq', model, err);
             if (err.response?.headers) {
                 const remaining = err.response.headers['x-ratelimit-remaining-requests'] || err.response.headers['x-ratelimit-remaining-tokens'];
                 const reset = err.response.headers['x-ratelimit-reset-requests'] || err.response.headers['x-ratelimit-reset-tokens'];
@@ -494,19 +624,38 @@ function msUntilNextUtcDay() {
     return next.getTime() - Date.now();
 }
 
+// Why no vector could be produced. Exists so callers can tell "there was
+// nothing to embed" (a legitimate null) apart from "the provider is
+// unavailable" (something a human may need to act on). Previously both
+// returned null, which made every embedding outage invisible at the call site.
+export class EmbeddingUnavailableError extends Error {
+    constructor(reason, detail, cause) {
+        super(`Embedding unavailable (${reason})${detail ? `: ${detail}` : ''}`);
+        this.name = 'EmbeddingUnavailableError';
+        this.reason = reason; // 'disabled' | 'budget' | 'circuit-open' | 'api-error' | 'bad-response'
+        this.cause = cause;
+    }
+}
+
+// Returns { ok: true } or { ok: false, reason } — the three block reasons used
+// to collapse into a bare `false`, so the caller could not report which.
 function reserveEmbeddingBudget(count) {
-    if (!GEMINI_EMBEDDINGS_ENABLED || !process.env.GEMINI_API_KEY) return false;
-    if (Date.now() < embeddingCircuitOpenUntil) return false;
+    if (!GEMINI_EMBEDDINGS_ENABLED || !process.env.GEMINI_API_KEY) {
+        return { ok: false, reason: 'disabled' };
+    }
+    if (Date.now() < embeddingCircuitOpenUntil) {
+        return { ok: false, reason: 'circuit-open' };
+    }
 
     resetEmbeddingBudgetIfNeeded();
     if (embeddingUsageCount + count > EMBEDDING_DAILY_BUDGET) {
         embeddingCircuitOpenUntil = Date.now() + msUntilNextUtcDay();
         console.warn(`[EMBEDDINGS] Daily embedding budget reached (${embeddingUsageCount}/${EMBEDDING_DAILY_BUDGET}). Skipping Gemini embeddings until tomorrow.`);
-        return false;
+        return { ok: false, reason: 'budget' };
     }
 
     embeddingUsageCount += count;
-    return true;
+    return { ok: true };
 }
 
 function pauseEmbeddingsAfterFailure(err) {
@@ -522,27 +671,45 @@ function pauseEmbeddingsAfterFailure(err) {
     }
 }
 
+/**
+ * @returns {Promise<number[]|null>} the vector, or null ONLY when there was
+ *   nothing to embed (empty/blank input).
+ * @throws {EmbeddingUnavailableError} when a vector was wanted but could not be
+ *   produced — provider error, quota, open circuit, or embeddings disabled.
+ *   Callers that want to proceed without the vector must catch this explicitly,
+ *   which makes every such fail-open decision visible in the code and the logs.
+ */
 export async function generateEmbedding(text) {
     const normalizedText = normalizeEmbeddingText(text);
-    if (!normalizedText) return null;
+    if (!normalizedText) return null; // the one legitimate null
 
     const cached = getCachedEmbedding(normalizedText);
     if (cached) return cached;
-    if (!reserveEmbeddingBudget(1)) return null;
+
+    const reservation = reserveEmbeddingBudget(1);
+    if (!reservation.ok) throw new EmbeddingUnavailableError(reservation.reason);
 
     try {
         const { data } = await axios.post(geminiEmbeddingEndpoint('embedContent'), {
             model: geminiEmbeddingModelResource(),
             content: { parts: [{ text: normalizedText }] },
             outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS
-        }, { headers: { 'Content-Type': 'application/json' } });
-        const embedding = data.embedding.values;
+        }, { headers: { 'Content-Type': 'application/json' }, timeout: LLM_TIMEOUT_MS });
+
+        // Guard the envelope and the shape: a wrong-length vector silently
+        // corrupts inserts into the vector(768) column.
+        const embedding = data.embedding?.values;
+        if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_OUTPUT_DIMENSIONS) {
+            throw new EmbeddingUnavailableError('bad-response', `expected ${EMBEDDING_OUTPUT_DIMENSIONS} dims, got ${Array.isArray(embedding) ? embedding.length : typeof embedding}`);
+        }
         setCachedEmbedding(normalizedText, embedding);
         return embedding;
     } catch (err) {
+        if (err instanceof EmbeddingUnavailableError) throw err;
         console.error('Gemini embedding failed:', err.response?.data?.error?.message || err.message);
+        recordAiFailure('gemini-embedding', EMBEDDING_MODEL, err);
         pauseEmbeddingsAfterFailure(err);
-        return null;
+        throw new EmbeddingUnavailableError('api-error', err.response?.data?.error?.message || err.message, err);
     }
 }
 
@@ -565,7 +732,17 @@ async function generateBatchEmbeddings(texts) {
     });
 
     if (missing.size === 0) return embeddings;
-    if (!reserveEmbeddingBudget(missing.size)) return [];
+    // Blocked before we could fill the gaps. Throw rather than return a sparse
+    // array: every caller requires a COMPLETE set, and a sparse array has the
+    // right .length, so a length check waved it through. Whatever the cache did
+    // cover rides along on the error for any future partial-tolerant caller.
+    const reservation = reserveEmbeddingBudget(missing.size);
+    if (!reservation.ok) {
+        const err = new EmbeddingUnavailableError(reservation.reason, `${missing.size} of ${texts.length} text(s) uncached`);
+        err.partial = embeddings;
+        err.cachedCount = embeddings.filter(Boolean).length;
+        throw err;
+    }
 
     const missingTexts = Array.from(missing.keys());
     try {
@@ -575,11 +752,15 @@ async function generateBatchEmbeddings(texts) {
                 content: { parts: [{ text }] },
                 outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS
             }))
-        }, { headers: { 'Content-Type': 'application/json' } });
+        }, { headers: { 'Content-Type': 'application/json' }, timeout: LLM_TIMEOUT_MS });
 
         const freshEmbeddings = data.embeddings?.map(e => e.values) || [];
         if (freshEmbeddings.length !== missingTexts.length) {
-            throw new Error(`Gemini returned ${freshEmbeddings.length} embeddings for ${missingTexts.length} texts`);
+            throw new EmbeddingUnavailableError('bad-response', `Gemini returned ${freshEmbeddings.length} embeddings for ${missingTexts.length} texts`);
+        }
+        const badDims = freshEmbeddings.findIndex(v => !Array.isArray(v) || v.length !== EMBEDDING_OUTPUT_DIMENSIONS);
+        if (badDims !== -1) {
+            throw new EmbeddingUnavailableError('bad-response', `vector ${badDims} has wrong dimensionality (expected ${EMBEDDING_OUTPUT_DIMENSIONS})`);
         }
 
         missingTexts.forEach((text, missingIndex) => {
@@ -592,9 +773,11 @@ async function generateBatchEmbeddings(texts) {
 
         return embeddings;
     } catch (err) {
+        if (err instanceof EmbeddingUnavailableError) throw err;
         console.error('Gemini batch embedding failed:', err.response?.data?.error?.message || err.message);
+        recordAiFailure('gemini-embedding', EMBEDDING_MODEL, err);
         pauseEmbeddingsAfterFailure(err);
-        return [];
+        throw new EmbeddingUnavailableError('api-error', err.response?.data?.error?.message || err.message, err);
     }
 }
 
@@ -1036,23 +1219,14 @@ app.post('/api/weather/ai-forecast', requireAuth, async (req, res) => {
 
         res.json({ success: true, forecast, provider: 'deterministic' });
     } catch (err) {
-        console.error('AI Forecast error:', err.message);
-        console.log('Falling back to deterministic crop yield forecast.');
-        
-        let fallbackText = `Current metrics indicate a stable environment for ${crop} yields.`;
-        if (analytics.alert === 'SEVERE_DROUGHT' || analytics.droughtScore > 80) {
-            fallbackText = `Severe drought conditions (${analytics.droughtScore}/100) are critically threatening ${crop} yields. Expect significant volume reduction and logistical constraints.`;
-        } else if (analytics.alert === 'DROUGHT_RISK' || analytics.droughtScore > 50) {
-            fallbackText = `Elevated drought risk detected due to low precipitation (${analytics.totalPrecip30d}mm/30d). ${crop} yields may face moderate pressure if dry patterns persist.`;
-        } else if (analytics.alert === 'HEAT_STRESS') {
-            fallbackText = `Extreme temperatures reaching ${analytics.maxTemp7d}°C are placing severe heat stress on ${crop} development. Potential for reduced harvest quality.`;
-        } else if (analytics.alert === 'FLOOD_RISK') {
-            fallbackText = `Excessive recent rainfall (${analytics.recentPrecipMm}mm/7d) poses a high flood risk to ${crop} fields. Localized washouts and logistical delays are probable.`;
-        } else if (analytics.logisticsRisk) {
-            fallbackText = `While crop development is stable, high winds or low visibility present significant logistical risks for transporting ${crop} from the region.`;
-        }
-
-        res.json({ success: true, forecast: `[DETERMINISTIC FALLBACK] ${fallbackText}` });
+        // This route is fully deterministic — no LLM, so there is nothing to
+        // fall back FROM. The old catch duplicated the same template and
+        // returned it as success:true "[DETERMINISTIC FALLBACK]", which would
+        // have reported a server error as a valid forecast. It was also broken:
+        // `crop`/`analytics` are block-scoped to the try, so referencing them
+        // here threw a ReferenceError. A failure now surfaces as a failure.
+        console.error('Yield forecast error:', err.message);
+        res.status(500).json({ success: false, error: `Yield forecast failed: ${err.message}` });
     }
 });
 
@@ -1568,7 +1742,15 @@ app.get('/api/news', requireAuth, async (req, res) => {
                 const textsToEmbed = [contextText, ...verifiedArticles.map(a => a.title)];
 
                 const batchEmbeddings = await generateBatchEmbeddings(textsToEmbed);
-                if (batchEmbeddings && batchEmbeddings.length === textsToEmbed.length) {
+                // Require every vector, not just the right array length — a
+                // budget-blocked batch comes back sparse, and a missing vector
+                // would score 0 similarity and silently drop a good article.
+                const complete = batchEmbeddings
+                    && batchEmbeddings.length === textsToEmbed.length
+                    && batchEmbeddings.every(e => Array.isArray(e) && e.length > 0);
+                if (!complete) {
+                    console.warn('[SEMANTIC-FILTER] Incomplete embeddings; skipping filter (passing articles through).');
+                } else {
                     const contextEmb = batchEmbeddings[0];
                     verifiedArticles = verifiedArticles.filter((a, i) => {
                         const sim = cosineSimilarity(contextEmb, batchEmbeddings[i + 1]);
@@ -1577,7 +1759,10 @@ app.get('/api/news', requireAuth, async (req, res) => {
                     console.log(`[SEMANTIC-FILTER] Kept ${verifiedArticles.length} relevant articles out of ${textsToEmbed.length - 1}`);
                 }
             } catch (err) {
-                console.error('[SEMANTIC-FILTER] Error:', err.message);
+                // Deliberate fail-open: an embedding outage must not blank the
+                // news feed. verifiedArticles keeps its pre-filter contents.
+                const why = err instanceof EmbeddingUnavailableError ? err.reason : 'unexpected-error';
+                console.warn(`[SEMANTIC-FILTER] Unavailable (${why}); passing ${verifiedArticles.length} articles through unfiltered: ${err.message}`);
             }
         }
 
@@ -1693,10 +1878,12 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
 "explanation": string, 1 sentence, must cite the specific data point
 "evidence": array of 1-2 strings quoting the exact alert/headline/number used`;
 
-                // 70B for reasoning quality — same fix applied to the planner
-                // and deep-dive. Falls back to 8B/Gemini on rate limits via
-                // callGroq's existing failover chain.
-                // Market drivers -> Gemini (everything-else routing).
+                // Market drivers -> Gemini (everything-else routing; Groq is
+                // reserved for the planner and deep-dive).
+                // NOTE: there is no cross-model or cross-provider fallback
+                // anywhere. callGroq rotates across KEYS on rate-limit only —
+                // it never downgrades the model and never switches to Gemini.
+                // (A previous comment here claimed otherwise.)
                 const driverRes = await callGeminiFlash(driversPrompt, "You are a precise JSON data API. You must return a fully complete JSON object.", true, 2000, tuning.llmTemperature);
                 const driverParsed = JSON.parse(driverRes);
 
@@ -1866,7 +2053,7 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
         // 70B, no fallback. A parse failure or empty/too-short response throws
         // and is returned to the frontend as an error — no retry, no canned text.
         const analysisRaw = await callGroq(
-            'llama-3.3-70b-versatile',
+            GROQ_MODEL_REASONING,
             analysisPrompt,
             contextBundle,
             true,
@@ -2011,7 +2198,7 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         // regex/string logic; callGroq() runs it on Groq 70B with NO fallback —
         // a failure propagates to the catch below and returns an error to the UI.
         const { systemPrompt, contextBundle } = buildPlannerPrompt(payload);
-        const raw = await callGroq('llama-3.3-70b-versatile', systemPrompt, contextBundle, true, 3000, tuning.llmTemperature, 'planner');
+        const raw = await callGroq(GROQ_MODEL_REASONING, systemPrompt, contextBundle, true, 3000, tuning.llmTemperature, 'planner');
 
         let parsed;
         try {
@@ -2019,9 +2206,20 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         } catch (parseErr) {
             throw new Error(`Planner LLM returned non-JSON output: ${parseErr.message}`);
         }
-        const recommendations = parsed?.recommendations || [];
+        // Shape-check before trusting it. `parsed?.recommendations || []` used to
+        // turn a schema-mismatched reply (e.g. {"recs":[...]}, or a null field)
+        // into a cached success:true empty list — indistinguishable to the user
+        // from "the model had nothing to suggest", and wrong for 120 minutes.
+        if (!Array.isArray(parsed?.recommendations)) {
+            throw new Error(`Planner LLM returned an unexpected shape (expected {recommendations: []}, got keys: ${Object.keys(parsed || {}).join(', ') || 'none'})`);
+        }
+        const recommendations = parsed.recommendations;
 
-        global.aiPlannerCache[cacheKey] = { data: recommendations, timestamp: Date.now() };
+        // Only cache a non-empty result. Caching an empty one pins a bad
+        // generation in place for 2h and suppresses the retry that would fix it.
+        if (recommendations.length > 0) {
+            global.aiPlannerCache[cacheKey] = { data: recommendations, timestamp: Date.now() };
+        }
         return res.json({ success: true, recommendations });
 
     } catch (err) {
@@ -2791,7 +2989,12 @@ async function scanGeopoliticalNews() {
               }
             }
           } catch (e) {
-            console.warn(`[GEO-SCANNER] Embedding verification failed, accepting deterministic match: ${article.title}`);
+            // Deliberate fail-open: keep the deterministic keyword match rather
+            // than dropping a possible disruption alert. This warning was
+            // previously unreachable — generateEmbedding swallowed the error and
+            // returned null, so the check was skipped in total silence.
+            const why = e instanceof EmbeddingUnavailableError ? e.reason : 'unexpected-error';
+            console.warn(`[GEO-SCANNER] Embedding verification unavailable (${why}); accepting deterministic match: ${article.title}`);
           }
         }
 
@@ -3553,7 +3756,16 @@ async function aiFallbackMatch(text) {
         // Precedent classification -> Gemini (everything-else routing).
         const raw = await callGeminiFlash(system, user, false, 16, 0);
         const matched = parseMatcherResponse(raw);
-        llmMatchCache.set(key, matched ? matched.id : null);
+        // Only cache a CONFIDENT verdict: a real match, or the model explicitly
+        // saying "none". An unrecognized reply also parses to null, and caching
+        // that pinned a false "no precedent" on this key for the process
+        // lifetime — and it was never logged, so it was invisible.
+        const saidNone = /\bnone\b/i.test(String(raw || ''));
+        if (matched || saidNone) {
+            llmMatchCache.set(key, matched ? matched.id : null);
+        } else {
+            console.warn(`[PRECEDENT] unrecognized matcher reply (not cached): "${String(raw || '').slice(0, 80)}"`);
+        }
         return matched;
     } catch (e) {
         console.error('[PRECEDENT] LLM fallback matcher failed:', e.message);
@@ -3968,8 +4180,15 @@ async function startAIWorker() {
             let embeddings = [];
             try {
                 embeddings = await generateBatchEmbeddings(textsToEmbed);
+                // Check CONTENTS, not just length: the batch helper returns a
+                // sparse array (cache hits only) when the budget blocks new
+                // calls, and that array still has the full length.
                 if (!embeddings || embeddings.length !== unprocessed.length) {
                     throw new Error('Batch embedding generation failed or returned mismatched count');
+                }
+                const missingAt = embeddings.findIndex(e => !Array.isArray(e) || e.length === 0);
+                if (missingAt !== -1) {
+                    throw new Error(`Batch embedding incomplete: no vector for item ${missingAt} of ${embeddings.length}`);
                 }
                 
                 // Anti-zero embedding failsafe
@@ -3979,7 +4198,10 @@ async function startAIWorker() {
                     }
                 }
             } catch (embErr) {
-                console.warn('[AI-WORKER] Embedding unavailable. Leaving articles queued for the next budget window.', embErr.message);
+                // Fail-closed here, correctly: articles stay queued rather than
+                // being marked processed with no vector.
+                const why = embErr instanceof EmbeddingUnavailableError ? embErr.reason : 'unexpected-error';
+                console.warn(`[AI-WORKER] Embedding unavailable (${why}). Leaving ${unprocessed.length} article(s) queued for the next window: ${embErr.message}`);
                 return;
             }
             

@@ -13,7 +13,11 @@ export const labelingConfig = {
     geminiApiKey: process.env.GEMINI_API_KEY || '',
 
     models: {
-        groq: process.env.LABELING_GROQ_MODEL || 'llama-3.1-8b-instant',
+        // Small/fast tier for summaries. Must honour response_format:json_object
+        // (summarizeArticle JSON.parses the reply). Verify with `npm run
+        // check:models` before changing. Previous default llama-3.1-8b-instant
+        // is decommissioned on Groq.
+        groq: process.env.LABELING_GROQ_MODEL || 'openai/gpt-oss-20b',
         anthropic: process.env.LABELING_ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
         gemini: process.env.LABELING_GEMINI_MODEL || 'gemini-2.5-flash',
     },

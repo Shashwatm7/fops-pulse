@@ -195,6 +195,25 @@ export async function summarizeArticle(article, entities, customer = null, bodyT
     const client = makeClient();
     const raw = await client(SUMMARY_SYSTEM_PROMPT, summaryPrompt(article, entities, customer, bodyText), 1200);
     const parsed = JSON.parse(raw);
+
+    // Shape-check before the caller persists this to article_summary_cache.
+    // JSON.parse only proves it is valid JSON — a reply missing `summary` or
+    // `impact` used to flow straight to the user AND get cached, so one bad
+    // generation was served from cache indefinitely.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Summary LLM returned a non-object payload');
+    }
+    for (const field of ['summary', 'impact']) {
+        if (typeof parsed[field] !== 'string' || parsed[field].trim().length < 20) {
+            throw new Error(`Summary LLM returned a missing or too-short "${field}" field`);
+        }
+    }
+    // action_note is legitimately nullable; anything else must be a string.
+    if (parsed.action_note !== null && parsed.action_note !== undefined && typeof parsed.action_note !== 'string') {
+        throw new Error('Summary LLM returned a non-string "action_note"');
+    }
+    if (parsed.action_note === undefined) parsed.action_note = null;
+
     // Never let an invented number reach the user: figures must literally
     // appear in what the model was shown (title + body/snippet).
     const shown = `${article.title || ''}\n${summaryContent(article, bodyText)}`;

@@ -20,13 +20,14 @@ const VALID_EVENT_TYPES = [
     "heatwave_demand_uplift"
 ];
 
+// NOT AN LLM. This is a keyword simulation kept as pipeline scaffolding.
+// It emits hardcoded severities and a fabricated confidence, so its output must
+// never be mistaken for model output: rows are stamped source_type='mock' and
+// confidence=NULL, and processNewsSignals() refuses to run unless
+// ALLOW_MOCK_SIGNALS=true is set explicitly.
 async function extractSignalsFromNews(article) {
-    // In production, this would call Gemini/Groq with a strict JSON schema prompt.
-    // For this architectural implementation, we will simulate the LLM extraction
-    // to ensure the pipeline runs even if the user's API key is expired.
-    
-    console.log(`[LLM] Analyzing article: "${article.title}"`);
-    
+    console.log(`[MOCK-SIGNALS] Keyword-matching article (no LLM involved): "${article.title}"`);
+
     const signals = [];
     const text = (article.title + " " + article.description).toLowerCase();
     
@@ -74,8 +75,15 @@ async function extractSignalsFromNews(article) {
 }
 
 export async function processNewsSignals() {
-    console.log('[SIGNALS] Starting Canonical News Signal Extraction...');
-    
+    // Hard gate: this writes simulated signals into market_signals, which
+    // services/recommendations/engine.js reads as real drivers. Running it by
+    // accident silently seeds the recommendation layer with fabricated data.
+    if (process.env.ALLOW_MOCK_SIGNALS !== 'true') {
+        console.error('[MOCK-SIGNALS] Refusing to run: this module emits SIMULATED signals, not LLM output. Set ALLOW_MOCK_SIGNALS=true to override.');
+        return 0;
+    }
+    console.warn('[MOCK-SIGNALS] Writing SIMULATED (non-LLM) signals — rows are stamped source_type=mock.');
+
     try {
         // Fetch up to 50 recent unprocessed articles
         const res = await pool.query(`
@@ -109,7 +117,7 @@ export async function processNewsSignals() {
                 const values = [
                     signalId,
                     article.published_at,
-                    'news',
+                    'mock', // NOT 'news' — these are simulated, not extracted
                     sig.category,
                     null, // SKU agnostic for category-level signals
                     'Global', // Default region
@@ -117,7 +125,7 @@ export async function processNewsSignals() {
                     sig.impact_side,
                     sig.impact_direction,
                     sig.severity,
-                    0.85, // LLM Confidence mock
+                    null, // no confidence: nothing measured it. Was a hardcoded 0.85.
                     sig.horizon_days,
                     evidence
                 ];

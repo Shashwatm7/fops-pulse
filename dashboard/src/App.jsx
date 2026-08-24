@@ -675,6 +675,7 @@ export default function Dashboard() {
   const [newsFilter, setNewsFilter] = useState('');
   const [newsInsights, setNewsInsights] = useState({ byUrl: {}, byTitle: {} });
   const [categorizedNews, setCategorizedNews] = useState([]);
+  const [categorizedNewsError, setCategorizedNewsError] = useState('');
   const [regionCatalog, setRegionCatalog] = useState([]);
   const [newsSearch, setNewsSearch] = useState('');
   const [newsStreamFilter, setNewsStreamFilter] = useState('all'); // all | risk | commodity
@@ -780,10 +781,15 @@ export default function Dashboard() {
   const refetchCategorizedNews = useCallback(async () => {
     try {
       const d = await fetch(`${API_BASE}/news/categorized`, { credentials: 'include' }).then(r => r.json());
-      if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); }
-    } catch (e) { console.error('categorized news refetch failed', e); }
+      if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); setCategorizedNewsError(''); }
+      else setCategorizedNewsError(d.error || 'Categorized news unavailable.');
+    } catch (e) {
+      console.error('categorized news refetch failed', e);
+      setCategorizedNewsError('Categorized news unavailable.');
+    }
   }, []);
   const [analysis, setAnalysis] = useState(null);
+  const [analysisStale, setAnalysisStale] = useState(false);
   const [previousAnalysis, setPreviousAnalysis] = useState(null);
   const [aiRecommendations, setAiRecommendations] = useState([]);
   const [aiRecommendationsError, setAiRecommendationsError] = useState('');
@@ -798,10 +804,12 @@ export default function Dashboard() {
   const [loadingForecasts, setLoadingForecasts] = useState({});
   const [deepDiveLoading, setDeepDiveLoading] = useState({});
   const [deepDiveText, setDeepDiveText] = useState({});
+  const [deepDiveError, setDeepDiveError] = useState({});
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvKeywords, setCsvKeywords] = useState([]);
   const [mlForecasts, setMlForecasts] = useState([]);
   const [morningBrief, setMorningBrief] = useState(null);
+  const [morningBriefError, setMorningBriefError] = useState('');
   const [chartModal, setChartModal] = useState(null); // { symbol, label, unit }
   // ── S&OP State ──
   const [sopPlans, setSopPlans] = useState([]);
@@ -966,12 +974,14 @@ export default function Dashboard() {
       if (!res.ok || !data.success || !data.deepDive) {
         throw new Error(data.error || 'AI Deep-Dive failed.');
       }
-      if (data.success) {
-        setDeepDiveText(prev => ({...prev, [id]: data.deepDive}));
-      }
+      setDeepDiveText(prev => ({...prev, [id]: data.deepDive}));
+      setDeepDiveError(prev => ({ ...prev, [id]: '' }));
     } catch (err) {
-      console.error(err);
-      setDeepDiveText(prev => ({...prev, [id]: err.message || 'AI Deep-Dive failed.'}));
+      // Keep the error OUT of the content slot. Writing it into deepDiveText
+      // rendered a server error inside the "✨ AI Deep-Dive Analysis" card with
+      // a thumbs-up/down widget attached to it, as if it were generated output.
+      console.error('Deep dive failed', err);
+      setDeepDiveError(prev => ({ ...prev, [id]: err.message || 'AI Deep-Dive failed.' }));
     } finally {
       setDeepDiveLoading(prev => ({...prev, [id]: false}));
     }
@@ -1182,11 +1192,20 @@ export default function Dashboard() {
       // scan results without needing a tab switch.
       refetchCategorizedNews();
 
-      // Morning brief: independent, non-blocking
+      // Morning brief: independent, non-blocking. Errors are surfaced — a
+      // silent failure here left the panel stuck on its loading skeleton
+      // forever, which reads as "still loading" rather than "broken".
       fetch(`${API_BASE}/morning-brief`, fetchOpts)
-        .then(r => r.json())
-        .then(data => { if (data.success) setMorningBrief(data); })
-        .catch(() => {});
+        .then(async r => {
+          const data = await r.json();
+          if (!r.ok || !data.success) throw new Error(data.error || `Morning brief unavailable (HTTP ${r.status})`);
+          return data;
+        })
+        .then(data => { setMorningBrief(data); setMorningBriefError(''); })
+        .catch(err => {
+          console.error('Morning brief failed', err);
+          setMorningBriefError(err.message || 'Morning brief unavailable.');
+        });
 
 
       setAiRecsLoading(true);
@@ -1216,8 +1235,19 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ prices: p, energy: e, news: n, weather: w, forex: fx, weatherExtended: wExt }),
-      }).then(r => r.json()).catch(() => ({}));
+      }).then(r => r.json()).catch(err => {
+        // Was `.catch(() => ({}))`: a 500 here left the PREVIOUS analysis
+        // rendered with no indication it was stale.
+        console.error('Analysis fetch failed', err);
+        return { __failed: true };
+      });
 
+      if (analysisRes.__failed || !analysisRes.analysis) {
+        console.error('Analysis unavailable — keeping previous view, flagging staleness.');
+        setAnalysisStale(true);
+      } else {
+        setAnalysisStale(false);
+      }
       if (analysisRes.analysis) setAnalysis(analysisRes.analysis);
       if (analysisRes.previousAnalysis) setPreviousAnalysis(analysisRes.previousAnalysis);
       setLastRefresh(new Date().toLocaleTimeString());
@@ -1268,9 +1298,18 @@ export default function Dashboard() {
     if (tab !== 'pulse' || !user) return;
     const id = setInterval(() => {
       fetch(`${API_BASE}/morning-brief`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(d => { if (d.success) setMorningBrief(d); })
-        .catch(() => {});
+        .then(async r => {
+          const d = await r.json();
+          if (!r.ok || !d.success) throw new Error(d.error || `HTTP ${r.status}`);
+          return d;
+        })
+        .then(d => { setMorningBrief(d); setMorningBriefError(''); })
+        .catch(err => {
+          // Keep the last good brief on screen, but mark it stale so the user
+          // knows the 60s refresh stopped working.
+          console.error('Morning brief poll failed', err);
+          setMorningBriefError(`Live refresh failed: ${err.message}`);
+        });
     }, 60 * 1000);
     return () => clearInterval(id);
   }, [tab, user]);
@@ -1292,7 +1331,7 @@ export default function Dashboard() {
     })
       .then(r => r.json())
       .then(d => { if (d.success) setAlertInsights({ byUrl: d.byUrl || {}, byTitle: d.byTitle || {} }); })
-      .catch(() => {});
+      .catch(err => console.error('Alert insights fetch failed', err));
   }, [tab, user, analysis?.alerts]);
 
   const openArticleSummary = (article) => {
@@ -1314,8 +1353,14 @@ export default function Dashboard() {
   const refetchInsights = () => {
     fetch(`${API_BASE}/news/categorized`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => { if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); } })
-      .catch(() => {});
+      .then(d => {
+        if (d.success) { setCategorizedNews(d.items || []); setRegionCatalog(d.regionCatalog || []); setCategorizedNewsError(''); }
+        else setCategorizedNewsError(d.error || 'Categorized news unavailable.');
+      })
+      .catch(err => {
+        console.error('Categorized news refetch failed', err);
+        setCategorizedNewsError('Categorized news unavailable.');
+      });
   };
 
   // Save from Settings. On a material change the backend hides old alerts/
@@ -1363,7 +1408,7 @@ export default function Dashboard() {
     })
       .then(r => r.json())
       .then(d => { if (d.success) setNewsInsights({ byUrl: d.byUrl || {}, byTitle: d.byTitle || {} }); })
-      .catch(() => {});
+      .catch(err => console.error('News insights fetch failed', err));
   }, [news]);
 
   // ── SSE Live Price Feed ──
@@ -1487,10 +1532,16 @@ export default function Dashboard() {
         body: JSON.stringify({ text: `${a.title} ${a.reason || ''}`, category: a.category || null }),
       });
       const data = await res.json();
-      setPrecedents(prev => ({ ...prev, [key]: data.success ? { precedents: data.precedents || [], analogs: data.analogs || null } : { precedents: [], analogs: null } }));
+      // A failed lookup must NOT collapse into the same empty shape as a
+      // genuine no-match — that rendered "no precedent matched" and told the
+      // user the search succeeded and found nothing.
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Precedent lookup failed (HTTP ${res.status})`);
+      }
+      setPrecedents(prev => ({ ...prev, [key]: { precedents: data.precedents || [], analogs: data.analogs || null } }));
     } catch (err) {
       console.error('Precedent lookup failed:', err);
-      setPrecedents(prev => ({ ...prev, [key]: { precedents: [], analogs: null } }));
+      setPrecedents(prev => ({ ...prev, [key]: { error: err.message || 'Precedent lookup failed' } }));
     }
   };
 
@@ -1590,6 +1641,16 @@ export default function Dashboard() {
       
       <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={Array.isArray(r.action) ? r.action.join(' ') : r.action} />
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+        {deepDiveError[i] && (
+          <div style={{ fontSize: '12px', color: '#fb7185', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span>⚠ {deepDiveError[i]}</span>
+            <button
+              onClick={() => { setDeepDiveError(prev => ({ ...prev, [i]: '' })); handleDeepDive(r, i); }}
+              disabled={deepDiveLoading[i]}
+              style={{ background: 'none', border: 'none', color: '#c4b5fd', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
+            >{deepDiveLoading[i] ? 'Retrying…' : 'Retry'}</button>
+          </div>
+        )}
         {deepDiveText[i] ? (
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)', whiteSpace: 'pre-wrap' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -1712,7 +1773,12 @@ export default function Dashboard() {
       {tab === 'pulse' && (
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
-          <MorningBrief brief={morningBrief} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
+          {analysisStale && (
+            <div className="mb-xl" style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24', fontSize: '13px' }}>
+              ⚠ The analysis service did not respond on the last refresh. Alerts, drivers and the summary below may be out of date.
+            </div>
+          )}
+          <MorningBrief brief={morningBrief} error={morningBriefError} username={user?.username} onViewAlerts={() => switchTab('alerts')} onSelectCommodity={(m) => setChartModal(m)} />
 
           <PortCongestionStrip ports={ports} onAdd={addPort} onRemove={removePort} />
 
@@ -1873,6 +1939,17 @@ export default function Dashboard() {
                 }
                 if (p === 'loading') {
                   return <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>Searching 15 years of market history…</div>;
+                }
+                if (p.error) {
+                  return (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#fb7185' }}>
+                      ⚠ Precedent lookup failed — this is not a "no match". {p.error}{' '}
+                      <button
+                        onClick={() => findPrecedent(a, pKey)}
+                        style={{ background: 'none', border: 'none', color: '#67e8f9', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
+                      >Retry</button>
+                    </div>
+                  );
                 }
                 const noResults = (!p.precedents || p.precedents.length === 0) && !p.analogs;
                 if (noResults) {
@@ -2044,9 +2121,14 @@ export default function Dashboard() {
             );
 
             if (categorizedNews.length === 0) {
+              // Distinguish "the feed is empty" from "the request failed" —
+              // telling the user to run a scan when the API is down sends them
+              // chasing the wrong problem.
               return (
-                <div className="intel-card mt-lg" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                  No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.
+                <div className="intel-card mt-lg" style={{ textAlign: 'center', padding: '24px', color: categorizedNewsError ? '#fb7185' : 'var(--text-muted)', fontSize: '13px' }}>
+                  {categorizedNewsError
+                    ? `⚠ ${categorizedNewsError} This is a load failure, not an empty feed.`
+                    : 'No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.'}
                 </div>
               );
             }
