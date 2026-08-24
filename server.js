@@ -189,6 +189,71 @@ app.get('/api/health/ai', requireAuth, (req, res) => {
     });
 });
 
+// ── Admin: ACTIVE model probe ────────────────────────────────
+// /api/health/ai is passive — it reports failures that already happened, so a
+// freshly-booted instance looks healthy whether the models work or not. This
+// endpoint actually CALLS each configured model, which is the only way to
+// verify a deploy against the keys Render holds (npm run check:models reads a
+// local .env and says nothing about production).
+// Costs a few hundred tokens per run; admin-gated and never on a timer.
+app.get('/api/admin/check-models', requireAuth, requireAdmin, async (req, res) => {
+    const checks = [];
+    const probe = async (name, model, fn) => {
+        const started = Date.now();
+        try {
+            const detail = await fn();
+            checks.push({ name, model, ok: true, ms: Date.now() - started, detail });
+        } catch (err) {
+            checks.push({
+                name, model, ok: false, ms: Date.now() - started,
+                kind: classifyAiError(err),
+                error: String(err?.response?.data?.error?.message || err?.message || err).slice(0, 300),
+            });
+        }
+    };
+
+    await probe('groq-reasoning', GROQ_MODEL_REASONING, async () => {
+        const raw = await callGroq(GROQ_MODEL_REASONING, 'You are a JSON API. Return ONLY {"ok":true}.', 'Reply with the required JSON.', true, 64, 0, 'planner');
+        const parsed = JSON.parse(raw);
+        return `json_object honoured (${JSON.stringify(parsed).slice(0, 40)})`;
+    });
+
+    await probe('groq-summary', labelingConfig.models.groq, async () => {
+        // Exercise the summary model through the same client the feature uses.
+        const result = await summarizeArticle(
+            { title: 'Health probe: wheat export restriction', description: null, source: 'probe' },
+            { commodities: ['Wheat'], ports: [], routes: [], supplier_countries: [], regions: [], chokepoints: [] },
+            null,
+            'A health-check article body. India restricted wheat exports on 12 May 2026, removing 3.2 million tonnes from global supply, and benchmark futures rose 6.4 percent in response to the announcement.'
+        );
+        return `summary+impact validated, ${result.key_figures.length} grounded figure(s)`;
+    });
+
+    await probe('gemini-chat', 'gemini-2.5-flash', async () => {
+        const raw = await callGeminiFlash('You are a JSON API. Return ONLY {"ok":true}.', 'Reply with the required JSON.', true, 64, 0);
+        JSON.parse(raw);
+        return 'JSON mime honoured';
+    });
+
+    await probe('gemini-embedding', EMBEDDING_MODEL, async () => {
+        const vec = await generateEmbedding('health probe: wheat export ban');
+        if (!Array.isArray(vec)) throw new Error('no vector returned');
+        return `${vec.length} dims`;
+    });
+
+    const failed = checks.filter(c => !c.ok);
+    res.status(failed.length ? 503 : 200).json({
+        success: failed.length === 0,
+        summary: `${checks.length - failed.length}/${checks.length} model checks passed`,
+        checks,
+        // Which env the probe actually ran against — the whole point of the
+        // endpoint is that this may differ from any local .env.
+        groqKeysConfigured: GROQ_KEYS.length,
+        embeddingsEnabled: GEMINI_EMBEDDINGS_ENABLED,
+        checkedAt: new Date().toISOString(),
+    });
+});
+
 // ── Admin: runtime tuning (Rocchio γ, thresholds, LLM temp) ──────
 // Runtime-only: values apply on the next scan/analyze but reset to env
 // defaults on restart. Admin-gated.
