@@ -40,7 +40,8 @@ async function runMigrations() {
       'migrations/022_tracked_ports.sql',
       'migrations/023_tracked_currencies.sql',
       'migrations/024_audit_published_at.sql',
-      'migrations/025_last_scan_result.sql'
+      'migrations/025_last_scan_result.sql',
+      'migrations/026_entra_sso.sql'
     ];
     let failures = 0;
     for (const file of migrationFiles) {

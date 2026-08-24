@@ -214,6 +214,26 @@ export default function LoginPage({ onLogin }) {
     };
   }, []);
 
+  // Only offer the Microsoft button when the server actually has Entra
+  // configured — a dead button is worse than no button.
+  const [entraEnabled, setEntraEnabled] = useState(false);
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/entra/status`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setEntraEnabled(Boolean(d.enabled)))
+      .catch(err => console.error('Entra status check failed', err));
+  }, []);
+
+  // The SSO callback reports failures by redirecting to /?authError=... — show
+  // them here instead of dropping the user on a silent login screen.
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get('authError');
+    if (err) {
+      setError(err);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   const triggerShake = useCallback(() => {
     setShaking(true);
     setTimeout(() => setShaking(false), 600);
@@ -686,6 +706,35 @@ export default function LoginPage({ onLogin }) {
             }
           </button>
         </form>
+
+        {entraEnabled && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 16px' }}>
+              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>OR</span>
+              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            </div>
+            {/* Full page navigation, not fetch: the OIDC flow must happen in the
+                browser's top-level context so Microsoft can show its own UI. */}
+            <a
+              href={`${API_BASE}/auth/entra/login`}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                width: '100%', padding: '13px', borderRadius: '8px', textDecoration: 'none',
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)',
+                color: '#e8eaed', fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 21 21" aria-hidden="true">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+              </svg>
+              Sign in with Microsoft
+            </a>
+          </>
+        )}
 
         {/* Footer toggle */}
         <div style={styles.footer}>

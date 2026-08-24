@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import {
   createUser, findUserByEmail, findUserById, findUserByUsername,
   getUserProfile, updateUserProfile, setOnboarded,
   getAllUsers, deleteUser, updateUserAdmin, getUserCount,
   listCustomerProfiles, setUserCustomer, getCustomerProfile, touchSettingsChanged,
+  findUserByEntraIdentity, linkEntraIdentity, createSsoUser,
 } from './db.js';
+import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, isTenantAllowed, allowlistConfigured, extractIdentity } from './entra.js';
 import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
 const router = Router();
@@ -87,6 +90,13 @@ router.post('/login', async (req, res) => {
     const user = await findUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // SSO-provisioned accounts have no password. Without this guard,
+    // bcrypt.compare(password, null) throws a 500 instead of a clean 401, and
+    // the error leaks which accounts are SSO-only.
+    if (!user.password_hash) {
+      return res.status(401).json({ error: 'This account uses Microsoft sign-in' });
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -303,6 +313,114 @@ router.put('/profile', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Profile update error:', err);
     res.status(500).json({ error: 'Profile update failed' });
+  }
+});
+
+// ── Microsoft Entra ID SSO ──────────────────────────────────
+// GET  /api/auth/entra/login    -> redirect the browser to Microsoft
+// GET  /api/auth/entra/callback -> exchange the code, provision, set session
+//
+// Sessions are unchanged: this only changes HOW req.session.userId is
+// established, so requireAuth and every downstream route keep working as-is.
+
+router.get('/entra/status', (req, res) => {
+  res.json({ enabled: ENTRA_ENABLED, tenantAllowlistConfigured: allowlistConfigured() });
+});
+
+router.get('/entra/login', async (req, res) => {
+  if (!ENTRA_ENABLED) {
+    return res.status(503).json({ error: 'Microsoft sign-in is not configured on this server' });
+  }
+  try {
+    // CSRF defence: a random state we store server-side in the session and
+    // require back on the callback. Without it, an attacker can feed the user a
+    // crafted callback URL and log them into an account of the attacker's choice.
+    const state = crypto.randomUUID();
+    req.session.entraState = state;
+
+    const url = await getMsalClient().getAuthCodeUrl({
+      scopes: LOGIN_SCOPES,
+      redirectUri: process.env.ENTRA_REDIRECT_URI,
+      state,
+      prompt: 'select_account',
+    });
+    res.redirect(url);
+  } catch (err) {
+    console.error('[ENTRA] failed to build auth URL:', err.message);
+    res.status(500).json({ error: 'Could not start Microsoft sign-in' });
+  }
+});
+
+router.get('/entra/callback', async (req, res) => {
+  const failRedirect = (reason) => {
+    console.warn(`[ENTRA] sign-in rejected: ${reason}`);
+    res.redirect(`/?authError=${encodeURIComponent(reason)}`);
+  };
+
+  if (!ENTRA_ENABLED) return failRedirect('Microsoft sign-in is not configured');
+
+  try {
+    if (req.query.error) {
+      return failRedirect(String(req.query.error_description || req.query.error).slice(0, 200));
+    }
+    const expectedState = req.session.entraState;
+    delete req.session.entraState;
+    if (!req.query.state || req.query.state !== expectedState) {
+      return failRedirect('State mismatch — please start sign-in again');
+    }
+    if (!req.query.code) return failRedirect('No authorization code returned');
+
+    const result = await getMsalClient().acquireTokenByCode({
+      code: String(req.query.code),
+      scopes: LOGIN_SCOPES,
+      redirectUri: process.env.ENTRA_REDIRECT_URI,
+    });
+
+    const { oid, tid, email, name } = extractIdentity(result);
+
+    // THE gate. A multitenant app with the /organizations authority will happily
+    // issue a valid token to any work account in any tenant, so a valid token
+    // proves "this is a real Microsoft user", NOT "this user is our customer".
+    if (!isTenantAllowed(tid)) {
+      return failRedirect(
+        allowlistConfigured()
+          ? 'Your organization is not authorized for FOps Pulse'
+          : 'Server misconfigured: no tenant allowlist set (ENTRA_ALLOWED_TENANT_IDS)'
+      );
+    }
+
+    let user = await findUserByEntraIdentity(tid, oid);
+
+    // Adopt a pre-existing local account with the same email so the user keeps
+    // their profile, alerts and history rather than starting empty.
+    if (!user && email) {
+      const existing = await findUserByEmail(email);
+      if (existing) {
+        user = await linkEntraIdentity(existing.id, tid, oid);
+        console.log(`[ENTRA] linked Microsoft identity to existing account ${existing.id}`);
+      }
+    }
+
+    if (!user) {
+      const base = (email ? email.split('@')[0] : name).replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40) || 'user';
+      let username = base;
+      // usernames are UNIQUE; de-collide rather than 500 on the insert.
+      for (let n = 1; await findUserByUsername(username); n++) username = `${base}${n}`;
+      user = await createSsoUser({
+        username,
+        email: email || `${username}@${tid}.entra`,
+        entra_tid: tid,
+        entra_oid: oid,
+      });
+      console.log(`[ENTRA] provisioned new user ${user.id} (${username}) from tenant ${tid}`);
+    }
+
+    req.session.userId = user.id;
+    // The SPA reads /api/auth/me on load, so land on the app root.
+    res.redirect('/');
+  } catch (err) {
+    console.error('[ENTRA] callback failed:', err.message);
+    failRedirect('Microsoft sign-in failed');
   }
 });
 

@@ -770,3 +770,46 @@ export async function getInsightsForArticles(userId, articles) {
 // Export the pool for session store
 export { pool };
 export default pool;
+
+// ── Entra SSO identity lookup ────────────────────────────────
+// Matched on (tenant id, object id), never email — see migration 026 for why.
+export async function findUserByEntraIdentity(tid, oid) {
+  const { rows } = await pool.query(
+    `SELECT * FROM users WHERE entra_tid = $1 AND entra_oid = $2`,
+    [tid, oid]
+  );
+  return rows[0] || null;
+}
+
+// Link an Entra identity onto an existing local account (by email) so a user
+// who already had a password account keeps their alerts, profile and history
+// instead of silently getting a second, empty account.
+export async function linkEntraIdentity(userId, tid, oid) {
+  const { rows } = await pool.query(
+    `UPDATE users SET entra_tid = $2, entra_oid = $3 WHERE id = $1 RETURNING *`,
+    [userId, tid, oid]
+  );
+  return rows[0] || null;
+}
+
+// Create a password-less user provisioned from an Entra sign-in.
+export async function createSsoUser({ username, email, entra_tid, entra_oid, company_name = '' }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO users (username, email, password_hash, company_name, is_admin, entra_tid, entra_oid)
+       VALUES ($1, $2, NULL, $3, false, $4, $5) RETURNING *`,
+      [username, email, company_name, entra_tid, entra_oid]
+    );
+    const user = rows[0];
+    await client.query(`INSERT INTO user_profiles (user_id) VALUES ($1)`, [user.id]);
+    await client.query('COMMIT');
+    return user;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
