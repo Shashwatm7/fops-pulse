@@ -158,3 +158,23 @@ test('workforce mode still fails closed after External ID cases have run', async
     const { isTenantAllowed } = await loadEntra('');
     assert.equal(isTenantAllowed(TENANT_A), false, 'no allowlist leakage between modes');
 });
+
+// ── Admin bootstrap ──────────────────────────────────────────
+
+test('isBootstrapAdmin is off unless explicitly configured', async () => {
+    delete process.env.ENTRA_ADMIN_EMAILS;
+    const { isBootstrapAdmin } = await loadEntra(TENANT_A);
+    assert.equal(isBootstrapAdmin('anyone@drizzla.com'), false, 'no admin without an explicit list');
+    assert.equal(isBootstrapAdmin(''), false);
+    assert.equal(isBootstrapAdmin(null), false);
+});
+
+test('only listed emails bootstrap as admin, case-insensitively', async () => {
+    process.env.ENTRA_ADMIN_EMAILS = ' Shashwat.Malik@drizzla.com , aron.v@drizzla.com ';
+    try {
+        const { isBootstrapAdmin } = await loadEntra(TENANT_A);
+        assert.equal(isBootstrapAdmin('shashwat.malik@drizzla.com'), true);
+        assert.equal(isBootstrapAdmin('ARON.V@DRIZZLA.COM'), true);
+        assert.equal(isBootstrapAdmin('planner@aramtec.com'), false, 'a client user never bootstraps as admin');
+    } finally { delete process.env.ENTRA_ADMIN_EMAILS; }
+});

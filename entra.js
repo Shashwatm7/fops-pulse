@@ -100,3 +100,19 @@ export function extractIdentity(result) {
     }
     return { oid, tid, email, name };
 }
+
+// ── Admin bootstrap ──────────────────────────────────────────
+// SSO-provisioned users are never admin by default, which is correct: a client
+// planner must not gain admin by being first through the door. But that leaves
+// a fresh database with no admin at all when SSO is the only sign-in path, so
+// admin/* (including the model health probe) becomes unreachable.
+// ENTRA_ADMIN_EMAILS names the accounts that are provisioned as admin.
+// Matched on the verified `preferred_username`/`email` claim from Entra, and
+// only ever consulted for tenants that already passed the allowlist.
+const ADMIN_EMAILS = (process.env.ENTRA_ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+export function isBootstrapAdmin(email) {
+    if (!email || ADMIN_EMAILS.length === 0) return false;
+    return ADMIN_EMAILS.includes(String(email).toLowerCase());
+}

@@ -8,7 +8,7 @@ import {
   listCustomerProfiles, setUserCustomer, getCustomerProfile, touchSettingsChanged,
   findUserByEntraIdentity, linkEntraIdentity, createSsoUser,
 } from './db.js';
-import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, isTenantAllowed, allowlistConfigured, extractIdentity } from './entra.js';
+import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, isTenantAllowed, allowlistConfigured, extractIdentity, isBootstrapAdmin } from './entra.js';
 import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
 const router = Router();
@@ -412,13 +412,15 @@ router.get('/entra/callback', async (req, res) => {
       let username = base;
       // usernames are UNIQUE; de-collide rather than 500 on the insert.
       for (let n = 1; await findUserByUsername(username); n++) username = `${base}${n}`;
+      const asAdmin = isBootstrapAdmin(email);
       user = await createSsoUser({
         username,
         email: email || `${username}@${tid}.entra`,
         entra_tid: tid,
         entra_oid: oid,
+        is_admin: asAdmin,
       });
-      console.log(`[ENTRA] provisioned new user ${user.id} (${username}) from tenant ${tid}`);
+      console.log(`[ENTRA] provisioned new user ${user.id} (${username}) from tenant ${tid}${asAdmin ? ' AS ADMIN (ENTRA_ADMIN_EMAILS)' : ''}`);
     }
 
     req.session.userId = user.id;

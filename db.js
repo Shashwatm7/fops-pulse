@@ -793,14 +793,14 @@ export async function linkEntraIdentity(userId, tid, oid) {
 }
 
 // Create a password-less user provisioned from an Entra sign-in.
-export async function createSsoUser({ username, email, entra_tid, entra_oid, company_name = '' }) {
+export async function createSsoUser({ username, email, entra_tid, entra_oid, company_name = '', is_admin = false }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO users (username, email, password_hash, company_name, is_admin, entra_tid, entra_oid)
-       VALUES ($1, $2, NULL, $3, false, $4, $5) RETURNING *`,
-      [username, email, company_name, entra_tid, entra_oid]
+       VALUES ($1, $2, NULL, $3, $4, $5, $6) RETURNING *`,
+      [username, email, company_name, is_admin === true, entra_tid, entra_oid]
     );
     const user = rows[0];
     await client.query(`INSERT INTO user_profiles (user_id) VALUES ($1)`, [user.id]);
