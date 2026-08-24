@@ -6,13 +6,45 @@ import dotenv from 'dotenv';
 if (fs.existsSync('/etc/secrets/.env')) { dotenv.config({ path: '/etc/secrets/.env' }); } else { dotenv.config(); }
 
 const { Pool } = pg;
+// connectionTimeoutMillis is essential here, not a nicety. The container runs
+// `node migrate.js && node server.js`, so if this pool never connects, the
+// migration step never exits and server.js never starts — the port stays
+// unbound and the platform's edge holds requests open returning zero bytes,
+// with no error anywhere. pg defaults to waiting forever.
+//
+// Most common cause: DATABASE_URL pointing at Supabase's DIRECT host
+// (db.<ref>.supabase.co), which is IPv6-only. From an IPv4-only network that
+// hangs rather than refusing. Use the Session pooler host instead.
+const CONNECT_TIMEOUT_MS = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 15000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
 });
 
+function describeTarget() {
+  try {
+    const u = new URL(process.env.DATABASE_URL || '');
+    const direct = /^db\..*\.supabase\.co$/i.test(u.hostname);
+    return `${u.hostname}:${u.port || 5432}${direct ? ' (Supabase DIRECT host — IPv6 only)' : ''}`;
+  } catch { return '<unparseable DATABASE_URL>'; }
+}
+
 async function runMigrations() {
-  console.log('Running database migrations...');
-  const client = await pool.connect();
+  console.log(`Running database migrations against ${describeTarget()} ...`);
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error(`\n[MIGRATE] FATAL: could not connect to the database within ${CONNECT_TIMEOUT_MS}ms.`);
+    console.error(`[MIGRATE] target: ${describeTarget()}`);
+    console.error(`[MIGRATE] cause : ${err.message}`);
+    if (/^db\..*\.supabase\.co$/i.test((() => { try { return new URL(process.env.DATABASE_URL).hostname; } catch { return ''; } })())) {
+      console.error('[MIGRATE] hint  : that host is IPv6-only. Switch DATABASE_URL to the Supabase');
+      console.error('[MIGRATE]         Session pooler (aws-0-<region>.pooler.supabase.com:5432,');
+      console.error('[MIGRATE]         user postgres.<project-ref>) and add sslmode=no-verify.');
+    }
+    throw err;
+  }
   try {
     const migrationFiles = [
       'migrations/001_init.sql', 
