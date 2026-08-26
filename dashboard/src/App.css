@@ -44,7 +44,7 @@
   background-size: 200% 100%;
 }
 .pulse-header.market-CRISIS::after {
-  background: linear-gradient(90deg, #ef4444, var(--accent-rose), #ef4444);
+  background: linear-gradient(90deg, #dc2626, var(--accent-rose), #dc2626);
   animation: borderGlow 1.5s ease infinite, breathe 2s ease-in-out infinite;
   background-size: 200% 100%;
 }
@@ -194,7 +194,7 @@
 .refresh-btn .ripple {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
+  background: #ececf1;
   animation: rippleEffect 0.6s ease-out forwards;
   pointer-events: none;
 }
@@ -967,8 +967,8 @@
 
 /* ── Missing Data ── */
 .missing-data-strip {
-  background: rgba(139, 92, 246, 0.06);
-  border: 1px solid rgba(139, 92, 246, 0.15);
+  background: rgba(0,57,156,0.06);
+  border: 1px solid rgba(0,57,156,0.15);
   border-radius: var(--radius-md);
   padding: var(--space-md);
 }
@@ -992,9 +992,9 @@
   font-size: 11px;
   padding: 4px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(139, 92, 246, 0.08);
+  background: rgba(0,57,156,0.08);
   color: var(--text-secondary);
-  border: 1px solid rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(0,57,156,0.12);
 }
 
 /* ═══ LOADING STATE ═══ */

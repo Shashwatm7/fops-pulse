@@ -40,26 +40,26 @@ const CustomTooltip = ({ active, payload, label, symbol }) => {
     const data = payload[0].payload;
     const isLive = data.open === undefined; // If open is undefined, it's a live tick (no OHLC)
     return (
-      <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', minWidth: '180px' }}>
-        <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '8px', borderBottom: '1px solid #334155', paddingBottom: '4px' }}>
-          Date: <span style={{ color: '#fff', float: 'right' }}>{new Date(label).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+      <div style={{ background: '#1e293b', border: '1px solid #6b7280', borderRadius: '6px', padding: '10px 14px', boxShadow: '0 4px 12px #ffffff', minWidth: '180px' }}>
+        <div style={{ color: '#9aa2af', fontSize: '11px', marginBottom: '8px', borderBottom: '1px solid #6b7280', paddingBottom: '4px' }}>
+          Date: <span style={{ color: '#1a1d24', float: 'right' }}>{new Date(label).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span style={{ color: '#94a3b8' }}>Close:</span> <span style={{ color: '#fff' }}>{data.price}</span>
+          <span style={{ color: '#9aa2af' }}>Close:</span> <span style={{ color: '#1a1d24' }}>{data.price}</span>
         </div>
         {!isLive && (
           <>
             <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span style={{ color: '#94a3b8' }}>Open:</span> <span style={{ color: '#e2e8f0' }}>{data.open}</span>
+              <span style={{ color: '#9aa2af' }}>Open:</span> <span style={{ color: '#1a1d24' }}>{data.open}</span>
             </div>
             <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span style={{ color: '#94a3b8' }}>High:</span> <span style={{ color: '#e2e8f0' }}>{data.high}</span>
+              <span style={{ color: '#9aa2af' }}>High:</span> <span style={{ color: '#1a1d24' }}>{data.high}</span>
             </div>
             <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-              <span style={{ color: '#94a3b8' }}>Low:</span> <span style={{ color: '#e2e8f0' }}>{data.low}</span>
+              <span style={{ color: '#9aa2af' }}>Low:</span> <span style={{ color: '#1a1d24' }}>{data.low}</span>
             </div>
-            <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginTop: '6px', paddingTop: '4px', borderTop: '1px solid #334155' }}>
-              <span style={{ color: '#94a3b8' }}>Volume:</span> <span style={{ color: '#93c5fd' }}>{data.volume ? data.volume.toLocaleString() : 0}</span>
+            <div style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', marginTop: '6px', paddingTop: '4px', borderTop: '1px solid #6b7280' }}>
+              <span style={{ color: '#9aa2af' }}>Volume:</span> <span style={{ color: '#93c5fd' }}>{data.volume ? data.volume.toLocaleString() : 0}</span>
             </div>
           </>
         )}
@@ -149,13 +149,13 @@ function ApiLimitTracker() {
   const isLow = parseInt(limits.remaining) < 50;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(30, 41, 59, 0.7)', padding: '6px 12px', borderRadius: '16px', border: '1px solid #334155', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-      <Zap size={14} color={isLow ? '#ef4444' : '#3b82f6'} style={{ flexShrink: 0 }} />
-      <span style={{ color: '#94a3b8' }}>API Calls Left:</span>
-      <strong style={{ color: isLow ? '#ef4444' : 'white' }}>{limits.remaining}</strong>
-      <span style={{ color: '#334155', margin: '0 4px' }}>|</span>
-      <span style={{ color: '#94a3b8' }}>Refresh in:</span>
-      <strong style={{ color: '#10b981', fontVariantNumeric: 'tabular-nums', minWidth: '40px' }}>{formatTime(countdown)}</strong>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(30, 41, 59, 0.7)', padding: '6px 12px', borderRadius: '16px', border: '1px solid #6b7280', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+      <Zap size={14} color={isLow ? '#dc2626' : '#2f5bf6'} style={{ flexShrink: 0 }} />
+      <span style={{ color: '#9aa2af' }}>API Calls Left:</span>
+      <strong style={{ color: isLow ? '#dc2626' : 'white' }}>{limits.remaining}</strong>
+      <span style={{ color: '#6b7280', margin: '0 4px' }}>|</span>
+      <span style={{ color: '#9aa2af' }}>Refresh in:</span>
+      <strong style={{ color: '#16a34a', fontVariantNumeric: 'tabular-nums', minWidth: '40px' }}>{formatTime(countdown)}</strong>
     </div>
   );
 }
@@ -173,7 +173,7 @@ function CommoditySparkline({ symbol }) {
   if (data.length < 2) return <div style={{ height: 40, width: '100%', opacity: 0.3 }} className="loading-shimmer" />;
   
   const isUp = data[data.length - 1].price >= data[0].price;
-  const color = isUp ? '#10b981' : '#f43f5e';
+  const color = isUp ? '#16a34a' : '#dc2626';
 
   return (
     <div style={{ width: '100%', minWidth: 0, marginTop: '8px' }}>
@@ -204,11 +204,11 @@ function WeatherSparkline({ regionName }) {
         <AreaChart data={data}>
           <defs>
             <linearGradient id={`colorTemp-${regionName.replace(/\\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+              <stop offset="5%" stopColor="#b45309" stopOpacity={0.3}/>
+              <stop offset="95%" stopColor="#b45309" stopOpacity={0}/>
             </linearGradient>
           </defs>
-          <Area type="monotone" dataKey="tempMax" stroke="#f59e0b" fillOpacity={1} fill={`url(#colorTemp-${regionName.replace(/\\s+/g, '')})`} isAnimationActive={false} />
+          <Area type="monotone" dataKey="tempMax" stroke="#b45309" fillOpacity={1} fill={`url(#colorTemp-${regionName.replace(/\\s+/g, '')})`} isAnimationActive={false} />
           <YAxis domain={['auto', 'auto']} hide />
         </AreaChart>
       </ResponsiveContainer>
@@ -262,7 +262,7 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
 
       {/* type-to-search add box */}
       <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
           <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <input
             value={query}
@@ -274,13 +274,13 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
           {(searching || busy) && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
         </div>
         {suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, overflow: 'hidden', boxShadow: '0 8px 24px #ffffff' }}>
             {suggestions.map((s, i) => (
               <div
                 key={`${s.lat},${s.lon}-${i}`}
                 onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >{s.label}</div>
             ))}
@@ -321,18 +321,18 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
                 {c ? (
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '10px' }}>
-                      <Thermometer size={16} style={{ color: '#f59e0b', alignSelf: 'center' }} />
+                      <Thermometer size={16} style={{ color: '#b45309', alignSelf: 'center' }} />
                       <span style={{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{Math.round(c.tempC)}</span>
                       <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>&deg;C</span>
                     </div>
                     <div style={{ display: 'flex', gap: '16px', marginTop: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                       <span title="Rainfall today" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <Droplets size={13} style={{ color: '#38bdf8' }} />
+                        <Droplets size={13} style={{ color: '#2f5bf6' }} />
                         {today != null ? `${today} mm` : `${c.precipMm} mm`}
                         <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>{today != null ? 'today' : 'now'}</span>
                       </span>
                       <span title="Humidity" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <span style={{ color: '#38bdf8', fontSize: '12px' }}>&#128167;</span>{c.humidity}%
+                        <span style={{ color: '#2f5bf6', fontSize: '12px' }}>&#128167;</span>{c.humidity}%
                       </span>
                       <span title="Wind" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                         <Wind size={13} style={{ color: 'var(--text-muted)' }} />{Math.round(c.windKph)} kph
@@ -362,11 +362,11 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
 // true dwell/queue. Each card shows recent calls/day vs a 28-day baseline and a
 // status band derived from that anomaly.
 const PORT_STATUS_COLOR = {
-  'Severely reduced': '#fb7185',
-  'Reduced': '#f59e0b',
-  'Normal': '#34d399',
-  'Elevated': '#38bdf8',
-  'Surging': '#a78bfa',
+  'Severely reduced': '#dc2626',
+  'Reduced': '#b45309',
+  'Normal': '#16a34a',
+  'Elevated': '#2f5bf6',
+  'Surging': '#00399C',
   'No data': 'var(--text-muted)',
   'Insufficient baseline': 'var(--text-muted)',
 };
@@ -411,7 +411,7 @@ function PortCongestionStrip({ ports, onAdd, onRemove }) {
 
       {/* type-to-search add box (GCC port catalog) */}
       <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
           <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <input
             value={query}
@@ -424,13 +424,13 @@ function PortCongestionStrip({ ports, onAdd, onRemove }) {
           {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
         </div>
         {open && suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px #ffffff' }}>
             {suggestions.map((s, i) => (
               <div
                 key={s.portid}
                 onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >{s.portname} <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.country}</span></div>
             ))}
@@ -537,7 +537,7 @@ function ForexStrip({ rates, onAdd, onRemove }) {
 
       {/* type-to-search add box (OXR currency catalog) */}
       <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
           <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <input
             value={query}
@@ -550,13 +550,13 @@ function ForexStrip({ rates, onAdd, onRemove }) {
           {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
         </div>
         {open && suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #27272a)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px #ffffff' }}>
             {suggestions.map((s, i) => (
               <div
                 key={s.code}
                 onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               ><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{s.code}</span> <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.name}</span></div>
             ))}
@@ -624,13 +624,13 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
   }
 
   return (
-    <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ marginTop: '12px', padding: '8px', background: '#f7f8fa', borderRadius: '6px', border: '1px solid #f7f8fa' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
         <span>Was this AI response helpful?</span>
-        <button onClick={() => handleRate(true)} style={{ background: isHelpful === true ? 'var(--accent-emerald)' : 'transparent', color: isHelpful === true ? '#000' : 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button onClick={() => handleRate(true)} style={{ background: isHelpful === true ? 'var(--accent-emerald)' : 'transparent', color: isHelpful === true ? '#000' : 'var(--text-secondary)', border: '1px solid #ececf1', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
           <ThumbsUp size={12} /> Yes
         </button>
-        <button onClick={() => handleRate(false)} style={{ background: isHelpful === false ? 'var(--accent-rose)' : 'transparent', color: isHelpful === false ? '#fff' : 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button onClick={() => handleRate(false)} style={{ background: isHelpful === false ? 'var(--accent-rose)' : 'transparent', color: isHelpful === false ? '#fff' : 'var(--text-secondary)', border: '1px solid #ececf1', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
           <ThumbsDown size={12} /> No
         </button>
       </div>
@@ -642,7 +642,7 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
             placeholder="Optional: Why did you choose this?" 
             value={notes} 
             onChange={e => setNotes(e.target.value)}
-            style={{ flex: 1, padding: '6px', fontSize: '11px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#fff' }}
+            style={{ flex: 1, padding: '6px', fontSize: '11px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '4px', color: '#1a1d24' }}
           />
           <button onClick={handleSubmit} style={{ background: 'var(--accent-violet)', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>
             Submit
@@ -1559,7 +1559,7 @@ export default function Dashboard() {
   const counterfactuals = analysis?.counterfactuals || [];
   const missingData = analysis?.missingData || [];
 
-  if (authLoading) return <div style={{padding:'40px', color:'white'}}>Loading Authentication...</div>;
+  if (authLoading) return <div style={{padding:'40px', color:'#1a1d24'}}>Loading Authentication...</div>;
   if (!user) return <LoginPage onLogin={({ user: u, profile: p }) => { setUser(u); setProfile(p); }} />;
   if (!user.is_onboarded) return <OnboardingWizard user={user} onComplete={(p) => { setProfile(p); setUser({...user, is_onboarded: true}); }} />;
   if (showPipelineAnalytics) return <PipelineAnalyticsPage onBack={() => setShowPipelineAnalytics(false)} />;
@@ -1640,27 +1640,27 @@ export default function Dashboard() {
       <div className="rec-impact" style={{ marginBottom: '12px' }}>{r.businessImpact}</div>
       
       <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={Array.isArray(r.action) ? r.action.join(' ') : r.action} />
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+      <div style={{ borderTop: '1px solid #f7f8fa', paddingTop: '12px' }}>
         {deepDiveError[i] && (
-          <div style={{ fontSize: '12px', color: '#fb7185', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '12px', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span>⚠ {deepDiveError[i]}</span>
             <button
               onClick={() => { setDeepDiveError(prev => ({ ...prev, [i]: '' })); handleDeepDive(r, i); }}
               disabled={deepDiveLoading[i]}
-              style={{ background: 'none', border: 'none', color: '#c4b5fd', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: '#00399C', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
             >{deepDiveLoading[i] ? 'Retrying…' : 'Retry'}</button>
           </div>
         )}
         {deepDiveText[i] ? (
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)', whiteSpace: 'pre-wrap' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(0,57,156,0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)', whiteSpace: 'pre-wrap' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <strong style={{ color: '#fff' }}>✨ AI Deep-Dive Analysis:</strong>
+              <strong style={{ color: '#1a1d24' }}>✨ AI Deep-Dive Analysis:</strong>
               <button 
                 onClick={() => handleDeepDive(r, i)}
                 disabled={deepDiveLoading[i]}
-                style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', opacity: deepDiveLoading[i] ? 0.5 : 1, transition: 'all 0.2s ease' }}
-                onMouseOver={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.4)'; }}
-                onMouseOut={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; }}
+                style={{ background: 'rgba(0,57,156,0.2)', color: '#00399C', border: '1px solid rgba(0,57,156,0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', opacity: deepDiveLoading[i] ? 0.5 : 1, transition: 'all 0.2s ease' }}
+                onMouseOver={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(0,57,156,0.4)'; }}
+                onMouseOut={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(0,57,156,0.2)'; }}
               >
                 {deepDiveLoading[i] ? 'Generating...' : 'Regenerate ✨'}
               </button>
@@ -1675,7 +1675,7 @@ export default function Dashboard() {
             className="action-btn" 
             onClick={() => handleDeepDive(r, i)}
             disabled={deepDiveLoading[i]}
-            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', fontSize: '12px', borderRadius: '6px', background: 'rgba(139, 92, 246, 0.1)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.2)', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', transition: 'all 0.2s ease', opacity: deepDiveLoading[i] ? 0.7 : 1 }}
+            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', fontSize: '12px', borderRadius: '6px', background: 'rgba(0,57,156,0.1)', color: '#00399C', border: '1px solid rgba(0,57,156,0.2)', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', transition: 'all 0.2s ease', opacity: deepDiveLoading[i] ? 0.7 : 1 }}
           >
             {deepDiveLoading[i] ? (
               <><span style={{ animation: 'spin 1s linear infinite' }}>⏳</span> Generating Analysis...</>
@@ -1701,7 +1701,7 @@ export default function Dashboard() {
         <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
           {/* <ApiLimitTracker /> */}
           <div style={{color:'var(--text-secondary)', fontSize:'13px', marginRight: '8px', marginLeft: '12px'}}>
-            Welcome, <strong style={{color:'white'}}>{user.username}</strong>
+            Welcome, <strong style={{color:'#1a1d24'}}>{user.username}</strong>
           </div>
           {user.is_admin ? (
             <button className="btn-secondary" onClick={() => setShowAdmin(true)}>
@@ -1774,7 +1774,7 @@ export default function Dashboard() {
         <div className={`tab-content enter-${tabDirection}`} key="pulse">
 
           {analysisStale && (
-            <div className="mb-xl" style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24', fontSize: '13px' }}>
+            <div className="mb-xl" style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#b45309', fontSize: '13px' }}>
               ⚠ The analysis service did not respond on the last refresh. Alerts, drivers and the summary below may be out of date.
             </div>
           )}
@@ -1789,7 +1789,7 @@ export default function Dashboard() {
           {driversError && drivers.length === 0 && (
             <div className="mb-xl">
               <div className="section-label">Market Indicators</div>
-              <div className="intel-card" style={{ padding: '16px', borderLeft: '3px solid var(--sev-critical-text, #fb7185)', color: 'var(--text-secondary)' }}>
+              <div className="intel-card" style={{ padding: '16px', borderLeft: '3px solid var(--sev-critical-text, #dc2626)', color: 'var(--text-secondary)' }}>
                 ⚠ {driversError}
               </div>
             </div>
@@ -1830,7 +1830,7 @@ export default function Dashboard() {
       {tab === 'alerts' && (
         <div className={`tab-content enter-${tabDirection}`} key="alerts">
           {rescanning && (
-            <div className="intel-card" style={{ marginBottom: '12px', padding: '12px 16px', color: '#fbbf24', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(251,191,36,0.3)' }}>
+            <div className="intel-card" style={{ marginBottom: '12px', padding: '12px 16px', color: '#b45309', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(251,191,36,0.3)' }}>
               <span style={{ fontSize: '15px' }}>⟳</span> Rescanning with your new settings — alerts and labeled articles will refresh automatically when it finishes.
             </div>
           )}
@@ -1838,7 +1838,7 @@ export default function Dashboard() {
             <div className="section-label" style={{ margin: 0 }}>Risk Alerts ({alerts.length})</div>
             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               Show
-              <select value={alertLimit} onChange={e => setAlertLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+              <select value={alertLimit} onChange={e => setAlertLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
                 <option value={3}>3</option>
                 <option value={6}>6</option>
                 <option value="all">All</option>
@@ -1865,7 +1865,7 @@ export default function Dashboard() {
                     let p = a.payload; if (typeof p === 'string') { try { p = JSON.parse(p); } catch { p = {}; } }
                     const sim = p?.semanticSimilarity;
                     return (sim != null && !isNaN(sim)) ? (
-                      <span title="Embedding match to your profile (cosine similarity)" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', background: 'rgba(139,92,246,0.12)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>
+                      <span title="Embedding match to your profile (cosine similarity)" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', background: 'rgba(0,57,156,0.12)', color: '#00399C', padding: '2px 6px', borderRadius: '4px' }}>
                         ⛭ {Math.round(sim * 100)}%
                       </span>
                     ) : null;
@@ -1887,18 +1887,18 @@ export default function Dashboard() {
                 if (!ins) return null;
                 const d = ins.detail || {};
                 return (
-                  <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(139,92,246,0.06)', borderLeft: '2px solid rgba(139,92,246,0.5)', borderRadius: '0 6px 6px 0' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c4b5fd', marginBottom: '6px' }}>
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(0,57,156,0.06)', borderLeft: '2px solid rgba(0,57,156,0.5)', borderRadius: '0 6px 6px 0' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#00399C', marginBottom: '6px' }}>
                       ✨ AI Label{ins.category ? ` · ${ins.category.replace(/_/g, ' ')}` : ''}{ins.severity ? ` · ${ins.severity}` : ''}
                     </div>
                     {ins.headline && <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{ins.headline}</div>}
                     {d.what && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{d.what}</div>}
                     <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {d.key_dates?.map((kd, j) => <span key={`kd-${j}`} style={{ fontSize: '10px', background: 'rgba(244,114,182,0.15)', color: '#f9a8d4', padding: '2px 6px', borderRadius: '4px' }}>📅 {kd}</span>)}
-                      {d.key_figures?.map((kf, j) => <span key={`kf-${j}`} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>📊 {kf}</span>)}
-                      {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
+                      {d.key_figures?.map((kf, j) => <span key={`kf-${j}`} style={{ fontSize: '10px', background: 'rgba(0,57,156,0.15)', color: '#00399C', padding: '2px 6px', borderRadius: '4px' }}>📊 {kf}</span>)}
+                      {d.commodities_affected?.map((c, j) => <span key={`c-${j}`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.15)', color: '#16a34a', padding: '2px 6px', borderRadius: '4px' }}>🌾 {c}</span>)}
                     </div>
-                    {d.action_note && <div style={{ marginTop: '6px', fontSize: '12px', color: '#34d399' }}>→ {d.action_note}</div>}
+                    {d.action_note && <div style={{ marginTop: '6px', fontSize: '12px', color: '#16a34a' }}>→ {d.action_note}</div>}
                   </div>
                 );
               })()}
@@ -1907,19 +1907,19 @@ export default function Dashboard() {
                 <button
                   onClick={() => setOpenExtracts(prev => ({ ...prev, [a.id ?? a.title]: !prev[a.id ?? a.title] }))}
                   title="Key sentences extracted from the article itself (local model, no AI generation)"
-                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#34d399', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#16a34a', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                 >📄 Key Sentences {openExtracts[a.id ?? a.title] ? '▴' : '▾'}</button>
               )}
               {a.url && (
                 <button
                   onClick={() => openArticleSummary({ url: a.url, title: (a.title || '').replace(/^🎯 Profile Alert:\s*/, ''), description: a.description || a.reason, source: a.source })}
                   title="Generate a plain-English AI summary of this article"
-                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', color: '#c4b5fd', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                  style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(0,57,156,0.1)', border: '1px solid rgba(0,57,156,0.35)', color: '#00399C', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                 >✨ AI Summary</button>
               )}
               {a.extractSummary && openExtracts[a.id ?? a.title] && (
                 <div style={{ marginTop: '8px', padding: '10px 12px', background: 'rgba(16,185,129,0.05)', borderLeft: '2px solid rgba(16,185,129,0.5)', borderRadius: '0 6px 6px 0' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#34d399', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#16a34a', marginBottom: '6px' }}>
                     📄 Key sentences from the article — extracted locally, not AI-written
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{a.extractSummary}</div>
@@ -1933,7 +1933,7 @@ export default function Dashboard() {
                     <button
                       onClick={() => findPrecedent(a, pKey)}
                       title="What happened to prices the last time an event like this occurred?"
-                      style={{ marginTop: '8px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', color: '#67e8f9', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                      style={{ marginTop: '8px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', color: '#2f5bf6', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                     >📜 Last time this happened…</button>
                   );
                 }
@@ -1942,11 +1942,11 @@ export default function Dashboard() {
                 }
                 if (p.error) {
                   return (
-                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#fb7185' }}>
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#dc2626' }}>
                       ⚠ Precedent lookup failed — this is not a "no match". {p.error}{' '}
                       <button
                         onClick={() => findPrecedent(a, pKey)}
-                        style={{ background: 'none', border: 'none', color: '#67e8f9', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
+                        style={{ background: 'none', border: 'none', color: '#2f5bf6', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
                       >Retry</button>
                     </div>
                   );
@@ -1959,14 +1959,14 @@ export default function Dashboard() {
                   <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(6,182,212,0.06)', borderLeft: '2px solid rgba(6,182,212,0.5)', borderRadius: '0 6px 6px 0' }}>
                     {p.analogs && (
                       <div style={{ marginBottom: p.precedents?.length ? '10px' : 0 }}>
-                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>📊 Statistical Analogs</div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2f5bf6', marginBottom: '6px' }}>📊 Statistical Analogs</div>
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{p.analogs.summary}</div>
                       </div>
                     )}
                     {p.precedents?.length > 0 && (
                       <div>
-                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#67e8f9', marginBottom: '6px' }}>
-                          📜 Historical Precedent{p.precedents[0]?.matchedBy === 'ai' && <span style={{ marginLeft: '6px', color: '#c4b5fd', letterSpacing: 0, textTransform: 'none' }}>AI-matched</span>}
+                        <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2f5bf6', marginBottom: '6px' }}>
+                          📜 Historical Precedent{p.precedents[0]?.matchedBy === 'ai' && <span style={{ marginLeft: '6px', color: '#00399C', letterSpacing: 0, textTransform: 'none' }}>AI-matched</span>}
                         </div>
                         {p.precedents.map(prec => (
                           <div key={prec.id} style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '4px' }}>
@@ -2001,21 +2001,21 @@ export default function Dashboard() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', margin: '18px 0 4px' }}>
                 <span className="section-label" style={{ margin: 0 }}>Filter news</span>
                 <input value={newsSearch} onChange={e => setNewsSearch(e.target.value)} placeholder="Search title, source, entity…"
-                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '13px', minWidth: '220px', flex: '1 1 220px' }} />
-                <select value={newsStreamFilter} onChange={e => setNewsStreamFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 10px', borderRadius: '6px', fontSize: '13px', minWidth: '220px', flex: '1 1 220px' }} />
+                <select value={newsStreamFilter} onChange={e => setNewsStreamFilter(e.target.value)} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
                   <option value="all">Both streams</option>
                   <option value="risk">🚨 Risk only</option>
                   <option value="commodity">📊 Commodity only</option>
                 </select>
-                <select value={newsCatFilter} onChange={e => setNewsCatFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <select value={newsCatFilter} onChange={e => setNewsCatFilter(e.target.value)} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
                   <option value="all">All categories</option>
                   {allCats.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select value={newsRegionFilter} onChange={e => setNewsRegionFilter(e.target.value)} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <select value={newsRegionFilter} onChange={e => setNewsRegionFilter(e.target.value)} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
                   <option value="all">All regions</option>
                   {allRegions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
-                <select value={newsDateFilter} onChange={e => setNewsDateFilter(e.target.value)} title="Filter by publish date" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <select value={newsDateFilter} onChange={e => setNewsDateFilter(e.target.value)} title="Filter by publish date" style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 8px', borderRadius: '6px', fontSize: '12px' }}>
                   <option value="all">Any date</option>
                   <option value="24h">Published ≤ 24h</option>
                   <option value="7d">Published ≤ 7 days</option>
@@ -2029,7 +2029,7 @@ export default function Dashboard() {
           })()}
 
           {(() => {
-            const prioColor = { Critical: '#fb7185', High: '#fbbf24', Medium: '#38bdf8', Low: '#a1a1aa', Ignored: '#a1a1aa' };
+            const prioColor = { Critical: '#dc2626', High: '#b45309', Medium: '#2f5bf6', Low: '#9aa2af', Ignored: '#9aa2af' };
             // Apply the filter bar.
             const q = newsSearch.trim().toLowerCase();
             // Publish-date window: when a window is selected, an article with no
@@ -2071,7 +2071,7 @@ export default function Dashboard() {
             const ungroupedCommodity = commodityItems.filter(n => !groupedUrls.has(n.url));
 
             const card = (n, i) => (
-              <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#fb7185' : (prioColor[n.priority] || 'rgba(139,92,246,0.55)')}` }}>
+              <div key={n.url || i} className="intel-card mb-sm" style={{ animationDelay: `${i * 0.03}s`, borderLeft: `2px solid ${n.isDisruption ? '#dc2626' : (prioColor[n.priority] || 'rgba(0,57,156,0.55)')}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
                   <a href={n.url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
                     {n.title}
@@ -2084,8 +2084,8 @@ export default function Dashboard() {
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px',
-                    background: n.isDisruption ? 'rgba(251,113,133,0.15)' : 'rgba(139,92,246,0.12)',
-                    color: n.isDisruption ? '#fb7185' : '#c4b5fd' }}>
+                    background: n.isDisruption ? 'rgba(251,113,133,0.15)' : 'rgba(0,57,156,0.12)',
+                    color: n.isDisruption ? '#dc2626' : '#00399C' }}>
                     {n.categoryEmoji} {n.categoryLabel}
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{n.source}</span>
@@ -2100,7 +2100,7 @@ export default function Dashboard() {
                   return (
                     <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {n.entities.map((e, k) => (
-                        <span key={k} title={`${e.type} (master-data match)`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.12)', color: '#34d399', padding: '2px 6px', borderRadius: '4px' }}>
+                        <span key={k} title={`${e.type} (master-data match)`} style={{ fontSize: '10px', background: 'rgba(16,185,129,0.12)', color: '#16a34a', padding: '2px 6px', borderRadius: '4px' }}>
                           {icon[e.type] || '•'} {e.label}
                         </span>
                       ))}
@@ -2125,7 +2125,7 @@ export default function Dashboard() {
               // telling the user to run a scan when the API is down sends them
               // chasing the wrong problem.
               return (
-                <div className="intel-card mt-lg" style={{ textAlign: 'center', padding: '24px', color: categorizedNewsError ? '#fb7185' : 'var(--text-muted)', fontSize: '13px' }}>
+                <div className="intel-card mt-lg" style={{ textAlign: 'center', padding: '24px', color: categorizedNewsError ? '#dc2626' : 'var(--text-muted)', fontSize: '13px' }}>
                   {categorizedNewsError
                     ? `⚠ ${categorizedNewsError} This is a load failure, not an empty feed.`
                     : 'No categorized news yet. Run a scan (Pipeline Analytics → Run Scanner Now) to populate the feed.'}
@@ -2135,10 +2135,10 @@ export default function Dashboard() {
             // Two separate, region-aware streams — never mixed.
             return (
               <>
-                {section('🚨 Supply Chain Risk', 'Supply-chain-risk factors (disruption, geopolitical, chokepoints, trade policy) touching your regions.', riskItems, '#fb7185')}
+                {section('🚨 Supply Chain Risk', 'Supply-chain-risk factors (disruption, geopolitical, chokepoints, trade policy) touching your regions.', riskItems, '#dc2626')}
                 {/* Commodity News — grouped per selected commodity */}
                 <div className="mb-xl mt-lg">
-                  <div className="section-label" style={{ margin: '0 0 4px', color: '#38bdf8' }}>📊 Commodity News <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {commodityItems.length}</span></div>
+                  <div className="section-label" style={{ margin: '0 0 4px', color: '#2f5bf6' }}>📊 Commodity News <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· {commodityItems.length}</span></div>
                   <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px' }}>Market, price and production news grouped by your tracked commodities.</div>
                   {commodityItems.length === 0
                     ? <div className="intel-card" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '13px' }}>No commodity news in the last 48h.</div>
@@ -2181,7 +2181,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   Show
-                  <select value={newsLimit} onChange={e => setNewsLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                  <select value={newsLimit} onChange={e => setNewsLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
                     <option value={5}>5</option>
                     <option value={10}>10</option>
                     <option value={20}>20</option>
@@ -2193,7 +2193,7 @@ export default function Dashboard() {
                   placeholder="Filter news by keyword or source..."
                   value={newsFilter}
                   onChange={(e) => setNewsFilter(e.target.value)}
-                  style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', borderRadius: '6px', width: '300px', fontSize: '13px' }}
+                  style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '6px 12px', borderRadius: '6px', width: '300px', fontSize: '13px' }}
                 />
               </div>
             </div>
@@ -2211,7 +2211,7 @@ export default function Dashboard() {
                  return <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No news articles match your filter.</div>;
               }
 
-              const sevColor = { critical: '#fb7185', high: '#fbbf24', medium: '#38bdf8', low: '#a1a1aa' };
+              const sevColor = { critical: '#dc2626', high: '#b45309', medium: '#2f5bf6', low: '#9aa2af' };
               return filteredNews.map((a, i) => {
                 const insight = newsInsights.byUrl?.[a.url] || newsInsights.byTitle?.[(a.title || '').trim().toLowerCase()];
                 const d = insight?.detail || {};
@@ -2229,7 +2229,7 @@ export default function Dashboard() {
                   {a.description && <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>{a.description}</div>}
                   {insight && (
                     <div className="insight-popover">
-                      <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c4b5fd', marginBottom: '6px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#00399C', marginBottom: '6px' }}>
                         ✨ Aramtec Insight{insight.category ? ` · ${insight.category.replace(/_/g, ' ')}` : ''}
                       </div>
                       {insight.headline && <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>{insight.headline}</div>}
@@ -2239,7 +2239,7 @@ export default function Dashboard() {
                       {d.commodities_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Commodities:</b> {d.commodities_affected.join(', ')}</div>}
                       {d.routes_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Routes:</b> {d.routes_affected.join(', ')}</div>}
                       {d.ports_affected?.length > 0 && <div style={{ marginBottom: '3px' }}><b style={{ color: 'var(--text-muted)' }}>Ports:</b> {d.ports_affected.join(', ')}</div>}
-                      {d.action_note && <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', color: '#34d399' }}>→ {d.action_note}</div>}
+                      {d.action_note && <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)', color: '#16a34a' }}>→ {d.action_note}</div>}
                       {(insight.urgency) && <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-dim)' }}>Urgency: {insight.urgency}</div>}
                     </div>
                   )}
@@ -2278,7 +2278,7 @@ export default function Dashboard() {
             </div>
           ) : aiRecommendationsError ? (
             <div className="intel-card" style={{ borderLeft: '3px solid var(--accent-amber)', color: 'var(--text-secondary)', marginBottom: '18px' }}>
-              <strong style={{ color: '#fff', display: 'block', marginBottom: '6px' }}>AI recommendations unavailable</strong>
+              <strong style={{ color: '#1a1d24', display: 'block', marginBottom: '6px' }}>AI recommendations unavailable</strong>
               {aiRecommendationsError}
             </div>
           ) : recommendations.length > 0 && (
@@ -2307,7 +2307,7 @@ export default function Dashboard() {
                   <div className="section-label">Planner Recommendations</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                     <div>
-                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Short Term (90 Days)</h4>
+                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid #ececf1', paddingBottom: '8px' }}>Short Term (90 Days)</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {st.map((r, i) => renderRecCard(r, 'st-' + i))}
                         {st.length === 0 && (
@@ -2316,7 +2316,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div>
-                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Long Term (365 Days)</h4>
+                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid #ececf1', paddingBottom: '8px' }}>Long Term (365 Days)</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {lt.map((r, i) => renderRecCard(r, 'lt-' + i))}
                         {lt.length === 0 && (
@@ -2343,7 +2343,7 @@ export default function Dashboard() {
         <div className={`tab-content enter-${tabDirection}`} key="sop">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <div className="section-label" style={{ margin: 0 }}>Sales & Operations Plans</div>
-            <button className="btn-primary" onClick={() => setShowSopModal(true)} style={{ background: 'var(--accent-cyan)', color: '#000' }}>
+            <button className="btn-primary" onClick={() => setShowSopModal(true)} style={{ background: 'var(--accent-cyan)', color: '#1a1d24' }}>
               <Plus size={14} /> New Plan
             </button>
           </div>
@@ -2369,21 +2369,21 @@ export default function Dashboard() {
                     </span>
                   </div>
                   
-                  <div className="confidence-bar" style={{ marginBottom: '16px', background: 'rgba(255,255,255,0.05)' }}>
+                  <div className="confidence-bar" style={{ marginBottom: '16px', background: '#f7f8fa' }}>
                     <div className="confidence-fill" style={{ width: `${progress}%`, background: progress >= 100 ? 'var(--accent-emerald)' : 'var(--accent-cyan)' }} />
                   </div>
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px', display: 'flex', gap: '8px' }}>
+                  <div style={{ borderTop: '1px solid #f7f8fa', paddingTop: '12px', display: 'flex', gap: '8px' }}>
                     <input 
                       type="number" 
                       placeholder="Actual" 
                       defaultValue={plan.actual_value}
                       id={`actual-${plan.id}`}
-                      style={{ width: '80px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px', padding: '4px 8px', fontSize: '12px' }}
+                      style={{ width: '80px', background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', borderRadius: '4px', padding: '4px 8px', fontSize: '12px' }}
                     />
                     <button 
                       onClick={() => handleUpdateSopActual(plan.id, document.getElementById(`actual-${plan.id}`).value, plan.notes)}
-                      style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', flex: 1 }}
+                      style={{ background: '#ececf1', color: '#1a1d24', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', flex: 1 }}
                     >
                       Update
                     </button>
@@ -2392,7 +2392,7 @@ export default function Dashboard() {
               );
             })}
             {sopPlans.length === 0 && (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', gridColumn: '1 / -1' }}>
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', background: '#f7f8fa', borderRadius: '12px', gridColumn: '1 / -1' }}>
                 No S&OP Plans tracked yet. Click "New Plan" to create one.
               </div>
             )}
@@ -2402,29 +2402,29 @@ export default function Dashboard() {
 
       {/* ═══════════ SOP MODAL ═══════════ */}
       {showSopModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '500px', maxWidth: '90vw', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#ffffff', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#ffffff', border: '1px solid #ececf1', borderRadius: '12px', width: '500px', maxWidth: '90vw', padding: '24px', boxShadow: '0 20px 40px #ffffff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>Create S&OP Target</h3>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#1a1d24' }}>Create S&OP Target</h3>
               <button onClick={() => setShowSopModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '20px' }}>✕</button>
             </div>
             <form onSubmit={handleCreateSop}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Commodity</label>
-                  <input required type="text" value={newSop.commodity} onChange={e => setNewSop({...newSop, commodity: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px' }} />
+                  <input required type="text" value={newSop.commodity} onChange={e => setNewSop({...newSop, commodity: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Region</label>
-                  <input required type="text" value={newSop.region} onChange={e => setNewSop({...newSop, region: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px' }} />
+                  <input required type="text" value={newSop.region} onChange={e => setNewSop({...newSop, region: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Target Value (Vol/Amount)</label>
-                  <input required type="number" value={newSop.target_value} onChange={e => setNewSop({...newSop, target_value: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px' }} />
+                  <input required type="number" value={newSop.target_value} onChange={e => setNewSop({...newSop, target_value: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Plan Type</label>
-                  <select value={newSop.plan_type} onChange={e => setNewSop({...newSop, plan_type: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px', appearance: 'none' }}>
+                  <select value={newSop.plan_type} onChange={e => setNewSop({...newSop, plan_type: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px', appearance: 'none' }}>
                     <option value="procurement">Procurement</option>
                     <option value="inventory">Inventory Target</option>
                     <option value="production">Production Yield</option>
@@ -2432,14 +2432,14 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Period Start</label>
-                  <input required type="date" value={newSop.period_start} onChange={e => setNewSop({...newSop, period_start: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px', colorScheme: 'dark' }} />
+                  <input required type="date" value={newSop.period_start} onChange={e => setNewSop({...newSop, period_start: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px', colorScheme: 'dark' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>Period End</label>
-                  <input required type="date" value={newSop.period_end} onChange={e => setNewSop({...newSop, period_end: e.target.value})} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px', colorScheme: 'dark' }} />
+                  <input required type="date" value={newSop.period_end} onChange={e => setNewSop({...newSop, period_end: e.target.value})} style={{ width: '100%', background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px', colorScheme: 'dark' }} />
                 </div>
               </div>
-              <button type="submit" style={{ width: '100%', background: 'var(--accent-cyan)', color: '#000', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '8px' }}>
+              <button type="submit" style={{ width: '100%', background: 'var(--accent-cyan)', color: '#1a1d24', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '8px' }}>
                 Save Plan
               </button>
             </form>
@@ -2449,10 +2449,10 @@ export default function Dashboard() {
 
       {/* ═══════════ TRACK MODAL ═══════════ */}
       {showTrackModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '500px', maxWidth: '90vw', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#ffffff', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#ffffff', border: '1px solid #ececf1', borderRadius: '12px', width: '500px', maxWidth: '90vw', padding: '24px', boxShadow: '0 20px 40px #ffffff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>Track New Commodity</h3>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#1a1d24' }}>Track New Commodity</h3>
               <button onClick={() => setShowTrackModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '20px' }}>✕</button>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
@@ -2462,21 +2462,21 @@ export default function Dashboard() {
                 value={trackSearch}
                 onChange={e => setTrackSearch(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && searchTrack()}
-                style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '10px 12px', borderRadius: '6px' }}
+                style={{ flex: 1, background: '#f7f8fa', border: '1px solid #ececf1', color: '#1a1d24', padding: '10px 12px', borderRadius: '6px' }}
               />
-              <button onClick={searchTrack} disabled={isTracking} style={{ background: 'var(--accent-cyan)', color: '#000', border: 'none', padding: '0 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              <button onClick={searchTrack} disabled={isTracking} style={{ background: 'var(--accent-cyan)', color: '#1a1d24', border: 'none', padding: '0 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                 {isTracking ? '...' : 'Search'}
               </button>
             </div>
             
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {trackResults.map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #f7f8fa' }}>
                   <div>
-                    <div style={{ fontWeight: 'bold', color: '#fff' }}>{r.symbol}</div>
+                    <div style={{ fontWeight: 'bold', color: '#1a1d24' }}>{r.symbol}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{r.shortname || r.longname} ({r.exchange})</div>
                   </div>
-                  <button onClick={() => trackCommodity(r)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
+                  <button onClick={() => trackCommodity(r)} style={{ background: '#ececf1', color: '#1a1d24', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
                     + Track
                   </button>
                 </div>
@@ -2491,10 +2491,10 @@ export default function Dashboard() {
 
       {/* ═══════════ ARTICLE SUMMARY MODAL ═══════════ */}
       {articleSummary && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={() => setArticleSummary(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '520px', maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#ffffff', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={() => setArticleSummary(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', border: '1px solid #ececf1', borderRadius: '12px', width: '520px', maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto', padding: '24px', boxShadow: '0 20px 40px #ffffff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', color: '#fff', lineHeight: 1.4 }}>{articleSummary.article.title}</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#1a1d24', lineHeight: 1.4 }}>{articleSummary.article.title}</h3>
               <button onClick={() => setArticleSummary(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '20px', flexShrink: 0 }}>✕</button>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginBottom: '16px', fontFamily: 'var(--font-mono)' }}>
@@ -2506,7 +2506,7 @@ export default function Dashboard() {
             )}
 
             {articleSummary.error && (
-              <div style={{ color: '#fb7185', fontSize: '13px' }}>{articleSummary.error}</div>
+              <div style={{ color: '#dc2626', fontSize: '13px' }}>{articleSummary.error}</div>
             )}
 
             {!articleSummary.loading && !articleSummary.error && articleSummary.data && (() => {
@@ -2516,7 +2516,7 @@ export default function Dashboard() {
               return (
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                   {d.severity && (
-                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: '#fbbf24', border: '1px solid #fbbf24', borderRadius: '4px', padding: '1px 6px', marginBottom: '10px', display: 'inline-block' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', color: '#b45309', border: '1px solid #b45309', borderRadius: '4px', padding: '1px 6px', marginBottom: '10px', display: 'inline-block' }}>
                       {d.severity.toUpperCase()}{d.urgency ? ` · ${d.urgency}` : ''}
                     </span>
                   )}
@@ -2524,17 +2524,17 @@ export default function Dashboard() {
                   {!isLabeled && d.key_figures?.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
                       {d.key_figures.map((kf, j) => (
-                        <span key={`kf-${j}`} style={{ fontSize: '11px', fontWeight: 600, background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 7px', borderRadius: '4px' }}>📊 {kf}</span>
+                        <span key={`kf-${j}`} style={{ fontSize: '11px', fontWeight: 600, background: 'rgba(0,57,156,0.15)', color: '#00399C', padding: '2px 7px', borderRadius: '4px' }}>📊 {kf}</span>
                       ))}
                     </div>
                   )}
                   {(isLabeled ? detail.action_note : d.impact) && (
-                    <div style={{ marginBottom: '10px', color: '#67e8f9' }}>
+                    <div style={{ marginBottom: '10px', color: '#2f5bf6' }}>
                       <b style={{ color: 'var(--text-muted)' }}>Impact:</b> {isLabeled ? detail.action_note : d.impact}
                     </div>
                   )}
                   {!isLabeled && d.action_note && (
-                    <div style={{ marginBottom: '10px', color: '#34d399' }}>→ {d.action_note}</div>
+                    <div style={{ marginBottom: '10px', color: '#16a34a' }}>→ {d.action_note}</div>
                   )}
                   {(() => {
                     const ents = isLabeled
@@ -2549,7 +2549,7 @@ export default function Dashboard() {
                     return (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                         {chips.map(([icon, v], idx) => (
-                          <span key={idx} style={{ fontSize: '10px', background: 'rgba(139,92,246,0.15)', color: '#c4b5fd', padding: '2px 6px', borderRadius: '4px' }}>{icon} {v}</span>
+                          <span key={idx} style={{ fontSize: '10px', background: 'rgba(0,57,156,0.15)', color: '#00399C', padding: '2px 6px', borderRadius: '4px' }}>{icon} {v}</span>
                         ))}
                       </div>
                     );
@@ -2566,7 +2566,7 @@ export default function Dashboard() {
 
       {/* ═══════════ COMMODITY CHART MODAL ═══════════ */}
       {chartModal && (
-        <Suspense fallback={<div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>Loading chart…</div>}>
+        <Suspense fallback={<div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#ffffff', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>Loading chart…</div>}>
         <CommodityChartModal
           symbol={chartModal.symbol}
           label={chartModal.label}

@@ -94,7 +94,7 @@ export default function OnboardingWizard({ user, onComplete }) {
     setSaving(false);
   };
 
-  if (loading) return <div style={{color:'white', padding:'40px', textAlign:'center'}}>Loading Onboarding...</div>;
+  if (loading) return <div style={{color:'#1a1d24', padding:'40px', textAlign:'center'}}>Loading Onboarding...</div>;
 
   return (
     <div style={styles.container}>
@@ -119,7 +119,7 @@ export default function OnboardingWizard({ user, onComplete }) {
                 <h3 style={styles.stepTitle}>Your Company</h3>
                 <div style={styles.grid}>
                   {customers.map(c => (
-                    <div key={c.id} style={{ ...styles.templateCard, borderColor: 'var(--accent, #10b981)' }} onClick={() => handleCustomerSelect(c.id)}>
+                    <div key={c.id} style={{ ...styles.templateCard, borderColor: 'var(--accent, #16a34a)' }} onClick={() => handleCustomerSelect(c.id)}>
                       <div style={styles.templateIcon}>🏢</div>
                       <div style={styles.templateName}>{c.company}</div>
                       <div style={styles.templateDesc}>{c.region}{c.industry ? ` · ${c.industry.replace(/_/g, ' ')}` : ''}</div>
@@ -254,25 +254,25 @@ const styles = {
     borderRadius: '16px',
     padding: '40px',
     border: '1px solid var(--border-color)',
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+    boxShadow: '0 25px 50px -12px rgba(20,24,40,0.10)',
   },
   title: { margin: '0 0 10px 0', fontSize: '28px', fontWeight: '600' },
   subtitle: { margin: '0 0 30px 0', color: 'var(--text-secondary)' },
   stepContainer: { display: 'flex', gap: '15px', marginBottom: '40px', justifyContent: 'center' },
-  stepDot: { width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', color:'var(--text-dim)', transition:'all 0.3s' },
+  stepDot: { width: '32px', height: '32px', borderRadius: '50%', background: '#ececf1', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', color:'var(--text-dim)', transition:'all 0.3s' },
   stepDotActive: { background: 'var(--accent)', color: '#000', boxShadow: '0 0 15px var(--accent-glow)' },
   stepTitle: { fontSize: '20px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
-  templateCard: { padding: '20px', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s' },
+  templateCard: { padding: '20px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s' },
   templateIcon: { fontSize: '32px', marginBottom: '10px' },
   templateName: { fontSize: '16px', fontWeight: '600', marginBottom: '5px' },
   templateDesc: { fontSize: '13px', color: 'var(--text-dim)', lineHeight: '1.4' },
   commodityGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
-  checkboxCard: { padding: '12px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'block', textAlign: 'center' },
+  checkboxCard: { padding: '12px 15px', background: '#ffffff', borderRadius: '8px', border: '1px solid #ececf1', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'block', textAlign: 'center' },
   checkboxCardActive: { border: '1px solid var(--accent)', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' },
-  input: { width: '100%', padding: '12px 15px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'white', marginBottom: '15px', fontSize: '15px' },
+  input: { width: '100%', padding: '12px 15px', background: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#1a1d24', marginBottom: '15px', fontSize: '15px' },
   btnRow: { display: 'flex', justifyContent: 'space-between', marginTop: '30px' },
-  btnPrimary: { padding: '12px 24px', background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
+  btnPrimary: { padding: '12px 24px', background: '#1a1d24', color: '#1a1d24', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
   btnSecondary: { padding: '12px 24px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
-  reviewBox: { padding: '20px', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid var(--border-color)' }
+  reviewBox: { padding: '20px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border-color)' }
 };

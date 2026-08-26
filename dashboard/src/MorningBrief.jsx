@@ -35,7 +35,7 @@ export default function MorningBrief({ brief, error, username, onViewAlerts, onS
     return (
       <div className="mb-xl">
         <div className="section-label">Morning Brief</div>
-        <div className="intel-card" style={{ color: '#fb7185', fontSize: '13px' }}>
+        <div className="intel-card" style={{ color: '#dc2626', fontSize: '13px' }}>
           ⚠ {error}
         </div>
       </div>
@@ -55,7 +55,7 @@ export default function MorningBrief({ brief, error, username, onViewAlerts, onS
 
   const fmtPrice = (p) => (p >= 100 ? p.toFixed(0) : p >= 1 ? p.toFixed(2) : p.toFixed(4));
 
-  const sevColor = { CRITICAL: '#fb7185', HIGH: '#fbbf24', MEDIUM: '#38bdf8', LOW: '#a1a1aa' };
+  const sevColor = { CRITICAL: '#dc2626', HIGH: '#b45309', MEDIUM: '#2f5bf6', LOW: '#9aa2af' };
   const colStyle = { minWidth: 0, display: 'flex', flexDirection: 'column' };
   const colTitle = { fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' };
   const emptyStyle = { fontSize: '13px', color: 'var(--text-dim)' };
@@ -77,7 +77,7 @@ export default function MorningBrief({ brief, error, username, onViewAlerts, onS
       {error && (
         // Brief is showing, but the background refresh is failing: say so
         // rather than letting stale figures look current.
-        <div style={{ fontSize: '12px', color: '#fbbf24', marginBottom: '12px' }}>
+        <div style={{ fontSize: '12px', color: '#b45309', marginBottom: '12px' }}>
           ⚠ {error} — showing the last successful update.
         </div>
       )}
@@ -104,7 +104,7 @@ export default function MorningBrief({ brief, error, username, onViewAlerts, onS
           {onViewAlerts && (
             <button
               onClick={onViewAlerts}
-              style={{ marginTop: '8px', alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#67e8f9', fontSize: '12px', fontWeight: 600 }}
+              style={{ marginTop: '8px', alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#2f5bf6', fontSize: '12px', fontWeight: 600 }}
             >
               {totalAlerts > alerts.length ? `View all ${totalAlerts} alerts` : 'View all alerts'} →
             </button>
@@ -118,14 +118,14 @@ export default function MorningBrief({ brief, error, username, onViewAlerts, onS
           ) : priceMovers.map(m => {
             const noPrev = m.changePct == null;
             const up = m.changePct > 0, flat = m.changePct === 0;
-            const col = noPrev || flat ? 'var(--text-dim)' : up ? '#34d399' : '#fb7185';
+            const col = noPrev || flat ? 'var(--text-dim)' : up ? '#16a34a' : '#dc2626';
             return (
               <div
                 key={m.symbol}
                 onClick={() => onSelectCommodity && onSelectCommodity(m)}
                 title={`Open ${m.label.toLowerCase()} chart`}
                 style={{ ...rowStyle, cursor: 'pointer', padding: '4px 8px', margin: '0 -8px 4px', borderRadius: '6px' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#f7f8fa'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>

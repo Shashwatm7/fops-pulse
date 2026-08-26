@@ -156,7 +156,7 @@ export default function AdminPage({ onBack }) {
                     {u.focus_product && <div style={{fontSize:'12px', color:'var(--text-dim)', marginTop:'4px'}}>{u.focus_product} / {u.focus_region}</div>}
                   </td>
                   <td style={styles.td}>
-                    {u.is_admin ? <span style={{...styles.badge, background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', borderColor: 'rgba(139, 92, 246, 0.5)'}}>Admin</span> : <span style={styles.badge}>User</span>}
+                    {u.is_admin ? <span style={{...styles.badge, background: 'rgba(0,57,156,0.2)', color: '#00399C', borderColor: 'rgba(0,57,156,0.5)'}}>Admin</span> : <span style={styles.badge}>User</span>}
                   </td>
                   <td style={styles.td}>
                     <div style={{display:'flex', gap:'10px'}}>
@@ -180,7 +180,7 @@ export default function AdminPage({ onBack }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
           
           {/* Layer 1 */}
-          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #3b82f6' }}>
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #2f5bf6' }}>
             <div style={styles.layerTitle}>Layer 1: Core State</div>
             <div style={styles.layerDesc}>PostgreSQL — Primary relational store for user states, config, and alerts.</div>
             <div style={styles.statGrid}>
@@ -191,32 +191,32 @@ export default function AdminPage({ onBack }) {
           </div>
 
           {/* Layer 2 */}
-          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #8b5cf6' }}>
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #00399C' }}>
             <div style={styles.layerTitle}>Layer 2: Semantic AI</div>
             <div style={styles.layerDesc}>pgvector — Mathematical 768-dimensional embeddings for Gemini-powered news similarity.</div>
             <div style={styles.statGrid}>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#c4b5fd'}}>{stats.vector.embeddings}</div><div style={styles.statLabel}>AI Embeddings</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#00399C'}}>{stats.vector.embeddings}</div><div style={styles.statLabel}>AI Embeddings</div></div>
             </div>
           </div>
 
           {/* Layer 3 */}
-          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #10b981' }}>
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #16a34a' }}>
             <div style={styles.layerTitle}>Layer 3: Time-Series Engine</div>
             <div style={styles.layerDesc}>PostgreSQL BRIN Indexed — High-speed ingest for every market tick and weather snapshot.</div>
             <div style={styles.statGrid}>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#6ee7b7'}}>{stats.timeSeries.price_ticks.toLocaleString()}</div><div style={styles.statLabel}>Price Ticks</div></div>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#6ee7b7'}}>{stats.timeSeries.weather_snapshots.toLocaleString()}</div><div style={styles.statLabel}>Weather Snapshots</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#16a34a'}}>{stats.timeSeries.price_ticks.toLocaleString()}</div><div style={styles.statLabel}>Price Ticks</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#16a34a'}}>{stats.timeSeries.weather_snapshots.toLocaleString()}</div><div style={styles.statLabel}>Weather Snapshots</div></div>
             </div>
           </div>
 
           {/* Layer 4 */}
-          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #f59e0b' }}>
+          <div style={{ ...styles.card, padding: '24px', borderTop: '3px solid #b45309' }}>
             <div style={styles.layerTitle}>Layer 4: Cold Storage</div>
             <div style={styles.layerDesc}>Local Filesystem — Permanent daily JSON archives of all raw API responses.</div>
             <div style={styles.statGrid}>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.prices?.files || 0}</div><div style={styles.statLabel}>Price Archive Files</div></div>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.weather?.files || 0}</div><div style={styles.statLabel}>Weather Archives</div></div>
-              <div style={styles.statBox}><div style={{...styles.statVal, color: '#fcd34d'}}>{stats.coldStorage.news?.files || 0}</div><div style={styles.statLabel}>News Archives</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#b45309'}}>{stats.coldStorage.prices?.files || 0}</div><div style={styles.statLabel}>Price Archive Files</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#b45309'}}>{stats.coldStorage.weather?.files || 0}</div><div style={styles.statLabel}>Weather Archives</div></div>
+              <div style={styles.statBox}><div style={{...styles.statVal, color: '#b45309'}}>{stats.coldStorage.news?.files || 0}</div><div style={styles.statLabel}>News Archives</div></div>
             </div>
           </div>
 
@@ -247,7 +247,7 @@ export default function AdminPage({ onBack }) {
                       onChange={e => { setTuning({ ...tuning, [key]: e.target.value.split('\n') }); setTuningStatus(''); }}
                       rows={Math.min(8, Math.max(3, items.length + 1))}
                       placeholder="One seed sentence per line"
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.25)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', lineHeight: 1.5, resize: 'vertical' }}
+                      style={{ width: '100%', background: '#ffffff', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', lineHeight: 1.5, resize: 'vertical' }}
                     />
                   </div>
                 );
@@ -256,7 +256,7 @@ export default function AdminPage({ onBack }) {
                 <div key={key}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
                     <label style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>{m.label}</label>
-                    <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #67e8f9)' }}>
+                    <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #2f5bf6)' }}>
                       {Number(tuning[key]).toFixed(2)}
                       <span style={{ color: 'var(--text-dim)', marginLeft: '8px', fontSize: '11px' }}>default {Number(m.default).toFixed(2)}</span>
                     </span>
@@ -284,7 +284,7 @@ export default function AdminPage({ onBack }) {
               });
               setTuning(reset); setTuningStatus('Reset to defaults (not yet applied — click Apply).');
             }}>Reset to defaults</button>
-            {tuningStatus && <span style={{ fontSize: '12px', color: 'var(--accent-emerald, #10b981)' }}>{tuningStatus}</span>}
+            {tuningStatus && <span style={{ fontSize: '12px', color: 'var(--accent-emerald, #16a34a)' }}>{tuningStatus}</span>}
           </div>
         </div>
 
@@ -298,7 +298,7 @@ export default function AdminPage({ onBack }) {
           <select
             value={previewUserId}
             onChange={e => loadSeedPreview(e.target.value)}
-            style={{ width: '100%', background: 'rgba(0,0,0,0.25)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', marginBottom: '14px' }}
+            style={{ width: '100%', background: '#ffffff', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', marginBottom: '14px' }}
           >
             <option value="">Select a user…</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
@@ -307,7 +307,7 @@ export default function AdminPage({ onBack }) {
           {seedPreview?.error && <div style={{ color: 'var(--danger)', fontSize: '13px' }}>Error: {seedPreview.error}</div>}
           {seedPreview && !seedPreview.error && (
             <div style={{ fontSize: '12px' }}>
-              <div style={{ marginBottom: '10px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #67e8f9)' }}>
+              <div style={{ marginBottom: '10px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--accent-cyan, #2f5bf6)' }}>
                 gate threshold {Number(seedPreview.effectiveThreshold).toFixed(2)} · Rocchio γ {Number(seedPreview.rocchioGamma).toFixed(2)}
                 {seedPreview.customerId && <span style={{ color: 'var(--text-dim)' }}> · customer: {seedPreview.customerId}</span>}
               </div>
@@ -315,8 +315,8 @@ export default function AdminPage({ onBack }) {
                 Positive seeds ({seedPreview.effectiveSeeds.length})
               </div>
               {seedPreview.effectiveSeeds.map((s, i) => (
-                <div key={i} style={{ padding: '6px 8px', marginBottom: '4px', background: i >= seedPreview.profileSeeds.length ? 'rgba(139,92,246,0.08)' : 'rgba(0,0,0,0.2)', borderLeft: `2px solid ${i >= seedPreview.profileSeeds.length ? '#8b5cf6' : 'var(--border-color)'}`, borderRadius: '0 4px 4px 0', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                  {s}{i >= seedPreview.profileSeeds.length && <span style={{ color: '#c4b5fd', marginLeft: '6px', fontSize: '10px' }}>(global extra)</span>}
+                <div key={i} style={{ padding: '6px 8px', marginBottom: '4px', background: i >= seedPreview.profileSeeds.length ? 'rgba(0,57,156,0.08)' : '#ffffff', borderLeft: `2px solid ${i >= seedPreview.profileSeeds.length ? '#00399C' : 'var(--border-color)'}`, borderRadius: '0 4px 4px 0', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  {s}{i >= seedPreview.profileSeeds.length && <span style={{ color: '#00399C', marginLeft: '6px', fontSize: '10px' }}>(global extra)</span>}
                 </div>
               ))}
               <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', margin: '12px 0 6px' }}>
@@ -342,9 +342,9 @@ const styles = {
   tab: { background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '16px', cursor: 'pointer', padding: '10px 15px', borderRadius: '6px', transition: '0.2s' },
   tabActive: { background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', fontSize: '16px', cursor: 'pointer', padding: '10px 15px', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
-  thRow: { borderBottom: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)' },
+  thRow: { borderBottom: '1px solid var(--border-color)', background: '#ffffff' },
   th: { padding: '16px', fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' },
-  tr: { borderBottom: '1px solid rgba(255,255,255,0.05)' },
+  tr: { borderBottom: '1px solid #f7f8fa' },
   td: { padding: '16px', fontSize: '14px', verticalAlign: 'middle' },
   badge: { display: 'inline-block', padding: '4px 10px', background: 'rgba(16,185,129,0.1)', color: 'var(--accent)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' },
   btnSecondary: { padding: '10px 20px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' },
@@ -352,7 +352,7 @@ const styles = {
   layerTitle: { fontSize: '20px', fontWeight: 'bold', marginBottom: '6px' },
   layerDesc: { fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' },
   statGrid: { display: 'flex', gap: '20px', flexWrap: 'wrap' },
-  statBox: { background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', minWidth: '120px', border: '1px solid rgba(255,255,255,0.05)' },
+  statBox: { background: '#ffffff', padding: '16px', borderRadius: '8px', minWidth: '120px', border: '1px solid #f7f8fa' },
   statVal: { fontSize: '32px', fontWeight: 'bold', color: '#60a5fa', marginBottom: '4px', fontFamily: 'var(--font-mono)' },
   statLabel: { fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }
 };

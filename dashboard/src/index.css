@@ -4,43 +4,55 @@
    ═══════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Base palette (Obsidian/Zinc) ── */
-  --bg-deep: #09090b;
-  --bg-primary: #18181b;
-  --bg-secondary: #27272a;
-  
-  /* ── Glass & Cards ── */
-  --bg-card: rgba(24, 24, 27, 0.4);
-  --bg-card-hover: rgba(39, 39, 42, 0.6);
-  --bg-glass: rgba(24, 24, 27, 0.7);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.15);
+  /* ── FOps Dashboards design system ──
+     Tokens taken from "FOps Dashboards - All 6 Flows" so Market Pulse sits in
+     the same visual world as the other five role dashboards. Names are kept
+     from the previous dark theme so the ~450 token references in App.css flip
+     over without edits. */
+
+  /* ── Base palette ── */
+  --bg-deep: #f4f5f7;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f8fa;
+
+  /* ── Surfaces ── */
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafbfd;
+  --bg-glass: #ffffff;
+  --border-subtle: #ececf1;
+  --border-hover: #dfe1e8;
 
   /* ── Text ── */
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-dim: #52525b;
+  --text-primary: #1a1d24;
+  --text-secondary: #6b7280;
+  --text-muted: #9aa2af;
+  --text-dim: #a2a8b2;
 
-  /* ── Targeted Accents ── */
-  --accent-emerald: #10b981;
-  --accent-cyan: #06b6d4;
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
-  --accent-blue: #3b82f6;
-  --accent-violet: #8b5cf6;
+  /* ── Brand ── */
+  --brand-navy: #00399C;
+  --brand-orange: #F69A2A;
+  --brand-green: #7DC242;
+  --nav-active-bg: #F6F9FF;
 
-  /* ── Severity / Status colors ── */
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --success: #10b981;
+  /* ── Targeted accents ── */
+  --accent-emerald: #16a34a;
+  --accent-cyan: #2f5bf6;
+  --accent-amber: #b45309;
+  --accent-rose: #dc2626;
+  --accent-blue: #2f5bf6;
+  --accent-violet: #00399C;
 
-  /* ── Layout (Sharper radii for enterprise look) ── */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* ── Severity / status ── */
+  --danger: #dc2626;
+  --warning: #b45309;
+  --success: #16a34a;
+
+  /* ── Layout ── */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
   --radius-xl: 16px;
-  
+
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
@@ -51,16 +63,16 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  /* ── Shadows ── */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  /* ── Shadows (light theme: far softer than the dark originals) ── */
+  --shadow-sm: 0 1px 2px 0 rgba(20, 24, 40, 0.06);
+  --shadow-md: 0 4px 10px -2px rgba(20, 24, 40, 0.08);
+  --shadow-lg: 0 18px 44px rgba(20, 24, 40, 0.14);
 
   /* ── Aliases ──
      Components across the app reference --accent / --border-color;
      without these aliases those styles silently resolve to nothing
      (invisible buttons, borderless inputs). Keep them defined. */
-  --accent: var(--accent-emerald);
+  --accent: var(--brand-navy);
   --border-color: var(--border-subtle);
 }
 
@@ -89,7 +101,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(20, 24, 40, 0.045) 1px, transparent 0);
   background-size: 24px 24px;
   mask-image: linear-gradient(to bottom, white, transparent);
   -webkit-mask-image: linear-gradient(to bottom, white 20%, transparent 95%);

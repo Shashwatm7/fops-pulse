@@ -27,9 +27,9 @@ function ChartTooltip({ active, payload, range }) {
     ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
     : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   return (
-    <div style={{ background: '#0b1120', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+    <div style={{ background: '#0b1120', border: '1px solid #ececf1', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
       <div style={{ color: 'var(--text-dim)', marginBottom: '6px' }}>{when}</div>
-      <div style={{ color: '#fff', fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>{fmtPrice(p.price)}</div>
+      <div style={{ color: '#1a1d24', fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>{fmtPrice(p.price)}</div>
       {p.open != null && (
         <div style={{ color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 14px' }}>
           <span>O {fmtPrice(p.open)}</span><span>H {fmtPrice(p.high)}</span>
@@ -68,7 +68,7 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
   }, [data]);
 
   const up = stats ? stats.changePct >= 0 : true;
-  const lineColor = up ? '#34d399' : '#fb7185';
+  const lineColor = up ? '#16a34a' : '#dc2626';
 
   const yDomain = useMemo(() => {
     if (!data || data.length === 0) return ['auto', 'auto'];
@@ -79,12 +79,12 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
   }, [data]);
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '760px', maxWidth: '94vw', padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#ffffff', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', border: '1px solid #ececf1', borderRadius: '12px', width: '760px', maxWidth: '94vw', padding: '24px', boxShadow: '0 20px 40px #ffffff' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '4px' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '17px', color: '#fff', textTransform: 'capitalize' }}>{(label || symbol).toLowerCase()}</h3>
+            <h3 style={{ margin: 0, fontSize: '17px', color: '#1a1d24', textTransform: 'capitalize' }}>{(label || symbol).toLowerCase()}</h3>
             <div style={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
               {symbol} · {unit || 'USD'} · Yahoo Finance
             </div>
@@ -94,7 +94,7 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
 
         {stats && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap', margin: '10px 0 4px', fontFamily: 'var(--font-mono)' }}>
-            <span style={{ fontSize: '26px', fontWeight: 700, color: '#fff' }}>{fmtPrice(stats.last)}</span>
+            <span style={{ fontSize: '26px', fontWeight: 700, color: '#1a1d24' }}>{fmtPrice(stats.last)}</span>
             <span style={{ fontSize: '15px', fontWeight: 700, color: lineColor }}>
               {up ? '▲' : '▼'} {Math.abs(stats.changePct).toFixed(2)}% <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '12px' }}>over {range}</span>
             </span>
@@ -109,7 +109,7 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
               style={{
                 background: r === range ? 'rgba(103,232,249,0.12)' : 'transparent',
                 border: `1px solid ${r === range ? 'rgba(103,232,249,0.45)' : 'var(--border-subtle)'}`,
-                color: r === range ? '#67e8f9' : 'var(--text-muted)',
+                color: r === range ? '#2f5bf6' : 'var(--text-muted)',
                 padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
               }}>{r}</button>
           ))}
@@ -117,7 +117,7 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
 
         <div style={{ height: '320px' }}>
           {error ? (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fb7185', fontSize: '13px' }}>{error}</div>
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626', fontSize: '13px' }}>{error}</div>
           ) : data === null ? (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>Loading market data…</div>
           ) : data.length === 0 ? (
@@ -131,11 +131,11 @@ export default function CommodityChartModal({ symbol, label, unit, onClose }) {
                     <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f7f8fa" />
                 <XAxis dataKey="time" tickFormatter={(t) => xTickFormatter(t, range)} tick={{ fill: '#64748b', fontSize: 11 }} minTickGap={40} axisLine={false} tickLine={false} />
                 <YAxis domain={yDomain} tickFormatter={fmtPrice} tick={{ fill: '#64748b', fontSize: 11 }} width={62} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip range={range} />} />
-                {stats && <ReferenceLine y={stats.first} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" label={{ value: `open ${fmtPrice(stats.first)}`, position: 'insideTopRight', fill: '#64748b', fontSize: 10 }} />}
+                {stats && <ReferenceLine y={stats.first} stroke="#dfe1e8" strokeDasharray="4 4" label={{ value: `open ${fmtPrice(stats.first)}`, position: 'insideTopRight', fill: '#64748b', fontSize: 10 }} />}
                 <Area type="monotone" dataKey="price" stroke={lineColor} strokeWidth={2} fill="url(#chartFill)" dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
