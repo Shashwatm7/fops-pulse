@@ -1,32 +1,16 @@
 <title>GCC Food Industry &middot; Insights</title>
 <style>
+  /* Always light. This page is embedded in the Market Pulse tab, which has no
+     dark mode — a prefers-color-scheme rule here used to flip the report dark
+     inside a white app on any machine set to dark. Palette matches the FOps
+     Dashboards design system so the iframe reads as part of the page. */
   :root{
-    --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
-    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
-    --s-blue:#2a78d6; --s-aqua:#1baf7a; --s-yellow:#eda100; --s-violet:#4a3aa7;
+    color-scheme: light;
+    --plane:#ffffff; --surface:#fafbfc; --ink:#1f2937; --ink2:#4b5563; --muted:#9aa2af;
+    --grid:#ececf1; --axis:#d0d5dd; --ring:#ececf1;
+    --s-blue:#2f5bf6; --s-aqua:#1baf7a; --s-yellow:#eda100; --s-violet:#4a3aa7;
     --s-red:#e34948; --s-orange:#eb6834; --s-green:#008300;
-    --good:#0ca30c; --bad:#d03b3b;
-  }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
-      --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-      --s-blue:#3987e5; --s-aqua:#199e70; --s-yellow:#c98500; --s-violet:#9085e9;
-      --s-red:#e66767; --s-orange:#d95926; --s-green:#008300;
-      --good:#0ca30c; --bad:#d03b3b;
-    }
-  }
-  :root[data-theme="dark"]{
-    --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
-    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-    --s-blue:#3987e5; --s-aqua:#199e70; --s-yellow:#c98500; --s-violet:#9085e9;
-    --s-red:#e66767; --s-orange:#d95926; --s-green:#008300;
-  }
-  :root[data-theme="light"]{
-    --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
-    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
-    --s-blue:#2a78d6; --s-aqua:#1baf7a; --s-yellow:#eda100; --s-violet:#4a3aa7;
-    --s-red:#e34948; --s-orange:#eb6834; --s-green:#008300;
+    --good:#16a34a; --bad:#dc2626;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--plane);color:var(--ink);
