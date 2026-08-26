@@ -93,7 +93,7 @@ function DiscoveryPanel() {
                                                     title="Track as a signal keyword"
                                                     style={{
                                                         background: promoted[term] === 'done' ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.1)',
-                                                        color: promoted[term] === 'done' ? '#34d399' : 'var(--text-secondary)',
+                                                        color: promoted[term] === 'done' ? '#16a34a' : 'var(--text-secondary)',
                                                         border: '1px solid var(--border-subtle)', borderRadius: '999px',
                                                         padding: '3px 10px', fontSize: '12px', cursor: 'pointer',
                                                     }}
@@ -108,7 +108,7 @@ function DiscoveryPanel() {
                                                     onClick={() => promote('seed', title)}
                                                     disabled={['pending', 'done', 'dupe'].includes(promoted[title])}
                                                     title="Add this headline as a semantic seed (positive example)"
-                                                    style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: promoted[title] === 'done' ? '#34d399' : 'var(--text-dim)', fontSize: '11px', padding: '1px 6px', cursor: 'pointer', flexShrink: 0 }}
+                                                    style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: promoted[title] === 'done' ? '#16a34a' : 'var(--text-dim)', fontSize: '11px', padding: '1px 6px', cursor: 'pointer', flexShrink: 0 }}
                                                 >
                                                     {promoted[title] === 'done' ? '✓ seed' : '+ seed'}
                                                 </button>
@@ -214,10 +214,10 @@ export default function PipelineAnalyticsPage({ onBack }) {
     const accepted = logs.filter(l => l.is_accepted).length;
 
     const getStageBadge = (log) => {
-        if (log.is_accepted) return <span style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.35)', padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>✓ Accepted</span>;
+        if (log.is_accepted) return <span style={{ background: 'rgba(16,185,129,0.12)', color: '#16a34a', border: '1px solid rgba(16,185,129,0.35)', padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>✓ Accepted</span>;
         const stageNames = { 3: 'Rules', 4: 'Region', 5: 'Scoring', 6: 'Semantic', 6.5: 'ML Spam', 7: 'LLM', 8: 'Priority', 9: 'Duplicate' };
         const label = stageNames[log.stage_dropped] || `Stage ${log.stage_dropped}`;
-        return <span style={{ background: 'rgba(244,63,94,0.1)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.3)', padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>✕ {label}</span>;
+        return <span style={{ background: 'rgba(244,63,94,0.1)', color: '#dc2626', border: '1px solid rgba(244,63,94,0.3)', padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>✕ {label}</span>;
     };
 
     return (
@@ -234,12 +234,12 @@ export default function PipelineAnalyticsPage({ onBack }) {
             <p style={{ color: 'var(--text-muted)', marginBottom: '24px', fontSize: '14px', maxWidth: '720px' }}>
                 Every article your profile scanner evaluated, and exactly which filter stage caught the noise.
                 {logs.length > 0 && (
-                    <span style={{ color: 'var(--text-secondary)' }}> Last {logs.length} scanned — <span style={{ color: '#34d399', fontWeight: 600 }}>{accepted} accepted</span>, {logs.length - accepted} filtered.</span>
+                    <span style={{ color: 'var(--text-secondary)' }}> Last {logs.length} scanned — <span style={{ color: '#16a34a', fontWeight: 600 }}>{accepted} accepted</span>, {logs.length - accepted} filtered.</span>
                 )}
             </p>
 
             {scanResult && (
-                <div className="intel-card" style={{ marginBottom: '20px', padding: '14px 16px', fontSize: '13px', fontFamily: 'var(--font-mono)', borderLeft: `2px solid ${scanResult.error ? 'var(--danger)' : scanResult.stillRunning ? 'var(--accent-amber)' : '#34d399'}` }}>
+                <div className="intel-card" style={{ marginBottom: '20px', padding: '14px 16px', fontSize: '13px', fontFamily: 'var(--font-mono)', borderLeft: `2px solid ${scanResult.error ? 'var(--danger)' : scanResult.stillRunning ? 'var(--accent-amber)' : '#16a34a'}` }}>
                     <div style={{ fontWeight: 700, marginBottom: '6px', color: 'var(--text-secondary)' }}>Last scan result</div>
                     {scanResult.stillRunning ? (
                         <div style={{ color: 'var(--accent-amber)' }}>
@@ -253,7 +253,7 @@ export default function PipelineAnalyticsPage({ onBack }) {
                         <div style={{ color: 'var(--accent-amber)' }}>Skipped: {scanResult.skippedReason}</div>
                     ) : (
                         <div style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                            Fetched <b>{scanResult.fetched}</b> articles · accepted <b style={{ color: '#34d399' }}>{scanResult.accepted}</b>
+                            Fetched <b>{scanResult.fetched}</b> articles · accepted <b style={{ color: '#16a34a' }}>{scanResult.accepted}</b>
                             {' · labeling '}<b>{scanResult.labelingEnabled ? 'ON' : 'OFF'}</b>
                             {scanResult.labelingEnabled && <> · labeled <b>{scanResult.labeled}</b></>}
                             {scanResult.labelErrors?.length > 0 && (
