@@ -10,6 +10,12 @@ import {
   Droplets, Thermometer, Wind, Ship
 } from 'lucide-react';
 import './App.css';
+import './fops.css';
+import Shell from './Shell.jsx';
+
+// Severity palette, taken from the FOps Dashboards mockup's alert cards.
+const SEV_COLOR = { CRITICAL: '#dc2626', HIGH: '#dc2626', MEDIUM: '#d97706', LOW: '#2f5bf6' };
+const SEV_BG    = { CRITICAL: '#fdecec', HIGH: '#fdecec', MEDIUM: '#fdf4e6', LOW: '#eef3fe' };
 import LoginPage from './LoginPage.jsx';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import SettingsPage from './SettingsPage.jsx';
@@ -216,6 +222,35 @@ function WeatherSparkline({ regionName }) {
   );
 }
 
+// A dashed "+ search…" row, exactly as the FOps Dashboards mockup draws it.
+// Shared by the three managed strips so the add affordance stays identical.
+function AddRow({ placeholder, query, onQuery, onFocus, busy, suggestions, onPick, renderItem, keyOf }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="fp-addrow" onClick={() => inputRef.current?.focus()}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" strokeWidth="2" strokeLinecap="round">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={e => onQuery(e.target.value)}
+        onFocus={onFocus}
+        placeholder={placeholder}
+        disabled={busy}
+      />
+      {busy && <RefreshCw size={14} style={{ color: 'var(--fp-mute)', animation: 'spin 0.8s linear infinite' }} />}
+      {suggestions.length > 0 && (
+        <div className="fp-suggest">
+          {suggestions.map((s, i) => (
+            <div key={keyOf(s, i)} onClick={e => { e.stopPropagation(); onPick(s); }}>{renderItem(s)}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Real-time temp + rainfall strip for the Command Center. User-managed: a
 // type-to-search box adds regions (WeatherAPI-backed, no proxy) and each card
 // has a remove control. Cards render live WeatherAPI current-conditions; a
@@ -252,101 +287,42 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
   const list = regions || [];
 
   return (
-    <div className="mb-xl">
-      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Droplets size={13} /> Live Weather &amp; Rainfall
-        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
-          real-time &middot; WeatherAPI{list.length ? ` · ${list.length} region${list.length > 1 ? 's' : ''}` : ''}
+    <div className="fp-card">
+      <div className="fp-card-head">
+        <span className="fp-card-title">LIVE WEATHER &amp; RAINFALL</span>
+        <span className="fp-card-note">
+          real-time · WeatherAPI{list.length ? ` · ${list.length} region${list.length > 1 ? 's' : ''}` : ''}
         </span>
       </div>
 
-      {/* type-to-search add box */}
-      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
-          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            value={query}
-            onChange={e => runSearch(e.target.value)}
-            placeholder="Add a region - search any city, town, or ZIP..."
-            disabled={busy}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
-          />
-          {(searching || busy) && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
-        </div>
-        {suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, overflow: 'hidden', boxShadow: '0 8px 24px #ffffff' }}>
-            {suggestions.map((s, i) => (
-              <div
-                key={`${s.lat},${s.lon}-${i}`}
-                onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >{s.label}</div>
-            ))}
-          </div>
-        )}
-      </div>
+      <AddRow
+        placeholder="Add a region — search by city or country…"
+        query={query} onQuery={runSearch} busy={busy || searching}
+        suggestions={suggestions} onPick={pick}
+        keyOf={(s, i) => `${s.lat},${s.lon}-${i}`}
+        renderItem={s => s.label}
+      />
 
       {list.length === 0 ? (
-        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+        <div className="fp-empty">
           No regions yet. Search above to add live temperature &amp; rainfall tracking for any location.
         </div>
       ) : (
-        <div className="grid-auto">
+        <div className="fp-grid-4">
           {list.map((r, i) => {
             const c = r.current;
             const today = r.todayPrecipMm;
+            const rain = today != null ? `${today} mm` : c ? `${c.precipMm} mm` : null;
             return (
-              <div key={r.name || i} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                      {/* Show the station name only when it differs from the title
-                          (built-in regions); otherwise fall back to country so
-                          we never print the same string twice. */}
-                      {[(r.wxLocation && r.wxLocation !== r.name) ? r.wxLocation : (r.country && r.country !== r.name ? r.country : null), c?.condition]
-                        .filter(Boolean).join(' · ')}
-                    </div>
+              <div key={r.name || i} className="fp-tile fp-wx">
+                <button className="fp-tile-x" title="Remove region" onClick={() => onRemove?.(r.name)}>&times;</button>
+                <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+                  <div className="fp-wx-city" title={r.name}>{r.name}</div>
+                  <div className="fp-wx-cond">
+                    {c ? [c.condition, rain].filter(Boolean).join(' · ') : 'Loading conditions…'}
                   </div>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => onRemove?.(r.name)}
-                      title="Remove region"
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px' }}
-                    >&times;</button>
-                  </span>
                 </div>
-                {c ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '10px' }}>
-                      <Thermometer size={16} style={{ color: '#b45309', alignSelf: 'center' }} />
-                      <span style={{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{Math.round(c.tempC)}</span>
-                      <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>&deg;C</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '16px', marginTop: '10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      <span title="Rainfall today" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <Droplets size={13} style={{ color: '#2f5bf6' }} />
-                        {today != null ? `${today} mm` : `${c.precipMm} mm`}
-                        <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>{today != null ? 'today' : 'now'}</span>
-                      </span>
-                      <span title="Humidity" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <span style={{ color: '#2f5bf6', fontSize: '12px' }}>&#128167;</span>{c.humidity}%
-                      </span>
-                      <span title="Wind" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                        <Wind size={13} style={{ color: 'var(--text-muted)' }} />{Math.round(c.windKph)} kph
-                      </span>
-                    </div>
-                    {c.lastUpdated && (
-                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
-                        updated {c.lastUpdated}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px' }}>Loading conditions…</div>
-                )}
+                {c && <div className="fp-wx-temp">{Math.round(c.tempC)}&deg;</div>}
               </div>
             );
           })}
@@ -363,12 +339,12 @@ function WeatherStrip({ regions, onAdd, onRemove }) {
 // status band derived from that anomaly.
 const PORT_STATUS_COLOR = {
   'Severely reduced': '#dc2626',
-  'Reduced': '#b45309',
+  'Reduced': '#d97706',
   'Normal': '#16a34a',
   'Elevated': '#2f5bf6',
   'Surging': '#00399C',
-  'No data': 'var(--text-muted)',
-  'Insufficient baseline': 'var(--text-muted)',
+  'No data': '#9aa2af',
+  'Insufficient baseline': '#9aa2af',
 };
 
 function PortCongestionStrip({ ports, onAdd, onRemove }) {
@@ -401,88 +377,56 @@ function PortCongestionStrip({ ports, onAdd, onRemove }) {
   const list = ports || [];
 
   return (
-    <div className="mb-xl">
-      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Ship size={13} /> Port Congestion (GCC)
-        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
-          IMF PortWatch · port calls & trade vs baseline · weekly, ~1wk lag{list.length ? ` · ${list.length} port${list.length > 1 ? 's' : ''}` : ''}
+    <div className="fp-card">
+      <div className="fp-card-head">
+        <span className="fp-card-title">PORT CONGESTION · GCC</span>
+        <span className="fp-card-note">
+          IMF PortWatch · port calls vs baseline · weekly{list.length ? ` · ${list.length} port${list.length > 1 ? 's' : ''}` : ''}
         </span>
       </div>
 
-      {/* type-to-search add box (GCC port catalog) */}
-      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
-          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            value={query}
-            onChange={e => runSearch(e.target.value)}
-            onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
-            placeholder="Add a GCC port — search by name or country…"
-            disabled={busy}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
-          />
-          {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
-        </div>
-        {open && suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px #ffffff' }}>
-            {suggestions.map((s, i) => (
-              <div
-                key={s.portid}
-                onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >{s.portname} <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.country}</span></div>
-            ))}
-          </div>
-        )}
-      </div>
+      <AddRow
+        placeholder="Add a GCC port — search by name or country…"
+        query={query} onQuery={runSearch}
+        onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
+        busy={busy}
+        suggestions={open ? suggestions : []} onPick={pick}
+        keyOf={s => s.portid}
+        renderItem={s => <>{s.portname} <span style={{ color: 'var(--fp-mute)', fontSize: '11.5px' }}>· {s.country}</span></>}
+      />
 
       {list.length === 0 ? (
-        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+        <div className="fp-empty">
           No ports tracked. Search above to add GCC ports (Jebel Ali, Dammam, Jeddah, Hamad…).
         </div>
       ) : (
-        <div className="grid-auto">
+        <div className="fp-grid-3">
           {list.map((p, i) => {
-            const color = PORT_STATUS_COLOR[p.status] || 'var(--text-muted)';
+            const color = PORT_STATUS_COLOR[p.status] || '#9aa2af';
             const delta = p.callsDeltaPct;
-            const deltaStr = delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta}%`;
+            const deltaStr = delta == null ? '—' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)}%`;
             return (
-              <div key={p.portid || i} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative', borderLeft: `3px solid ${color}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.portname}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{p.country}</div>
-                  </div>
-                  <button
-                    onClick={() => onRemove?.(p.portid)}
-                    title="Remove port"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
-                  >&times;</button>
+              <div key={p.portid || i} className="fp-tile">
+                <button className="fp-tile-x" title="Remove port" onClick={() => onRemove?.(p.portid)}>&times;</button>
+                <div className="fp-port-top">
+                  <span className="fp-port-name">{p.portname}</span>
+                  {p.hasData && <span className="fp-port-state" style={{ color }}>{p.status}</span>}
                 </div>
+                <div className="fp-port-country">{p.country}</div>
                 {p.hasData ? (
                   <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{p.status}</span>
+                    <div className="fp-port-figs">
+                      <span className="fp-port-big">{p.recentCallsPerDay ?? '—'}</span>
+                      <span className="fp-port-unit">calls/day</span>
+                      <span className="fp-port-delta" style={{ color }}>{deltaStr}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '8px' }}>
-                      <span style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>{p.recentCallsPerDay ?? '—'}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>calls/day</span>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color, marginLeft: 'auto' }}>{deltaStr}</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    <div className="fp-port-base">
                       vs {p.baselineCallsPerDay ?? '—'}/day baseline (28d)
-                      {p.importDeltaPct != null && ` · imports ${p.importDeltaPct > 0 ? '+' : ''}${p.importDeltaPct}%`}
+                      {p.importDeltaPct != null && ` · imports ${p.importDeltaPct > 0 ? '+' : '−'}${Math.abs(p.importDeltaPct)}%`}
                     </div>
-                    {p.latestDate && (
-                      <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
-                        latest {String(p.latestDate).slice(0, 10)}
-                      </div>
-                    )}
                   </>
                 ) : (
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px' }}>No recent PortWatch data.</div>
+                  <div className="fp-port-base" style={{ marginTop: '12px' }}>No recent PortWatch data.</div>
                 )}
               </div>
             );
@@ -527,65 +471,40 @@ function ForexStrip({ rates, onAdd, onRemove }) {
   const list = rates ? Object.entries(rates) : [];
 
   return (
-    <div className="mb-xl">
-      <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Globe2 size={13} /> FX Spot Rates
-        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>
+    <div className="fp-card">
+      <div className="fp-card-head">
+        <span className="fp-card-title">FX SPOT RATES</span>
+        <span className="fp-card-note">
           Open Exchange Rates · per USD{list.length ? ` · ${list.length} currenc${list.length > 1 ? 'ies' : 'y'}` : ''}
         </span>
       </div>
 
-      {/* type-to-search add box (OXR currency catalog) */}
-      <div style={{ position: 'relative', maxWidth: '420px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '8px', padding: '7px 10px' }}>
-          <Plus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <input
-            value={query}
-            onChange={e => runSearch(e.target.value)}
-            onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
-            placeholder="Add a currency — search by code or name…"
-            disabled={busy}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px' }}
-          />
-          {busy && <RefreshCw size={13} style={{ color: 'var(--text-muted)', animation: 'spin 0.8s linear infinite' }} />}
-        </div>
-        {open && suggestions.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: 'var(--bg-secondary, #f7f8fa)', border: '1px solid #ececf1', borderRadius: '8px', zIndex: 30, maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px #ffffff' }}>
-            {suggestions.map((s, i) => (
-              <div
-                key={s.code}
-                onClick={() => pick(s)}
-                style={{ padding: '8px 12px', fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f7f8fa' : 'none' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f7f8fa'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              ><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{s.code}</span> <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>· {s.name}</span></div>
-            ))}
-          </div>
-        )}
-      </div>
+      <AddRow
+        placeholder="Add a currency — search by code or name…"
+        query={query} onQuery={runSearch}
+        onFocus={() => { setOpen(true); if (!suggestions.length) runSearch(query); }}
+        busy={busy}
+        suggestions={open ? suggestions : []} onPick={pick}
+        keyOf={s => s.code}
+        renderItem={s => <><b>{s.code}</b> <span style={{ color: 'var(--fp-mute)', fontSize: '11.5px' }}>· {s.name}</span></>}
+      />
 
       {list.length === 0 ? (
-        <div className="intel-card" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>
+        <div className="fp-empty">
           No currencies selected. Search above to add rates (AED, EUR, INR…).
         </div>
       ) : (
-        <div className="grid-auto">
-          {list.map(([code, d], i) => (
-            <div key={code} className={`intel-card stagger-${(i % 6) + 1}`} style={{ padding: '14px 16px', position: 'relative' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{code}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
-                    {typeof d.rate === 'number' ? d.rate.toFixed(d.rate < 5 ? 4 : 2) : d.rate}
-                  </span>
-                  <button
-                    onClick={() => onRemove?.(code)}
-                    title="Remove currency"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '0 2px' }}
-                  >&times;</button>
-                </span>
+        <div className="fp-grid-3">
+          {list.map(([code, d]) => (
+            <div key={code} className="fp-tile fp-fx">
+              <button className="fp-tile-x" title="Remove currency" onClick={() => onRemove?.(code)}>&times;</button>
+              <div style={{ flex: '1 1 0%' }}>
+                <div className="fp-fx-code">{code}</div>
+                <div className="fp-fx-name">{d.name}</div>
               </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{d.name}</div>
+              <div className="fp-fx-rate">
+                {typeof d.rate === 'number' ? d.rate.toFixed(d.rate < 5 ? 4 : 2) : d.rate}
+              </div>
             </div>
           ))}
         </div>
@@ -594,6 +513,8 @@ function ForexStrip({ rates, onAdd, onRemove }) {
   );
 }
 
+// Helpful / Not helpful, drawn as the mockup's pair of pill buttons. Rendered
+// inside a flex action row, so the optional note breaks onto its own line.
 function AiFeedbackWidget({ featureName, context, aiResponse }) {
   const [status, setStatus] = useState('idle'); // idle, rating, submitted, error
   const [isHelpful, setIsHelpful] = useState(null);
@@ -620,36 +541,37 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
   };
 
   if (status === 'submitted') {
-    return <div style={{ fontSize: '11px', color: 'var(--accent-emerald)', marginTop: '8px' }}>✓ Thank you for your feedback!</div>;
+    return <span style={{ fontSize: '13px', color: 'var(--fp-green)', fontWeight: 600 }}>✓ Thanks for the feedback</span>;
   }
 
+  const sel = (v) => isHelpful === v
+    ? { borderColor: v ? 'var(--fp-green)' : 'var(--fp-red)', color: v ? 'var(--fp-green)' : 'var(--fp-red)' }
+    : undefined;
+
   return (
-    <div style={{ marginTop: '12px', padding: '8px', background: '#f7f8fa', borderRadius: '6px', border: '1px solid #f7f8fa' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-        <span>Was this AI response helpful?</span>
-        <button onClick={() => handleRate(true)} style={{ background: isHelpful === true ? 'var(--accent-emerald)' : 'transparent', color: isHelpful === true ? '#000' : 'var(--text-secondary)', border: '1px solid #ececf1', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <ThumbsUp size={12} /> Yes
-        </button>
-        <button onClick={() => handleRate(false)} style={{ background: isHelpful === false ? 'var(--accent-rose)' : 'transparent', color: isHelpful === false ? '#fff' : 'var(--text-secondary)', border: '1px solid #ececf1', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <ThumbsDown size={12} /> No
-        </button>
-      </div>
-      
+    <>
+      <button className="fp-btn fp-btn-sm" style={sel(true)} onClick={() => handleRate(true)}>
+        <ThumbsUp size={13} /> Helpful
+      </button>
+      <button className="fp-btn fp-btn-sm" style={sel(false)} onClick={() => handleRate(false)}>
+        <ThumbsDown size={13} /> Not helpful
+      </button>
       {status === 'rating' && (
-        <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-          <input 
-            type="text" 
-            placeholder="Optional: Why did you choose this?" 
-            value={notes} 
+        <div style={{ flexBasis: '100%', display: 'flex', gap: '9px', marginTop: '4px' }}>
+          <input
+            type="text"
+            placeholder="Optional — why?"
+            value={notes}
             onChange={e => setNotes(e.target.value)}
-            style={{ flex: 1, padding: '6px', fontSize: '11px', background: '#ffffff', border: '1px solid #ececf1', borderRadius: '4px', color: '#1a1d24' }}
+            style={{ flex: 1, height: '34px', padding: '0 12px', fontSize: '13px', background: '#fff', border: '1px solid var(--fp-input)', borderRadius: '9px', color: 'var(--fp-ink)', fontFamily: 'inherit', outline: 'none' }}
           />
-          <button onClick={handleSubmit} style={{ background: 'var(--accent-violet)', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>
-            Submit
-          </button>
+          <button className="fp-btn fp-btn-sm fp-btn-primary" onClick={handleSubmit}>Submit</button>
         </div>
       )}
-    </div>
+      {status === 'error' && (
+        <span style={{ fontSize: '13px', color: 'var(--fp-red)' }}>Could not send feedback.</span>
+      )}
+    </>
   );
 }
 
@@ -663,6 +585,9 @@ export default function Dashboard() {
   const [showPipelineAnalytics, setShowPipelineAnalytics] = useState(false);
 
   const [tab, setTab] = useState('pulse');
+  // Topbar search — filters the alert list and the news stream in place.
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [alertSev, setAlertSev] = useState('All');
   // Alert ids whose precomputed extractive (MiniLM, no-LLM) summary is expanded.
   const [openExtracts, setOpenExtracts] = useState({});
   const [showTrackModal, setShowTrackModal] = useState(false);
@@ -684,7 +609,6 @@ export default function Dashboard() {
   const [newsDateFilter, setNewsDateFilter] = useState('all'); // all | 24h | 7d | 30d — by publish date
   const [articleSummary, setArticleSummary] = useState(null); // { article, loading, data, error }
   const [alertInsights, setAlertInsights] = useState({ byUrl: {}, byTitle: {} });
-  const [alertLimit, setAlertLimit] = useState(6);
   const [newsLimit, setNewsLimit] = useState(10);
   const [rescanning, setRescanning] = useState(false);
   const [pipelineKeywords, setPipelineKeywords] = useState([]);
@@ -1043,20 +967,10 @@ export default function Dashboard() {
   const highCriticalAlertsCount = (analysis?.alerts || []).filter(a => a.severity === 'CRITICAL' || a.severity === 'HIGH').length;
 
   const tabs = [
-    { id: 'pulse', label: 'Command Center', icon: <Activity size={14} /> },
-    { id: 'alerts', label: (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          Alerts
-          {highCriticalAlertsCount > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--accent-rose)', color: 'white', padding: '2px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' }}>
-              <Bell size={10} />
-              {highCriticalAlertsCount}
-            </div>
-          )}
-        </div>
-      ), icon: <Zap size={14} /> },
-    { id: 'marketinfo', label: 'Market Report', icon: <BarChart2 size={14} /> },
-    { id: 'actions', label: 'Recommendations', icon: <PlaySquare size={14} /> }
+    { id: 'pulse', label: 'Command Center' },
+    { id: 'alerts', label: 'Alerts', count: highCriticalAlertsCount },
+    { id: 'marketinfo', label: 'Market Report' },
+    { id: 'actions', label: 'Recommendations' },
   ];
 
   // ── Tab indicator position ──
@@ -1520,6 +1434,17 @@ export default function Dashboard() {
   const driversError = analysis?.driversError;
   const alerts = (analysis?.alerts || []).sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99));
 
+  // Alerts tab filters: the severity pills plus the topbar/inline search box.
+  // Both narrow the same list, so what the pill count says and what the list
+  // shows can never diverge.
+  const visibleAlerts = alerts.filter(a => {
+    if (alertSev !== 'All' && (a.severity || 'CRITICAL').toUpperCase() !== alertSev.toUpperCase()) return false;
+    const q = globalSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [a.title, a.reason, a.description, a.source].filter(Boolean)
+      .some(v => String(v).toLowerCase().includes(q));
+  });
+
   const [precedents, setPrecedents] = useState({});
 
   const findPrecedent = async (a, key) => {
@@ -1626,115 +1551,83 @@ export default function Dashboard() {
       console.error('Failed to update SOP:', err);
     }
   };
-  const renderRecCard = (r, i) => (
-    <div key={r.timeframe + '-' + i} className={`intel-card rec-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-      <div className="rec-action" style={{ marginTop: '0px' }}>
-        {Array.isArray(r.action) ? (
-          <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
-            {(r.action || []).map((act, actIdx) => <li key={actIdx} style={{ marginBottom: '4px' }}>{act}</li>)}
-          </ul>
-        ) : (
-          r.action
+  // Recommendation card, laid out as the FOps Dashboards mockup draws it:
+  // title, body, BUSINESS IMPACT well, REASONING well, then the action row.
+  const renderRecCard = (r, i) => {
+    const actionText = Array.isArray(r.action) ? r.action.join(' ') : r.action;
+    return (
+      <div key={r.timeframe + '-' + i} className="fp-rec">
+        <div className="fp-rec-title">{r.title || (Array.isArray(r.action) ? r.action[0] : r.action)}</div>
+        {(r.title || Array.isArray(r.action)) && (
+          <div className="fp-rec-body">
+            {Array.isArray(r.action)
+              ? <ul style={{ margin: 0, paddingLeft: '18px' }}>{r.action.map((a, j) => <li key={j} style={{ marginBottom: '4px' }}>{a}</li>)}</ul>
+              : r.action}
+          </div>
         )}
-      </div>
-      <div className="rec-impact" style={{ marginBottom: '12px' }}>{r.businessImpact}</div>
-      
-      <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={Array.isArray(r.action) ? r.action.join(' ') : r.action} />
-      <div style={{ borderTop: '1px solid #f7f8fa', paddingTop: '12px' }}>
+        {r.businessImpact && (
+          <div className="fp-rec-impact">
+            <div className="fp-rec-k">BUSINESS IMPACT</div>
+            <div className="fp-rec-v">{r.businessImpact}</div>
+          </div>
+        )}
+        {r.reasoning && (
+          <div className="fp-rec-reason">
+            <div className="fp-rec-k">REASONING</div>
+            <div className="fp-rec-v dim">{r.reasoning}</div>
+          </div>
+        )}
+
+        <div className="fp-rec-actions">
+          <AiFeedbackWidget featureName="RECOMMENDATION" context={r} aiResponse={actionText} />
+          <span style={{ flex: '1 1 0%' }} />
+          <button
+            className="fp-btn fp-btn-sm fp-btn-primary"
+            onClick={() => handleDeepDive(r, i)}
+            disabled={deepDiveLoading[i]}
+            style={deepDiveLoading[i] ? { cursor: 'wait' } : undefined}
+          >
+            {deepDiveLoading[i] ? 'Generating…' : deepDiveText[i] ? 'Regenerate' : 'Request AI Deep Dive'}
+          </button>
+        </div>
+
         {deepDiveError[i] && (
-          <div style={{ fontSize: '12px', color: '#dc2626', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="fp-err" style={{ marginTop: '12px', marginBottom: 0, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <span>⚠ {deepDiveError[i]}</span>
             <button
               onClick={() => { setDeepDiveError(prev => ({ ...prev, [i]: '' })); handleDeepDive(r, i); }}
               disabled={deepDiveLoading[i]}
-              style={{ background: 'none', border: 'none', color: '#00399C', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', fontSize: '12px', textDecoration: 'underline', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'var(--fp-red)', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', fontSize: '13px', textDecoration: 'underline', padding: 0 }}
             >{deepDiveLoading[i] ? 'Retrying…' : 'Retry'}</button>
           </div>
         )}
-        {deepDiveText[i] ? (
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'rgba(0,57,156,0.05)', padding: '10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-violet)', whiteSpace: 'pre-wrap' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <strong style={{ color: '#1a1d24' }}>✨ AI Deep-Dive Analysis:</strong>
-              <button 
-                onClick={() => handleDeepDive(r, i)}
-                disabled={deepDiveLoading[i]}
-                style={{ background: 'rgba(0,57,156,0.2)', color: '#00399C', border: '1px solid rgba(0,57,156,0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', opacity: deepDiveLoading[i] ? 0.5 : 1, transition: 'all 0.2s ease' }}
-                onMouseOver={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(0,57,156,0.4)'; }}
-                onMouseOut={(e) => { if (!deepDiveLoading[i]) e.currentTarget.style.background = 'rgba(0,57,156,0.2)'; }}
-              >
-                {deepDiveLoading[i] ? 'Generating...' : 'Regenerate ✨'}
-              </button>
-            </div>
+        {deepDiveText[i] && (
+          <div className="fp-rec-deep">
+            <div className="fp-rec-k">AI DEEP DIVE</div>
             {deepDiveText[i]}
-            <div style={{ marginTop: '8px' }}>
+            <div style={{ marginTop: '10px' }}>
               <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[i]} />
             </div>
           </div>
-        ) : (
-          <button 
-            className="action-btn" 
-            onClick={() => handleDeepDive(r, i)}
-            disabled={deepDiveLoading[i]}
-            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', fontSize: '12px', borderRadius: '6px', background: 'rgba(0,57,156,0.1)', color: '#00399C', border: '1px solid rgba(0,57,156,0.2)', cursor: deepDiveLoading[i] ? 'wait' : 'pointer', transition: 'all 0.2s ease', opacity: deepDiveLoading[i] ? 0.7 : 1 }}
-          >
-            {deepDiveLoading[i] ? (
-              <><span style={{ animation: 'spin 1s linear infinite' }}>⏳</span> Generating Analysis...</>
-            ) : (
-              <>✨ Request AI Deep-Dive</>
-            )}
-          </button>
         )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
-    <div>
-      {/* ══════════ HEADER ══════════ */}
-      <header className={`pulse-header market-${summary?.market_state || 'STABLE'}`}>
-        <div className="pulse-logo">
-          <div>
-            <h1>⬡ FOPs Market Pulse</h1>
-          </div>
-        </div>
-        
-        <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
-          {/* <ApiLimitTracker /> */}
-          <div style={{color:'var(--text-secondary)', fontSize:'13px', marginRight: '8px', marginLeft: '12px'}}>
-            Welcome, <strong style={{color:'#1a1d24'}}>{user.username}</strong>
-          </div>
-          {user.is_admin ? (
-            <button className="btn-secondary" onClick={() => setShowAdmin(true)}>
-              <Shield size={14} /> Admin
-            </button>
-          ) : null}
-          <button className="btn-secondary" onClick={() => setShowPipelineAnalytics(true)}>
-            📊 Pipeline Analytics
-          </button>
-          <button className="btn-secondary" onClick={() => setShowSettings(true)}>
-            <Settings size={14} /> Settings
-          </button>
-        </div>
-        <div className="header-controls">
-          <div className="live-indicator">
-            <span className="live-dot" />
-            <span className="live-ring" />
-            LIVE
-          </div>
-          <span className="time-ago">{formatTimeAgo(secondsAgo)}</span>
-          <button
-            className="btn-primary"
-            onClick={(e) => { handleRipple(e); refresh(); }}
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? "spin" : ""} /> {loading ? 'Analyzing...' : 'Sync'}
-          </button>
-          <button className="btn-secondary" onClick={handleLogout} style={{color:'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.3)'}}>
-            <LogOut size={14} /> Logout
-          </button>
-        </div>
-      </header>
-
+    <Shell
+      user={user}
+      onOpenSettings={() => setShowSettings(true)}
+      onOpenAdmin={() => setShowAdmin(true)}
+      onOpenAnalytics={() => setShowPipelineAnalytics(true)}
+      onLogout={handleLogout}
+      search={globalSearch}
+      onSearch={setGlobalSearch}
+      lastRefresh={lastRefresh ? formatTimeAgo(secondsAgo) : null}
+      loading={loading}
+      onRefresh={refresh}
+      alertCount={highCriticalAlertsCount}
+    >
       {/* ══════════ LOADING ══════════ */}
       {loading && !analysis && (
         <div className="loading-overlay">
@@ -1749,32 +1642,32 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ══════════ SUMMARY BANNER REMOVED ══════════ */}
-
-      {/* ══════════ FOREX TICKER REMOVED ══════════ */}
-
-      {/* ══════════ TABS ══════════ */}
-      <nav className="tab-navigation" ref={tabNavRef}>
-        <div className="tab-indicator" style={{ left: indicatorStyle.left, width: indicatorStyle.width }} />
-        {tabs.map((t, i) => (
+      {/* ══════════ PAGE HEAD + TABS ══════════ */}
+      <div className="fp-pagehead">
+        <h1>Market Pulse</h1>
+        <p>Live commodity, logistics and market intelligence for GCC food operations.</p>
+      </div>
+      <div className="fp-tabs" ref={tabNavRef}>
+        {tabs.map(t => (
           <button
             key={t.id}
             id={`tab-${t.id}`}
             ref={el => { tabBtnsRef.current[t.id] = el; }}
-            className={`tab-btn ${tab === t.id ? 'active' : ''}`}
+            className={`fp-tab${tab === t.id ? ' on' : ''}`}
             onClick={() => switchTab(t.id)}
           >
-            {t.icon} {t.label}
+            {t.label}
+            {t.count > 0 && <span className="fp-tab-count">{t.count}</span>}
           </button>
         ))}
-      </nav>
+      </div>
 
       {/* ═══════════ COMMAND CENTER ═══════════ */}
       {tab === 'pulse' && (
-        <div className={`tab-content enter-${tabDirection}`} key="pulse">
+        <div className={`fp-stack tab-content enter-${tabDirection}`} key="pulse">
 
           {analysisStale && (
-            <div className="mb-xl" style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#b45309', fontSize: '13px' }}>
+            <div className="fp-warn" style={{ marginBottom: 0 }}>
               ⚠ The analysis service did not respond on the last refresh. Alerts, drivers and the summary below may be out of date.
             </div>
           )}
@@ -1786,38 +1679,44 @@ export default function Dashboard() {
 
           <WeatherStrip regions={weather} onAdd={addWeatherRegion} onRemove={removeWeatherRegion} />
 
-          {driversError && drivers.length === 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Market Indicators</div>
-              <div className="intel-card" style={{ padding: '16px', borderLeft: '3px solid var(--sev-critical-text, #dc2626)', color: 'var(--text-secondary)' }}>
-                ⚠ {driversError}
-              </div>
-            </div>
-          )}
-          {drivers.length > 0 && (
-            <div className="mb-xl">
-              <div className="section-label">Market Indicators</div>
-              <div className="grid-auto">
-                {(drivers || []).map((d, i) => (
-                  <div key={i} className={`intel-card stagger-${i + 1}`} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-                    <div className="driver-card">
-                      <div className={`driver-direction ${d.direction}`}>
-                        {d.direction === 'UP' ? '↑' : d.direction === 'DOWN' ? '↓' : '→'}
-                      </div>
-                      <div className="driver-info">
-                        <div className="factor">{d.factor}</div>
-                        <div className="explanation">{d.explanation}</div>
-                        <div className="strength-bar">
-                          <div className="strength-fill" style={{ width: `${d.strength * 10}%`, background: getStrengthColor(d.strength) }} />
+          {(drivers.length > 0 || (driversError && drivers.length === 0)) && (
+            <div className="fp-card">
+              <div className="fp-sec-label">MARKET INDICATORS</div>
+              {driversError && drivers.length === 0 ? (
+                <div className="fp-err" style={{ marginBottom: 0 }}>⚠ {driversError}</div>
+              ) : (
+                <div className="fp-grid-3">
+                  {(drivers || []).map((d, i) => {
+                    const col = d.direction === 'UP' ? '#dc2626' : d.direction === 'DOWN' ? '#16a34a' : '#9aa2af';
+                    const arrow = d.direction === 'UP' ? 'M12 19V5M5 12l7-7 7 7'
+                      : d.direction === 'DOWN' ? 'M12 5v14M5 12l7 7 7-7'
+                      : 'M5 12h14M14 7l5 5-5 5';
+                    return (
+                      <div key={i} className="fp-ind">
+                        <div className="fp-ind-head">
+                          <span className="fp-ind-icon" style={{ border: `1px solid ${col}44` }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d={arrow} />
+                            </svg>
+                          </span>
+                          {d.category && <span className="fp-ind-kind">{String(d.category).replace(/_/g, ' ')}</span>}
+                          <span style={{ flex: '1 1 0%' }} />
+                        </div>
+                        <div className="fp-ind-title">{d.factor}</div>
+                        <div className="fp-ind-body">{d.explanation}</div>
+                        <div className="fp-ind-bar">
+                          <div style={{ width: `${d.strength * 10}%`, background: getStrengthColor(d.strength) }} />
                         </div>
                         {d.evidence?.length > 0 && (
-                          <div className="evidence-tags">{d.evidence.map((e, j) => <span key={j} className="evidence-tag">{e}</span>)}</div>
+                          <div className="fp-chips">
+                            {d.evidence.map((e, j) => <span key={j} className="fp-chip">{e}</span>)}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -1830,57 +1729,60 @@ export default function Dashboard() {
       {tab === 'alerts' && (
         <div className={`tab-content enter-${tabDirection}`} key="alerts">
           {rescanning && (
-            <div className="intel-card" style={{ marginBottom: '12px', padding: '12px 16px', color: '#b45309', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(251,191,36,0.3)' }}>
-              <span style={{ fontSize: '15px' }}>⟳</span> Rescanning with your new settings — alerts and labeled articles will refresh automatically when it finishes.
+            <div className="fp-warn">
+              ⟳ Rescanning with your new settings — alerts and labeled articles will refresh automatically when it finishes.
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <div className="section-label" style={{ margin: 0 }}>Risk Alerts ({alerts.length})</div>
-            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Show
-              <select value={alertLimit} onChange={e => setAlertLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ background: '#ffffff', border: '1px solid #ececf1', color: '#1a1d24', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                <option value={3}>3</option>
-                <option value={6}>6</option>
-                <option value="all">All</option>
-              </select>
-            </label>
+          <div className="fp-filters">
+            <div className="fp-filter-search">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" />
+              </svg>
+              <input value={globalSearch} onChange={e => setGlobalSearch(e.target.value)} placeholder="Search alerts" />
+            </div>
+            <div className="fp-pills">
+              {['All', 'Critical', 'High', 'Medium', 'Low'].map(s => (
+                <button
+                  key={s}
+                  className={`fp-pill${alertSev === s ? ' on' : ''}`}
+                  onClick={() => setAlertSev(s)}
+                >{s}</button>
+              ))}
+            </div>
           </div>
-          {alerts.length === 0 ? (
-            <div className="intel-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No active alerts</div>
-          ) : (alertLimit === 'all' ? alerts : alerts.slice(0, alertLimit)).map((a, i) => (
-            <div key={i} className={`alert-card ${a.severity}`} style={{ animationDelay: `${i * 0.08}s` }} onMouseMove={handleTilt} onMouseLeave={handleTiltReset}>
-              <div className="alert-header">
-                <div className="alert-title">
-                  {a.url ? (
-                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
-                      {a.title} ↗
-                    </a>
-                  ) : (
-                    a.title
-                  )}
-                </div>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="alert-severity-badge" style={{ background: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-bg)`, color: `var(--sev-${(a.severity || 'CRITICAL').toLowerCase()}-text)` }}>{a.severity || 'CRITICAL'}</span>
-                  {(() => {
-                    let p = a.payload; if (typeof p === 'string') { try { p = JSON.parse(p); } catch { p = {}; } }
-                    const sim = p?.semanticSimilarity;
-                    return (sim != null && !isNaN(sim)) ? (
-                      <span title="Embedding match to your profile (cosine similarity)" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', background: 'rgba(0,57,156,0.12)', color: '#00399C', padding: '2px 6px', borderRadius: '4px' }}>
-                        ⛭ {Math.round(sim * 100)}%
-                      </span>
-                    ) : null;
-                  })()}
-                  {a.id && (
-                    <button
-                      onClick={() => acknowledgeAlert(a.id)}
-                      title="Acknowledge — removes this alert from your active list"
-                      style={{ background: 'transparent', border: '1px solid var(--text-muted)', color: 'var(--text-muted)', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}
-                    >✓ Ack</button>
-                  )}
+
+          {visibleAlerts.length === 0 ? (
+            <div className="fp-card fp-empty">
+              {alerts.length === 0 ? 'No active alerts.' : 'No alerts match this filter.'}
+            </div>
+          ) : (
+            <div className="fp-alerts">
+          {visibleAlerts.map((a, i) => (
+            <div key={i} className="fp-alert" style={{ boxShadow: `3px 0 0 inset ${SEV_COLOR[a.severity] || SEV_COLOR.CRITICAL}` }}>
+              <div className="fp-alert-main">
+              <div className="fp-alert-top">
+                <span className="fp-sev" style={{ color: SEV_COLOR[a.severity] || SEV_COLOR.CRITICAL, background: SEV_BG[a.severity] || SEV_BG.CRITICAL }}>
+                  {(a.severity || 'CRITICAL').charAt(0) + (a.severity || 'CRITICAL').slice(1).toLowerCase()}
                 </span>
+                <span className="fp-alert-title">
+                  {a.url
+                    ? <a href={a.url} target="_blank" rel="noreferrer">{a.title} ↗</a>
+                    : a.title}
+                </span>
+                {(() => {
+                  let p = a.payload; if (typeof p === 'string') { try { p = JSON.parse(p); } catch { p = {}; } }
+                  const sim = p?.semanticSimilarity;
+                  return (sim != null && !isNaN(sim)) ? (
+                    <span className="fp-chip" title="Embedding match to your profile (cosine similarity)">
+                      ⛭ {Math.round(sim * 100)}%
+                    </span>
+                  ) : null;
+                })()}
               </div>
-              {a.timestamp && <div style={{ fontSize: '10px', color: 'var(--accent-orange)', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>🕒 {a.timestamp}</div>}
-              <div className="alert-reason">{a.reason || a.description}</div>
+              {(a.timestamp || a.source) && (
+                <div className="fp-alert-meta">{[a.timestamp, a.source].filter(Boolean).join(' · ')}</div>
+              )}
+              <div className="fp-alert-body">{a.reason || a.description}</div>
 
               {(() => {
                 const ins = alertInsights.byUrl?.[a.url] || alertInsights.byTitle?.[(a.title || '').trim().toLowerCase()];
@@ -1986,8 +1888,17 @@ export default function Dashboard() {
                   </a>
                 </div>
               )}
+              </div>
+              {a.id && (
+                <div className="fp-alert-side">
+                  <button className="fp-btn" title="Acknowledge — removes this alert from your active list"
+                    onClick={() => acknowledgeAlert(a.id)}>Acknowledge</button>
+                </div>
+              )}
             </div>
           ))}
+            </div>
+          )}
 
           {categorizedNews.length > 0 && (() => {
             // Filter bar options derived from what's actually present.
@@ -2259,7 +2170,7 @@ export default function Dashboard() {
           <iframe
             src="/market-info.html"
             title="Market Report"
-            style={{ width: '100%', height: 'calc(100vh - 160px)', minHeight: '600px', border: 'none', borderRadius: '12px', background: 'transparent' }}
+            style={{ width: '100%', height: 'calc(100vh - 260px)', minHeight: '600px', border: 'none', borderRadius: '12px', background: 'transparent' }}
           />
         </div>
       )}
@@ -2273,12 +2184,10 @@ export default function Dashboard() {
 
 
           {aiRecsLoading ? (
-            <div className="section-label" style={{ color: 'var(--accent-emerald)', animation: 'pulse 1.5s infinite' }}>
-              ✨ Generating personalized AI recommendations...
-            </div>
+            <div className="fp-card fp-empty">Generating personalized AI recommendations…</div>
           ) : aiRecommendationsError ? (
-            <div className="intel-card" style={{ borderLeft: '3px solid var(--accent-amber)', color: 'var(--text-secondary)', marginBottom: '18px' }}>
-              <strong style={{ color: '#1a1d24', display: 'block', marginBottom: '6px' }}>AI recommendations unavailable</strong>
+            <div className="fp-err">
+              <strong style={{ display: 'block', marginBottom: '4px' }}>AI recommendations unavailable</strong>
               {aiRecommendationsError}
             </div>
           ) : recommendations.length > 0 && (
@@ -2303,39 +2212,47 @@ export default function Dashboard() {
               }
 
               return (
-                <div className="mb-xl">
-                  <div className="section-label">Planner Recommendations</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                    <div>
-                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid #ececf1', paddingBottom: '8px' }}>Short Term (90 Days)</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        {st.map((r, i) => renderRecCard(r, 'st-' + i))}
-                        {st.length === 0 && (
-                          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>No short-term recommendations available.</div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 style={{ color: 'var(--text-secondary)', marginBottom: '12px', borderBottom: '1px solid #ececf1', paddingBottom: '8px' }}>Long Term (365 Days)</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        {lt.map((r, i) => renderRecCard(r, 'lt-' + i))}
-                        {lt.length === 0 && (
-                          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>No long-term recommendations available.</div>
-                        )}
-                      </div>
-                    </div>
+                <>
+                  <div className="fp-sec-label">SHORT TERM (90 DAYS)</div>
+                  <div className="fp-grid-2" style={{ marginBottom: '26px' }}>
+                    {st.map((r, i) => renderRecCard(r, 'st-' + i))}
+                    {st.length === 0 && (
+                      <div className="fp-card fp-empty">No short-term recommendations available.</div>
+                    )}
                   </div>
-                </div>
+                  <div className="fp-sec-label">LONG TERM (365 DAYS)</div>
+                  <div className="fp-grid-2" style={{ marginBottom: '26px' }}>
+                    {lt.map((r, i) => renderRecCard(r, 'lt-' + i))}
+                    {lt.length === 0 && (
+                      <div className="fp-card fp-empty">No long-term recommendations available.</div>
+                    )}
+                  </div>
+                </>
               );
             })()
           )}
 
           {missingData.length > 0 && (
-            <div className="missing-data-strip mb-xl"><div className="label">⊘ Data Gaps</div><div className="missing-data-list">{(missingData || []).map((m, i) => <span key={i} className="missing-item">{m}</span>)}</div></div>
+            <div className="fp-card">
+              <div style={{ fontSize: '16px', fontWeight: 700 }}>Data Gaps</div>
+              <div style={{ fontSize: '13px', color: 'var(--fp-mute)', margin: '4px 0 14px' }}>
+                Missing inputs that would improve recommendation quality
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(missingData || []).map((m, i) => (
+                  <div key={i} className="fp-gap">
+                    <span className="fp-dot" style={{ background: '#d97706', marginTop: '6px' }} />
+                    <span>{m}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-          <div className="section-label">Raw JSON</div>
-          <button className="refresh-btn mb-md" onClick={() => setShowJson(!showJson)}>{showJson ? 'Hide' : 'Show'} Analysis JSON</button>
-          {showJson && analysis && <div className="json-viewer">{JSON.stringify(analysis, null, 2)}</div>}
+
+          <div style={{ marginTop: '22px' }}>
+            <button className="fp-btn" onClick={() => setShowJson(!showJson)}>{showJson ? 'Hide' : 'Show'} analysis JSON</button>
+            {showJson && analysis && <div className="json-viewer" style={{ marginTop: '12px' }}>{JSON.stringify(analysis, null, 2)}</div>}
+          </div>
         </div>
       )}
       {/* ═══════════ S&OP PLANS ═══════════ */}
@@ -2576,6 +2493,6 @@ export default function Dashboard() {
         </Suspense>
       )}
 
-    </div>
+    </Shell>
   );
 }
