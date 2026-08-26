@@ -1,0 +1,1192 @@
+<meta charset="utf-8">
+<title>FOps · Market Pulse</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}
+
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#f4f5f7;color:#1a1d24;-webkit-font-smoothing:antialiased}
+  a{color:#2f5bf6;text-decoration:none}
+  a:hover{color:#1e46d6}
+  .role-stage>*:not([style*="position:fixed"]):not([style*="position: fixed"]){height:100%!important;min-height:0!important}
+  .role-stage>*>*:not([style*="position:fixed"]):not([style*="position: fixed"]){height:100%!important;min-height:0!important}
+  .role-stage div[style*="height:100vh"]:not([style*="position:fixed"]):not([style*="position: fixed"]),.role-stage aside{height:100%!important;min-height:0!important}
+  .role-stage *{min-height:0}
+
+.role-stage>.sc-host{height:100%!important;min-height:0!important;overflow:hidden}.role-stage>.sc-host>*:not([style*="position:fixed"]):not([style*="position: fixed"]){height:100%!important;min-height:0!important}
+
+
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#f4f5f7;color:#1a1d24;-webkit-font-smoothing:antialiased}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#d6dae1;border-radius:8px;border:2px solid #f4f5f7}
+  a{color:#2f5bf6;text-decoration:none}
+  a:hover{color:#1e46d6}
+  .tip-wrap{position:relative;display:inline-flex;cursor:help}
+  .tip-wrap .tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px);background:#1a1d24;color:#fff;font-size:12px;font-weight:500;line-height:1.4;white-space:nowrap;padding:8px 11px;border-radius:8px;box-shadow:0 8px 22px rgba(20,24,40,.22);opacity:0;pointer-events:none;transition:opacity .14s,transform .14s;z-index:60}
+  .tip-wrap .tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a1d24}
+  .tip-wrap:hover .tip{opacity:1;transform:translateX(-50%) translateY(0)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes popIn{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes drawFade{from{opacity:0}to{opacity:1}}
+  .kpi-card{z-index:1}
+  .kpi-card:hover{z-index:900}
+  .kpi-card:hover .kpi-tip{opacity:1;visibility:visible}
+  @keyframes supdraw{to{stroke-dashoffset:0}}
+  @keyframes copBreath{0%,100%{box-shadow:0 8px 26px rgba(47,91,246,.42),0 0 0 0 rgba(47,91,246,.35)}50%{box-shadow:0 8px 30px rgba(47,91,246,.55),0 0 0 12px rgba(47,91,246,0)}}
+  @keyframes copSpin{to{transform:rotate(360deg)}}
+  @keyframes copBlink{0%,100%{opacity:.35}50%{opacity:1}}
+  @keyframes copWave{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+  @keyframes copPop{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+html,body{height:auto}
+.role-stage{height:auto!important;overflow:visible!important;display:flex;min-height:100vh;background:#f4f5f7}
+.mp-panel{display:none}
+.mp-panel.on{display:flex;width:100%}
+</style>
+<div class="mp-panel on" data-mp="Command Center"><div class="role-stage" style="width:100%">
+
+  
+    <div class="sc-host" data-sc-name="Demand Planner Dashboard" data-dc-tpl="20"><div data-dc-tpl="5" style="display: flex; height: 100vh; overflow: hidden; background: rgb(244, 245, 247);">
+
+  
+  <aside data-dc-tpl="6" style="width: 246px; flex: 0 0 auto; background: rgb(255, 255, 255); border-right: 1px solid rgb(236, 237, 240); display: flex; flex-direction: column; height: 100vh; padding: 0px; transition: width 0.18s;">
+    <div data-dc-tpl="7" style="display: flex; align-items: center; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid rgb(238, 240, 243); margin-bottom: 8px;">
+      <div data-dc-tpl="8" style="width: 40px; height: 40px; border-radius: 11px; background: rgb(0, 57, 156); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;">
+        <svg data-dc-tpl="9" width="24" height="24" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="10" d="M6.6 4.4H16.4V7.9H10.3V11.1H15.4V14.6H10.3V20.2H6.6Z" fill="#F69B29"></path><path data-dc-tpl="11" d="M17.3 3C19.3 2.3 21.1 2.9 21.5 5.1C19.5 5.9 17.7 5.3 17.3 3Z" fill="#7DC242"></path><path data-dc-tpl="12" d="M17.9 4.5L20.9 3" stroke="#4e8f27" stroke-width=".8" stroke-linecap="round"></path></svg>
+      </div>
+      
+      <div data-dc-tpl="14" style="line-height: 1.1;">
+        <div data-dc-tpl="15" style="font-size: 19px; font-weight: 800; letter-spacing: -0.3px; color: rgb(31, 41, 55);">FOps</div>
+        <div data-dc-tpl="16" style="font-size: 10px; font-weight: 600; letter-spacing: 1.3px; color: rgb(154, 162, 175); margin-top: 2px;">DEMAND PLANNING</div>
+      </div>
+      
+    </div>
+
+    <nav data-dc-tpl="17" style="flex: 1 1 0%; display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; overflow-y: auto;">
+      <a data-dc-tpl="18" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="19" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect data-dc-tpl="20" x="3" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="21" x="14" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="22" x="3" y="14" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="23" x="14" y="14" width="7" height="7" rx="1.5"></rect></svg><span data-dc-tpl="25">Dashboard</span></a>
+      <a data-dc-tpl="26" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="27" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="28" d="M4 4v16h16"></path><path data-dc-tpl="29" d="M7 14l3-4 3 3 4-6"></path></svg><span data-dc-tpl="31">Forecast Cycles</span></a>
+      <a data-dc-tpl="32" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="33" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="34" d="M3 7h11v9H3z"></path><path data-dc-tpl="35" d="M14 10h4l3 3v3h-7z"></path><circle data-dc-tpl="36" cx="7" cy="18" r="1.7"></circle><circle data-dc-tpl="37" cx="17" cy="18" r="1.7"></circle></svg><span data-dc-tpl="39">Suppliers</span></a>
+      <a data-dc-tpl="40" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="41" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="42" d="M14 3H6v18h12V7z"></path><path data-dc-tpl="43" d="M14 3v4h4"></path><path data-dc-tpl="44" d="M12 12v5"></path><path data-dc-tpl="45" d="M9.5 14.5L12 17l2.5-2.5"></path></svg><span data-dc-tpl="47">Reports &amp; Export</span></a>
+      <a data-dc-tpl="48" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); margin-left: -12px; border-left: 3px solid rgb(246, 154, 42); cursor: pointer; text-decoration: none; background: rgb(246, 249, 255);"><svg data-dc-tpl="49" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="50" d="M3 12h4l2-7 4 14 2-7h6"></path></svg><span data-dc-tpl="52">Market Pulse</span></a>
+    </nav>
+
+    <div data-dc-tpl="53" style="padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid rgb(238, 240, 243);">
+      <a data-dc-tpl="54" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="55" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="56" cx="12" cy="12" r="3"></circle><path data-dc-tpl="57" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path></svg><span data-dc-tpl="59">Settings</span></a>
+      <a data-dc-tpl="60" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="61" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="62" cx="12" cy="12" r="9"></circle><path data-dc-tpl="63" d="M9.6 9.2a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1.3.9-1.3 1.7"></path><circle data-dc-tpl="64" cx="12" cy="16.6" r=".7" fill="currentColor" stroke="none"></circle></svg><span data-dc-tpl="66">Help &amp; Support</span></a>
+    </div>
+
+    <div data-dc-tpl="67" style="position: relative; border-top: 1px solid rgb(238, 240, 243);">
+      
+      <div data-dc-tpl="90" class="scp1" style="display: flex; align-items: center; gap: 11px; padding: 14px 24px; border-top: 1px solid rgb(238, 240, 243); cursor: pointer;">
+      <div data-dc-tpl="91" style="width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: rgb(231, 211, 196); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: rgb(138, 90, 59);">AS</div>
+      
+      <div data-dc-tpl="93" style="flex: 1 1 0%; min-width: 0px; line-height: 1.25; text-align: left;">
+          <div data-dc-tpl="94" style="font-size: 13.5px; font-weight: 700; color: rgb(31, 41, 55);">Anna Smith</div>
+          <div data-dc-tpl="95" style="font-size: 12px; color: rgb(154, 162, 175); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Demand Planner</div>
+        </div>
+      <svg data-dc-tpl="96" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="1.8" stroke-linecap="round" style="flex: 0 0 auto;"><circle data-dc-tpl="97" cx="12" cy="5" r="1"></circle><circle data-dc-tpl="98" cx="12" cy="12" r="1"></circle><circle data-dc-tpl="99" cx="12" cy="19" r="1"></circle></svg>
+      
+      </div>
+    </div>
+  </aside>
+
+  
+  <div data-dc-tpl="100" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; height: 100vh;">
+
+    
+    <header data-dc-tpl="101" style="flex: 0 0 auto; height: 72px; background: rgb(244, 245, 247); display: flex; align-items: center; gap: 20px; padding: 0px 32px; border-bottom: 1px solid rgb(236, 236, 241);">
+      <div data-dc-tpl="102" style="position: relative; flex: 1 1 0%; max-width: 360px;">
+        <svg data-dc-tpl="103" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="104" cx="11" cy="11" r="7"></circle><path data-dc-tpl="105" d="M20 20l-3-3"></path></svg>
+        <input data-dc-tpl="106" placeholder="Search SKUs, cycles, suppliers…" value="" style="width: 100%; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 14px 0px 40px; font-size: 14px; font-family: inherit; outline: none; color: rgb(26, 29, 36);">
+      </div>
+      <div data-dc-tpl="107" style="flex: 1 1 0%;"></div>
+      <div data-dc-tpl="108" style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; height: 42px; justify-content: center; padding: 0px 15px; border-radius: 999px; border: 1px solid rgb(191, 231, 205); background: rgb(231, 246, 236); white-space: nowrap;">
+        <span data-dc-tpl="109" style="display: flex; align-items: center; gap: 8px; color: rgb(21, 128, 61); font-size: 13.5px; font-weight: 600;"><span data-dc-tpl="110" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(22, 163, 74); box-shadow: rgba(22, 163, 74, 0.2) 0px 0px 0px 3px;"></span>Current Cycle Q3-W28</span>
+        <span data-dc-tpl="111" style="font-size: 10.5px; color: rgb(77, 138, 99); font-weight: 500; padding-left: 15px;">01 Oct – 31 Oct 2026</span>
+      </div>
+      <button data-dc-tpl="112" style="position: relative; width: 42px; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg data-dc-tpl="113" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="114" d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path data-dc-tpl="115" d="M10 20a2 2 0 0 0 4 0"></path></svg>
+        <span data-dc-tpl="116" style="position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: rgb(239, 68, 68); border: 1.5px solid rgb(255, 255, 255);"></span>
+      </button>
+    </header>
+
+    
+    <div data-dc-tpl="117" style="flex: 1 1 0%; overflow-y: auto; padding: 28px 32px 48px;">
+
+      
+
+      
+
+      
+      
+
+      
+      
+
+      
+      
+      
+      
+
+      
+      
+      <div data-dc-tpl="1274">
+        <div data-dc-tpl="1275" style="margin-bottom: 20px;">
+          <h1 data-dc-tpl="1276" style="font-size: 29px; font-weight: 800; letter-spacing: -0.6px; margin: 0px;">Market Pulse</h1>
+          <p data-dc-tpl="1277" style="margin: 7px 0px 0px; font-size: 15px; color: rgb(107, 114, 128);">Live commodity, logistics and market intelligence for GCC food operations.</p>
+        </div>
+        <div data-dc-tpl="1278" style="display: flex; gap: 26px; border-bottom: 1px solid rgb(236, 236, 241); margin-bottom: 22px;">
+          <button data-dc-tpl="1279" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor rgb(47, 91, 246); border-image: initial; background: none; cursor: pointer; font-family: inherit;">Command Center</button>
+          <button data-dc-tpl="1280" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Alerts<span data-dc-tpl="1282" style="font-size: 11px; font-weight: 700; color: rgb(255, 255, 255); background: rgb(239, 68, 68); padding: 2px 7px; border-radius: 99px;"><span class="sc-interp">5</span></span></button>
+          <button data-dc-tpl="1283" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Market Report</button>
+          <button data-dc-tpl="1284" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Recommendations</button>
+        </div>
+
+        
+        <div data-dc-tpl="1286" style="display: flex; flex-direction: column; gap: 22px;">
+          <div data-dc-tpl="1287" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+            <div data-dc-tpl="1288" style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 0px; border: 1px solid rgb(240, 241, 244); border-radius: 12px; background: rgb(250, 251, 252); overflow: hidden;">
+              <div data-dc-tpl="1289" style="padding: 18px 22px; border-right: 1px solid rgb(238, 240, 243);">
+                <div data-dc-tpl="1290" style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid rgb(238, 240, 243);"><span data-dc-tpl="1291" style="font-size: 11px; font-weight: 700; letter-spacing: 0.6px; color: rgb(154, 162, 175);">NEW ALERTS</span><span data-dc-tpl="1292" style="font-size: 11px; color: rgb(179, 185, 196);">last 24h</span></div>
+                <div data-dc-tpl="1293" style="display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 11px;"><span data-dc-tpl="1294" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(220, 38, 38); flex: 0 0 auto;"></span>GOLD +4.94% — unusual daily move</div>
+                <div data-dc-tpl="1295" style="display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 11px;"><span data-dc-tpl="1296" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(217, 119, 6); flex: 0 0 auto;"></span>COPPER hit a 90-day high</div>
+                <div data-dc-tpl="1297" style="display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 18px;"><span data-dc-tpl="1298" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(47, 91, 246); flex: 0 0 auto;"></span>Red Sea disruption escalates</div>
+                <a data-dc-tpl="1299" style="font-size: 14px; font-weight: 600; cursor: pointer;">View all alerts →</a>
+              </div>
+              <div data-dc-tpl="1300" style="padding: 18px 22px 18px 16px;">
+                <div data-dc-tpl="1301" style="display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid rgb(238, 240, 243);"><span data-dc-tpl="1302" style="font-size: 11px; font-weight: 700; letter-spacing: 0.6px; color: rgb(154, 162, 175);">PRICE TICKER</span><span data-dc-tpl="1303" style="font-size: 11px; color: rgb(179, 185, 196);">vs prev close</span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Platinum</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/oz</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">1,763</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(22, 163, 74);"><span class="sc-interp">▲</span> <span class="sc-interp">+0.94%</span></span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Gold</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/oz</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">4,331</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(22, 163, 74);"><span class="sc-interp">▲</span> <span class="sc-interp">+0.60%</span></span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Copper</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/lb</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">6.75</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(22, 163, 74);"><span class="sc-interp">▲</span> <span class="sc-interp">+0.30%</span></span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Silver</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/oz</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">62.44</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(22, 163, 74);"><span class="sc-interp">▲</span> <span class="sc-interp">+0.24%</span></span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Aluminum</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/ton</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">3,424</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(22, 163, 74);"><span class="sc-interp">▲</span> <span class="sc-interp">+0.12%</span></span></div>
+                
+                  <div data-dc-tpl="1305" style="display: flex; align-items: center; gap: 10px; padding: 7px 0px; border-bottom: 1px solid rgb(244, 245, 247);"><span data-dc-tpl="1306" style="flex: 1 1 0%; font-size: 13.5px; font-weight: 600;"><span class="sc-interp">Lumber</span></span><span data-dc-tpl="1307" style="font-size: 11.5px; color: rgb(179, 185, 196);"><span class="sc-interp">$/1000bf</span></span><span data-dc-tpl="1308" style="font-size: 13.5px; font-weight: 700; min-width: 58px; text-align: right;"><span class="sc-interp">580</span></span><span data-dc-tpl="1309" style="font-size: 12px; font-weight: 700; min-width: 62px; text-align: right; color: rgb(154, 162, 175);"><span class="sc-interp"></span> <span class="sc-interp">0.00%</span></span></div>
+                
+              </div>
+            </div>
+          </div>
+
+          <div data-dc-tpl="1310" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+            <div data-dc-tpl="1311" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;"><span data-dc-tpl="1312" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128);">PORT CONGESTION · GCC</span><span data-dc-tpl="1313" style="font-size: 11px; color: rgb(179, 185, 196);">IMF PortWatch · port calls vs baseline · weekly · 6 ports</span></div>
+            <div data-dc-tpl="1314" style="display: flex; align-items: center; gap: 14px; height: 52px; border: 1px dashed rgb(208, 213, 221); border-radius: 12px; padding: 0px 18px; margin-bottom: 16px; background: rgb(250, 251, 252); cursor: text;"><svg data-dc-tpl="1315" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" stroke-width="2" stroke-linecap="round"><path data-dc-tpl="1316" d="M12 5v14M5 12h14"></path></svg><input data-dc-tpl="1317" placeholder="Add a GCC port — search by name or country…" style="flex: 1 1 0%; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: none; outline: none; font-size: 14px; font-family: inherit; color: rgb(75, 85, 99);"></div>
+            <div data-dc-tpl="1318" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">Jebel Ali</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(22, 163, 74);"><span class="sc-interp">Normal</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">United Arab Emirates</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">4.9</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(22, 163, 74);"><span class="sc-interp">−16%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 5.8/day baseline (28d) · imports −29%</span></div>
+                </div>
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">Khalifa Port</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(47, 91, 246);"><span class="sc-interp">Elevated</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">United Arab Emirates</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">1.4</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(22, 163, 74);"><span class="sc-interp">+29%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 1.1/day baseline (28d) · imports −51%</span></div>
+                </div>
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">Dammam</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(220, 38, 38);"><span class="sc-interp">Severely reduced</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">Saudi Arabia</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">1.0</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(220, 38, 38);"><span class="sc-interp">−40%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 1.7/day baseline (28d) · imports −46%</span></div>
+                </div>
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">King Abdullah Port</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(220, 38, 38);"><span class="sc-interp">Severely reduced</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">Saudi Arabia</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">0.3</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(220, 38, 38);"><span class="sc-interp">−78%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 1.3/day baseline (28d) · imports −81%</span></div>
+                </div>
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">Hamad Port</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(217, 119, 6);"><span class="sc-interp">Reduced</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">Qatar</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">1.1</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(217, 119, 6);"><span class="sc-interp">−24%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 1.5/day baseline (28d) · imports −2%</span></div>
+                </div>
+              
+                <div data-dc-tpl="1320" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px;">
+                  <div data-dc-tpl="1321" style="display: flex; align-items: center; gap: 8px;"><span data-dc-tpl="1322" style="flex: 1 1 0%; font-size: 14.5px; font-weight: 700;"><span class="sc-interp">Port of Sohar</span></span><span data-dc-tpl="1323" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: rgb(22, 163, 74);"><span class="sc-interp">Normal</span></span></div>
+                  <div data-dc-tpl="1324" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 2px;"><span class="sc-interp">Oman</span></div>
+                  <div data-dc-tpl="1325" style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1326" style="font-size: 22px; font-weight: 800;"><span class="sc-interp">5.1</span></span><span data-dc-tpl="1327" style="font-size: 12px; color: rgb(154, 162, 175);">calls/day</span><span data-dc-tpl="1328" style="font-size: 13px; font-weight: 700; margin-left: auto; color: rgb(22, 163, 74);"><span class="sc-interp">+3%</span></span></div>
+                  <div data-dc-tpl="1329" style="font-size: 11.5px; color: rgb(170, 177, 189); margin-top: 6px;"><span class="sc-interp">vs 5/day baseline (28d) · imports +71%</span></div>
+                </div>
+              
+            </div>
+          </div>
+
+          <div data-dc-tpl="1330" style="display: flex; flex-direction: column; gap: 22px;">
+            <div data-dc-tpl="1331" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+              <div data-dc-tpl="1332" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;"><span data-dc-tpl="1333" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128);">FX SPOT RATES</span><span data-dc-tpl="1334" style="font-size: 11px; color: rgb(179, 185, 196);">Open Exchange Rates · per USD · 6 currencies</span></div>
+              <div data-dc-tpl="1335" style="display: flex; align-items: center; gap: 14px; height: 52px; border: 1px dashed rgb(208, 213, 221); border-radius: 12px; padding: 0px 18px; margin-bottom: 16px; background: rgb(250, 251, 252); cursor: text;"><svg data-dc-tpl="1336" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" stroke-width="2" stroke-linecap="round"><path data-dc-tpl="1337" d="M12 5v14M5 12h14"></path></svg><input data-dc-tpl="1338" placeholder="Add a currency — search by code or name…" style="flex: 1 1 0%; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: none; outline: none; font-size: 14px; font-family: inherit; color: rgb(75, 85, 99);"></div>
+              <div data-dc-tpl="1339" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">AED</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">UAE Dirham</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">3.6725</span></div></div>
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">SAR</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Saudi Riyal</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">3.7552</span></div></div>
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">EUR</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Euro</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">0.8653</span></div></div>
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">INR</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Indian Rupee</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">95.08</span></div></div>
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">BRL</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Brazilian Real</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">5.14</span></div></div>
+                
+                  <div data-dc-tpl="1341" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center;"><div data-dc-tpl="1342" style="flex: 1 1 0%;"><div data-dc-tpl="1343" style="font-size: 14px; font-weight: 700;"><span class="sc-interp">CNY</span></div><div data-dc-tpl="1344" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Chinese Yuan</span></div></div><div data-dc-tpl="1345" style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">6.75</span></div></div>
+                
+              </div>
+            </div>
+            <div data-dc-tpl="1346" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+              <div data-dc-tpl="1347" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;"><span data-dc-tpl="1348" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128);">LIVE WEATHER &amp; RAINFALL</span><span data-dc-tpl="1349" style="font-size: 11px; color: rgb(179, 185, 196);">real-time · key hubs</span></div>
+              <div data-dc-tpl="1350" style="display: flex; align-items: center; gap: 14px; height: 52px; border: 1px dashed rgb(208, 213, 221); border-radius: 12px; padding: 0px 18px; margin-bottom: 16px; background: rgb(250, 251, 252); cursor: text;"><svg data-dc-tpl="1351" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" stroke-width="2" stroke-linecap="round"><path data-dc-tpl="1352" d="M12 5v14M5 12h14"></path></svg><input data-dc-tpl="1353" placeholder="Add a region — search by city or country…" style="flex: 1 1 0%; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: none; outline: none; font-size: 14px; font-family: inherit; color: rgb(75, 85, 99);"></div>
+              <div data-dc-tpl="1354" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
+                
+                  <div data-dc-tpl="1356" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center; gap: 12px;"><div data-dc-tpl="1357" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1358" style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">Dubai, UAE</span></div><div data-dc-tpl="1359" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Clear</span> · <span class="sc-interp">0 mm</span></div></div><div data-dc-tpl="1360" style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">41°</span></div></div>
+                
+                  <div data-dc-tpl="1356" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center; gap: 12px;"><div data-dc-tpl="1357" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1358" style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">Riyadh, KSA</span></div><div data-dc-tpl="1359" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Hot</span> · <span class="sc-interp">0 mm</span></div></div><div data-dc-tpl="1360" style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">44°</span></div></div>
+                
+                  <div data-dc-tpl="1356" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center; gap: 12px;"><div data-dc-tpl="1357" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1358" style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">São Paulo, BR</span></div><div data-dc-tpl="1359" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Rain</span> · <span class="sc-interp">12 mm</span></div></div><div data-dc-tpl="1360" style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">19°</span></div></div>
+                
+                  <div data-dc-tpl="1356" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 15px 17px; display: flex; align-items: center; gap: 12px;"><div data-dc-tpl="1357" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1358" style="font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">Rotterdam, NL</span></div><div data-dc-tpl="1359" style="font-size: 12px; color: rgb(154, 162, 175);"><span class="sc-interp">Cloudy</span> · <span class="sc-interp">3 mm</span></div></div><div data-dc-tpl="1360" style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px;"><span class="sc-interp">16°</span></div></div>
+                
+              </div>
+            </div>
+          </div>
+
+          <div data-dc-tpl="1361" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+            <div data-dc-tpl="1362" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128); margin-bottom: 16px;">MARKET INDICATORS</div>
+            <div data-dc-tpl="1363" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: stretch;">
+              
+                <div data-dc-tpl="1365" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+                  <div data-dc-tpl="1366" style="display: flex; align-items: center; gap: 11px; margin-bottom: 10px;">
+                    <span data-dc-tpl="1367" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid rgb(240, 182, 182); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;"><svg data-dc-tpl="1368" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="1369" d="M12 19V5M5 12l7-7 7 7"></path></svg></span>
+                    <span data-dc-tpl="1370" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; color: rgb(154, 162, 175);"><span class="sc-interp">CONFLICT</span></span>
+                    <span data-dc-tpl="1371" style="flex: 1 1 0%;"></span>
+                  </div>
+                  <div data-dc-tpl="1372" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">Red Sea Shipping Disruptions</span></div>
+                  <div data-dc-tpl="1373" style="font-size: 13.5px; color: rgb(107, 114, 128); margin-top: 6px; line-height: 1.55; text-wrap: pretty; flex: 1 1 0%;"><span class="sc-interp">Attacks in the Red Sea, as reported by Latest news from Azerbaijan, could impact global shipping routes, potentially increasing logistics costs for commodities.</span></div>
+                  <div data-dc-tpl="1374" style="height: 6px; border-radius: 99px; background: rgb(240, 241, 244); margin-top: 14px;"><div data-dc-tpl="1375" style="height: 6px; border-radius: 99px; background: rgb(239, 68, 68); width: 52%;"></div></div>
+                  <div data-dc-tpl="1376" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1378" style="font-size: 11.5px; color: rgb(107, 114, 128); background: rgb(244, 245, 247); padding: 5px 11px; border-radius: 99px;"><span class="sc-interp">Why are the Houthis attacking Saudi targets…</span></span></div>
+                </div>
+              
+                <div data-dc-tpl="1365" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+                  <div data-dc-tpl="1366" style="display: flex; align-items: center; gap: 11px; margin-bottom: 10px;">
+                    <span data-dc-tpl="1367" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;"><svg data-dc-tpl="1368" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="1369" d="M5 12h14M13 6l6 6-6 6"></path></svg></span>
+                    <span data-dc-tpl="1370" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; color: rgb(154, 162, 175);"><span class="sc-interp">TRADE POLICY</span></span>
+                    <span data-dc-tpl="1371" style="flex: 1 1 0%;"></span>
+                  </div>
+                  <div data-dc-tpl="1372" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">Tariffs and Import Probes</span></div>
+                  <div data-dc-tpl="1373" style="font-size: 13.5px; color: rgb(107, 114, 128); margin-top: 6px; line-height: 1.55; text-wrap: pretty; flex: 1 1 0%;"><span class="sc-interp">Brazil tariffs and lamb import probes, as mentioned by agronews.com, indicate ongoing trade policy shifts that could indirectly affect broader commodity markets.</span></div>
+                  <div data-dc-tpl="1374" style="height: 6px; border-radius: 99px; background: rgb(240, 241, 244); margin-top: 14px;"><div data-dc-tpl="1375" style="height: 6px; border-radius: 99px; background: rgb(245, 158, 11); width: 34%;"></div></div>
+                  <div data-dc-tpl="1376" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1378" style="font-size: 11.5px; color: rgb(107, 114, 128); background: rgb(244, 245, 247); padding: 5px 11px; border-radius: 99px;"><span class="sc-interp">Brazil Tariffs and Lamb Import Probe Affe…</span></span></div>
+                </div>
+              
+                <div data-dc-tpl="1365" style="border: 1px solid rgb(236, 236, 241); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+                  <div data-dc-tpl="1366" style="display: flex; align-items: center; gap: 11px; margin-bottom: 10px;">
+                    <span data-dc-tpl="1367" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;"><svg data-dc-tpl="1368" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="1369" d="M5 12h14M13 6l6 6-6 6"></path></svg></span>
+                    <span data-dc-tpl="1370" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; color: rgb(154, 162, 175);"><span class="sc-interp">DEMAND SHIFTS</span></span>
+                    <span data-dc-tpl="1371" style="flex: 1 1 0%;"></span>
+                  </div>
+                  <div data-dc-tpl="1372" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">US Beef Price Increases</span></div>
+                  <div data-dc-tpl="1373" style="font-size: 13.5px; color: rgb(107, 114, 128); margin-top: 6px; line-height: 1.55; text-wrap: pretty; flex: 1 1 0%;"><span class="sc-interp">Record high US beef prices and restaurant closures, as reported by KEYE and BBC, indicate significant demand or supply shifts in the meat sector, which can have ripple effects on other food commodities and consumer spending.</span></div>
+                  <div data-dc-tpl="1374" style="height: 6px; border-radius: 99px; background: rgb(240, 241, 244); margin-top: 14px;"><div data-dc-tpl="1375" style="height: 6px; border-radius: 99px; background: rgb(245, 158, 11); width: 44%;"></div></div>
+                  <div data-dc-tpl="1376" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;"><span data-dc-tpl="1378" style="font-size: 11.5px; color: rgb(107, 114, 128); background: rgb(244, 245, 247); padding: 5px 11px; border-radius: 99px;"><span class="sc-interp">Pflugerville BBQ restaurant plans to clos…</span></span><span data-dc-tpl="1378" style="font-size: 11.5px; color: rgb(107, 114, 128); background: rgb(244, 245, 247); padding: 5px 11px; border-radius: 99px;"><span class="sc-interp">What’s causing record high US beef prices…</span></span></div>
+                </div>
+              
+            </div>
+          </div>
+
+          <div data-dc-tpl="1379" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+            <div data-dc-tpl="1380" style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+              <span data-dc-tpl="1381" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128);">NEWS FEED</span>
+              <div data-dc-tpl="1382" style="position: relative; flex: 1 1 0%; max-width: 280px; margin-left: auto;">
+                <svg data-dc-tpl="1383" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" stroke-width="2" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="1384" cx="11" cy="11" r="7"></circle><path data-dc-tpl="1385" d="M21 21l-4.3-4.3" stroke-linecap="round"></path></svg>
+                <input data-dc-tpl="1386" placeholder="Filter headlines" value="" style="width: 100%; height: 38px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 12px 0px 34px; font-size: 13px; font-family: inherit; outline: none; box-sizing: border-box;">
+              </div>
+            </div>
+            <div data-dc-tpl="1387" style="display: flex; flex-direction: column;">
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">Pflugerville BBQ restaurant plans to close as beef prices keep climbing</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">KEYE</span> · <span class="sc-interp">Wed, 05 Aug · 23:30 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">What’s causing record high US beef prices?</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">BBC</span> · <span class="sc-interp">Wed, 05 Aug · 23:23 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">Row Crops Slide on Weather and Higher Corn Yield Estimates</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">AgWeb</span> · <span class="sc-interp">Wed, 05 Aug · 21:49 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">Brazil Tariffs and Lamb Import Probe Affect U.S. Trade</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">agronews.com</span> · <span class="sc-interp">Wed, 05 Aug · 20:54 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">Why are the Houthis attacking Saudi targets in the Red Sea again?</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">AzerNews</span> · <span class="sc-interp">Wed, 05 Aug · 20:42 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">China’s faster beef imports could open room for Argentine exports</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">DatamarNews</span> · <span class="sc-interp">Wed, 05 Aug · 20:33 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+                <div data-dc-tpl="1389" class="scph" style="display: flex; align-items: center; gap: 12px; padding: 13px 0px; border-bottom: 1px solid rgb(244, 245, 247); cursor: pointer;">
+                  <div data-dc-tpl="1390" style="flex: 1 1 0%; min-width: 0px;"><div data-dc-tpl="1391" style="font-size: 14px; font-weight: 600; text-wrap: pretty;"><span class="sc-interp">Uruguay goods exports rise 4% in July, led by beef, pulp and dairy</span></div><div data-dc-tpl="1392" style="font-size: 12px; color: rgb(154, 162, 175); margin-top: 3px;"><span class="sc-interp">DatamarNews</span> · <span class="sc-interp">Wed, 05 Aug · 20:18 GMT</span></div></div>
+                  <svg data-dc-tpl="1393" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2c7ce" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path data-dc-tpl="1394" d="M9 6l6 6-6 6"></path></svg>
+                </div>
+              
+            </div>
+          </div>
+        </div>
+        
+
+        
+
+        
+
+        
+      </div>
+      
+
+      
+      
+
+      
+      
+
+      
+
+    </div>
+  </div>
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+  <button data-dc-tpl="2088" title="FOps Copilot" style="position: fixed; bottom: 92px; right: 28px; z-index: 80; width: 64px; height: 64px; border-radius: 18px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; cursor: pointer; background: rgb(47, 91, 246); display: flex; align-items: center; justify-content: center; animation: 3.2s ease-in-out 0s infinite normal none running copBreath;">
+    <svg data-dc-tpl="2089" width="30" height="30" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="2090" d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.2A7.5 7.5 0 1 1 20 11.5z" fill="#fff"></path><circle data-dc-tpl="2091" cx="8.7" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2092" cx="12" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2093" cx="15.3" cy="11.5" r="1.15" fill="#2f5bf6"></circle></svg>
+  </button>
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  </div></div>
+  
+  
+  
+  
+  
+  
+
+  </div></div>
+<div class="mp-panel" data-mp="Alerts"><div class="role-stage" style="width:100%">
+
+  
+    <div class="sc-host" data-sc-name="Demand Planner Dashboard" data-dc-tpl="20"><div data-dc-tpl="5" style="display: flex; height: 100vh; overflow: hidden; background: rgb(244, 245, 247);">
+
+  
+  <aside data-dc-tpl="6" style="width: 246px; flex: 0 0 auto; background: rgb(255, 255, 255); border-right: 1px solid rgb(236, 237, 240); display: flex; flex-direction: column; height: 100vh; padding: 0px; transition: width 0.18s;">
+    <div data-dc-tpl="7" style="display: flex; align-items: center; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid rgb(238, 240, 243); margin-bottom: 8px;">
+      <div data-dc-tpl="8" style="width: 40px; height: 40px; border-radius: 11px; background: rgb(0, 57, 156); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;">
+        <svg data-dc-tpl="9" width="24" height="24" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="10" d="M6.6 4.4H16.4V7.9H10.3V11.1H15.4V14.6H10.3V20.2H6.6Z" fill="#F69B29"></path><path data-dc-tpl="11" d="M17.3 3C19.3 2.3 21.1 2.9 21.5 5.1C19.5 5.9 17.7 5.3 17.3 3Z" fill="#7DC242"></path><path data-dc-tpl="12" d="M17.9 4.5L20.9 3" stroke="#4e8f27" stroke-width=".8" stroke-linecap="round"></path></svg>
+      </div>
+      
+      <div data-dc-tpl="14" style="line-height: 1.1;">
+        <div data-dc-tpl="15" style="font-size: 19px; font-weight: 800; letter-spacing: -0.3px; color: rgb(31, 41, 55);">FOps</div>
+        <div data-dc-tpl="16" style="font-size: 10px; font-weight: 600; letter-spacing: 1.3px; color: rgb(154, 162, 175); margin-top: 2px;">DEMAND PLANNING</div>
+      </div>
+      
+    </div>
+
+    <nav data-dc-tpl="17" style="flex: 1 1 0%; display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; overflow-y: auto;">
+      <a data-dc-tpl="18" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="19" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect data-dc-tpl="20" x="3" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="21" x="14" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="22" x="3" y="14" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="23" x="14" y="14" width="7" height="7" rx="1.5"></rect></svg><span data-dc-tpl="25">Dashboard</span></a>
+      <a data-dc-tpl="26" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="27" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="28" d="M4 4v16h16"></path><path data-dc-tpl="29" d="M7 14l3-4 3 3 4-6"></path></svg><span data-dc-tpl="31">Forecast Cycles</span></a>
+      <a data-dc-tpl="32" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="33" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="34" d="M3 7h11v9H3z"></path><path data-dc-tpl="35" d="M14 10h4l3 3v3h-7z"></path><circle data-dc-tpl="36" cx="7" cy="18" r="1.7"></circle><circle data-dc-tpl="37" cx="17" cy="18" r="1.7"></circle></svg><span data-dc-tpl="39">Suppliers</span></a>
+      <a data-dc-tpl="40" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="41" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="42" d="M14 3H6v18h12V7z"></path><path data-dc-tpl="43" d="M14 3v4h4"></path><path data-dc-tpl="44" d="M12 12v5"></path><path data-dc-tpl="45" d="M9.5 14.5L12 17l2.5-2.5"></path></svg><span data-dc-tpl="47">Reports &amp; Export</span></a>
+      <a data-dc-tpl="48" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); margin-left: -12px; border-left: 3px solid rgb(246, 154, 42); cursor: pointer; text-decoration: none; background: rgb(246, 249, 255);"><svg data-dc-tpl="49" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="50" d="M3 12h4l2-7 4 14 2-7h6"></path></svg><span data-dc-tpl="52">Market Pulse</span></a>
+    </nav>
+
+    <div data-dc-tpl="53" style="padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid rgb(238, 240, 243);">
+      <a data-dc-tpl="54" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="55" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="56" cx="12" cy="12" r="3"></circle><path data-dc-tpl="57" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path></svg><span data-dc-tpl="59">Settings</span></a>
+      <a data-dc-tpl="60" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="61" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="62" cx="12" cy="12" r="9"></circle><path data-dc-tpl="63" d="M9.6 9.2a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1.3.9-1.3 1.7"></path><circle data-dc-tpl="64" cx="12" cy="16.6" r=".7" fill="currentColor" stroke="none"></circle></svg><span data-dc-tpl="66">Help &amp; Support</span></a>
+    </div>
+
+    <div data-dc-tpl="67" style="position: relative; border-top: 1px solid rgb(238, 240, 243);">
+      
+      <div data-dc-tpl="90" class="scp1" style="display: flex; align-items: center; gap: 11px; padding: 14px 24px; border-top: 1px solid rgb(238, 240, 243); cursor: pointer;">
+      <div data-dc-tpl="91" style="width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: rgb(231, 211, 196); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: rgb(138, 90, 59);">AS</div>
+      
+      <div data-dc-tpl="93" style="flex: 1 1 0%; min-width: 0px; line-height: 1.25; text-align: left;">
+          <div data-dc-tpl="94" style="font-size: 13.5px; font-weight: 700; color: rgb(31, 41, 55);">Anna Smith</div>
+          <div data-dc-tpl="95" style="font-size: 12px; color: rgb(154, 162, 175); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Demand Planner</div>
+        </div>
+      <svg data-dc-tpl="96" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="1.8" stroke-linecap="round" style="flex: 0 0 auto;"><circle data-dc-tpl="97" cx="12" cy="5" r="1"></circle><circle data-dc-tpl="98" cx="12" cy="12" r="1"></circle><circle data-dc-tpl="99" cx="12" cy="19" r="1"></circle></svg>
+      
+      </div>
+    </div>
+  </aside>
+
+  
+  <div data-dc-tpl="100" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; height: 100vh;">
+
+    
+    <header data-dc-tpl="101" style="flex: 0 0 auto; height: 72px; background: rgb(244, 245, 247); display: flex; align-items: center; gap: 20px; padding: 0px 32px; border-bottom: 1px solid rgb(236, 236, 241);">
+      <div data-dc-tpl="102" style="position: relative; flex: 1 1 0%; max-width: 360px;">
+        <svg data-dc-tpl="103" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="104" cx="11" cy="11" r="7"></circle><path data-dc-tpl="105" d="M20 20l-3-3"></path></svg>
+        <input data-dc-tpl="106" placeholder="Search SKUs, cycles, suppliers…" value="" style="width: 100%; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 14px 0px 40px; font-size: 14px; font-family: inherit; outline: none; color: rgb(26, 29, 36);">
+      </div>
+      <div data-dc-tpl="107" style="flex: 1 1 0%;"></div>
+      <div data-dc-tpl="108" style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; height: 42px; justify-content: center; padding: 0px 15px; border-radius: 999px; border: 1px solid rgb(191, 231, 205); background: rgb(231, 246, 236); white-space: nowrap;">
+        <span data-dc-tpl="109" style="display: flex; align-items: center; gap: 8px; color: rgb(21, 128, 61); font-size: 13.5px; font-weight: 600;"><span data-dc-tpl="110" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(22, 163, 74); box-shadow: rgba(22, 163, 74, 0.2) 0px 0px 0px 3px;"></span>Current Cycle Q3-W28</span>
+        <span data-dc-tpl="111" style="font-size: 10.5px; color: rgb(77, 138, 99); font-weight: 500; padding-left: 15px;">01 Oct – 31 Oct 2026</span>
+      </div>
+      <button data-dc-tpl="112" style="position: relative; width: 42px; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg data-dc-tpl="113" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="114" d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path data-dc-tpl="115" d="M10 20a2 2 0 0 0 4 0"></path></svg>
+        <span data-dc-tpl="116" style="position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: rgb(239, 68, 68); border: 1.5px solid rgb(255, 255, 255);"></span>
+      </button>
+    </header>
+
+    
+    <div data-dc-tpl="117" style="flex: 1 1 0%; overflow-y: auto; padding: 28px 32px 48px;">
+
+      
+
+      
+
+      
+      
+
+      
+      
+
+      
+      
+      
+      
+
+      
+      
+      <div data-dc-tpl="1274">
+        <div data-dc-tpl="1275" style="margin-bottom: 20px;">
+          <h1 data-dc-tpl="1276" style="font-size: 29px; font-weight: 800; letter-spacing: -0.6px; margin: 0px;">Market Pulse</h1>
+          <p data-dc-tpl="1277" style="margin: 7px 0px 0px; font-size: 15px; color: rgb(107, 114, 128);">Live commodity, logistics and market intelligence for GCC food operations.</p>
+        </div>
+        <div data-dc-tpl="1278" style="display: flex; gap: 26px; border-bottom: 1px solid rgb(236, 236, 241); margin-bottom: 22px;">
+          <button data-dc-tpl="1279" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Command Center</button>
+          <button data-dc-tpl="1280" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor rgb(47, 91, 246); border-image: initial; background: none; cursor: pointer; font-family: inherit;">Alerts<span data-dc-tpl="1282" style="font-size: 11px; font-weight: 700; color: rgb(255, 255, 255); background: rgb(239, 68, 68); padding: 2px 7px; border-radius: 99px;"><span class="sc-interp">5</span></span></button>
+          <button data-dc-tpl="1283" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Market Report</button>
+          <button data-dc-tpl="1284" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Recommendations</button>
+        </div>
+
+        
+
+        
+        <div data-dc-tpl="1396">
+          <div data-dc-tpl="1397" style="display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap;">
+            <div data-dc-tpl="1398" style="position: relative; flex: 1 1 0%; min-width: 240px; max-width: 420px;">
+              <svg data-dc-tpl="1399" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#aab1bd" stroke-width="2" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="1400" cx="11" cy="11" r="7"></circle><path data-dc-tpl="1401" d="M21 21l-4.3-4.3" stroke-linecap="round"></path></svg>
+              <input data-dc-tpl="1402" placeholder="Search alerts" value="" style="width: 100%; height: 44px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 14px 0px 40px; font-size: 14px; font-family: inherit; outline: none; box-sizing: border-box;">
+            </div>
+            <div data-dc-tpl="1403" style="display: flex; gap: 9px; margin-left: auto;"><button data-dc-tpl="1405" style="padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(47, 91, 246); background: rgb(47, 91, 246); color: rgb(255, 255, 255);"><span class="sc-interp">All</span></button><button data-dc-tpl="1405" style="padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);"><span class="sc-interp">High</span></button><button data-dc-tpl="1405" style="padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);"><span class="sc-interp">Medium</span></button><button data-dc-tpl="1405" style="padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);"><span class="sc-interp">Low</span></button></div>
+          </div>
+          
+          <div data-dc-tpl="1413" style="display: flex; flex-direction: column; gap: 14px;">
+            
+              <div data-dc-tpl="1415" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; box-shadow: rgb(220, 38, 38) 3px 0px 0px inset;">
+                <div data-dc-tpl="1416" style="flex: 1 1 0%; min-width: 0px;">
+                  <div data-dc-tpl="1417" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"><span data-dc-tpl="1418" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 7px; color: rgb(220, 38, 38); background: rgb(253, 236, 236);"><span class="sc-interp">High</span></span><span data-dc-tpl="1419" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">Unusual price jump: GOLD +4.94% today</span></span></div>
+                  <div data-dc-tpl="1420" style="font-size: 12px; color: rgb(170, 177, 189); margin-top: 5px;"><span class="sc-interp">Today, 08:32 · 2h ago</span> · <span class="sc-interp">Open Exchange Rates</span></div>
+                  <div data-dc-tpl="1421" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">GOLD moved +4.94% today — about 3× its typical daily move of 1.74%. Now trading at $4,297.90 /oz. Review open purchase commitments priced off older levels.</span></div>
+                </div>
+                <div data-dc-tpl="1422" style="flex: 0 0 auto; display: flex; align-items: flex-start;">
+                  
+                  <button data-dc-tpl="1427" class="scp2" style="height: 38px; padding: 0px 15px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Acknowledge</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1415" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; box-shadow: rgb(217, 119, 6) 3px 0px 0px inset;">
+                <div data-dc-tpl="1416" style="flex: 1 1 0%; min-width: 0px;">
+                  <div data-dc-tpl="1417" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"><span data-dc-tpl="1418" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 7px; color: rgb(217, 119, 6); background: rgb(254, 243, 226);"><span class="sc-interp">Medium</span></span><span data-dc-tpl="1419" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">COPPER hit a 90-day high</span></span></div>
+                  <div data-dc-tpl="1420" style="font-size: 12px; color: rgb(170, 177, 189); margin-top: 5px;"><span class="sc-interp">Today, 06:04 · 4h ago</span> · <span class="sc-interp">Metals Desk</span></div>
+                  <div data-dc-tpl="1421" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">COPPER is trading at $6.6755 /lb, above its 90-day range ($5.4671–$6.6746). Forward cover recommended for Q4 raw-material needs.</span></div>
+                </div>
+                <div data-dc-tpl="1422" style="flex: 0 0 auto; display: flex; align-items: flex-start;">
+                  
+                  <button data-dc-tpl="1427" class="scp2" style="height: 38px; padding: 0px 15px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Acknowledge</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1415" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; box-shadow: rgb(220, 38, 38) 3px 0px 0px inset;">
+                <div data-dc-tpl="1416" style="flex: 1 1 0%; min-width: 0px;">
+                  <div data-dc-tpl="1417" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"><span data-dc-tpl="1418" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 7px; color: rgb(220, 38, 38); background: rgb(253, 236, 236);"><span class="sc-interp">High</span></span><span data-dc-tpl="1419" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">Red Sea shipping disruption escalates</span></span></div>
+                  <div data-dc-tpl="1420" style="font-size: 12px; color: rgb(170, 177, 189); margin-top: 5px;"><span class="sc-interp">Yesterday, 19:20</span> · <span class="sc-interp">IMF PortWatch</span></div>
+                  <div data-dc-tpl="1421" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">Renewed attacks on Red Sea routes are lengthening GCC import lead times. Dammam and King Abdullah Port calls are down sharply vs baseline.</span></div>
+                </div>
+                <div data-dc-tpl="1422" style="flex: 0 0 auto; display: flex; align-items: flex-start;">
+                  
+                  <button data-dc-tpl="1427" class="scp2" style="height: 38px; padding: 0px 15px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Acknowledge</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1415" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; box-shadow: rgb(47, 91, 246) 3px 0px 0px inset;">
+                <div data-dc-tpl="1416" style="flex: 1 1 0%; min-width: 0px;">
+                  <div data-dc-tpl="1417" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"><span data-dc-tpl="1418" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 7px; color: rgb(47, 91, 246); background: rgb(238, 242, 255);"><span class="sc-interp">Low</span></span><span data-dc-tpl="1419" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">AED peg stable at 3.6725</span></span></div>
+                  <div data-dc-tpl="1420" style="font-size: 12px; color: rgb(170, 177, 189); margin-top: 5px;"><span class="sc-interp">Yesterday, 09:00</span> · <span class="sc-interp">Open Exchange Rates</span></div>
+                  <div data-dc-tpl="1421" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">AED/USD unchanged within the managed band. No FX action required for dirham-denominated procurement.</span></div>
+                </div>
+                <div data-dc-tpl="1422" style="flex: 0 0 auto; display: flex; align-items: flex-start;">
+                  
+                  <button data-dc-tpl="1427" class="scp2" style="height: 38px; padding: 0px 15px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Acknowledge</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1415" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; box-shadow: rgb(217, 119, 6) 3px 0px 0px inset;">
+                <div data-dc-tpl="1416" style="flex: 1 1 0%; min-width: 0px;">
+                  <div data-dc-tpl="1417" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;"><span data-dc-tpl="1418" style="font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 7px; color: rgb(217, 119, 6); background: rgb(254, 243, 226);"><span class="sc-interp">Medium</span></span><span data-dc-tpl="1419" style="font-size: 15.5px; font-weight: 700;"><span class="sc-interp">US beef prices at record highs</span></span></div>
+                  <div data-dc-tpl="1420" style="font-size: 12px; color: rgb(170, 177, 189); margin-top: 5px;"><span class="sc-interp">2 days ago</span> · <span class="sc-interp">BBC · Google News</span></div>
+                  <div data-dc-tpl="1421" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">Record US beef prices and restaurant closures signal demand/supply shifts in the meat sector, with ripple effects across food commodities.</span></div>
+                </div>
+                <div data-dc-tpl="1422" style="flex: 0 0 auto; display: flex; align-items: flex-start;">
+                  
+                  <button data-dc-tpl="1427" class="scp2" style="height: 38px; padding: 0px 15px; border-radius: 9px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Acknowledge</button>
+                </div>
+              </div>
+            
+          </div>
+        </div>
+        
+
+        
+
+        
+      </div>
+      
+
+      
+      
+
+      
+      
+
+      
+
+    </div>
+  </div>
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+  <button data-dc-tpl="2088" title="FOps Copilot" style="position: fixed; bottom: 92px; right: 28px; z-index: 80; width: 64px; height: 64px; border-radius: 18px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; cursor: pointer; background: rgb(47, 91, 246); display: flex; align-items: center; justify-content: center; animation: 3.2s ease-in-out 0s infinite normal none running copBreath;">
+    <svg data-dc-tpl="2089" width="30" height="30" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="2090" d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.2A7.5 7.5 0 1 1 20 11.5z" fill="#fff"></path><circle data-dc-tpl="2091" cx="8.7" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2092" cx="12" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2093" cx="15.3" cy="11.5" r="1.15" fill="#2f5bf6"></circle></svg>
+  </button>
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  </div></div>
+  
+  
+  
+  
+  
+  
+
+  </div></div>
+<div class="mp-panel" data-mp="Market Report"><div class="role-stage" style="width:100%">
+
+  
+    <div class="sc-host" data-sc-name="Demand Planner Dashboard" data-dc-tpl="20"><div data-dc-tpl="5" style="display: flex; height: 100vh; overflow: hidden; background: rgb(244, 245, 247);">
+
+  
+  <aside data-dc-tpl="6" style="width: 246px; flex: 0 0 auto; background: rgb(255, 255, 255); border-right: 1px solid rgb(236, 237, 240); display: flex; flex-direction: column; height: 100vh; padding: 0px; transition: width 0.18s;">
+    <div data-dc-tpl="7" style="display: flex; align-items: center; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid rgb(238, 240, 243); margin-bottom: 8px;">
+      <div data-dc-tpl="8" style="width: 40px; height: 40px; border-radius: 11px; background: rgb(0, 57, 156); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;">
+        <svg data-dc-tpl="9" width="24" height="24" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="10" d="M6.6 4.4H16.4V7.9H10.3V11.1H15.4V14.6H10.3V20.2H6.6Z" fill="#F69B29"></path><path data-dc-tpl="11" d="M17.3 3C19.3 2.3 21.1 2.9 21.5 5.1C19.5 5.9 17.7 5.3 17.3 3Z" fill="#7DC242"></path><path data-dc-tpl="12" d="M17.9 4.5L20.9 3" stroke="#4e8f27" stroke-width=".8" stroke-linecap="round"></path></svg>
+      </div>
+      
+      <div data-dc-tpl="14" style="line-height: 1.1;">
+        <div data-dc-tpl="15" style="font-size: 19px; font-weight: 800; letter-spacing: -0.3px; color: rgb(31, 41, 55);">FOps</div>
+        <div data-dc-tpl="16" style="font-size: 10px; font-weight: 600; letter-spacing: 1.3px; color: rgb(154, 162, 175); margin-top: 2px;">DEMAND PLANNING</div>
+      </div>
+      
+    </div>
+
+    <nav data-dc-tpl="17" style="flex: 1 1 0%; display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; overflow-y: auto;">
+      <a data-dc-tpl="18" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="19" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect data-dc-tpl="20" x="3" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="21" x="14" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="22" x="3" y="14" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="23" x="14" y="14" width="7" height="7" rx="1.5"></rect></svg><span data-dc-tpl="25">Dashboard</span></a>
+      <a data-dc-tpl="26" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="27" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="28" d="M4 4v16h16"></path><path data-dc-tpl="29" d="M7 14l3-4 3 3 4-6"></path></svg><span data-dc-tpl="31">Forecast Cycles</span></a>
+      <a data-dc-tpl="32" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="33" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="34" d="M3 7h11v9H3z"></path><path data-dc-tpl="35" d="M14 10h4l3 3v3h-7z"></path><circle data-dc-tpl="36" cx="7" cy="18" r="1.7"></circle><circle data-dc-tpl="37" cx="17" cy="18" r="1.7"></circle></svg><span data-dc-tpl="39">Suppliers</span></a>
+      <a data-dc-tpl="40" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="41" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="42" d="M14 3H6v18h12V7z"></path><path data-dc-tpl="43" d="M14 3v4h4"></path><path data-dc-tpl="44" d="M12 12v5"></path><path data-dc-tpl="45" d="M9.5 14.5L12 17l2.5-2.5"></path></svg><span data-dc-tpl="47">Reports &amp; Export</span></a>
+      <a data-dc-tpl="48" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); margin-left: -12px; border-left: 3px solid rgb(246, 154, 42); cursor: pointer; text-decoration: none; background: rgb(246, 249, 255);"><svg data-dc-tpl="49" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="50" d="M3 12h4l2-7 4 14 2-7h6"></path></svg><span data-dc-tpl="52">Market Pulse</span></a>
+    </nav>
+
+    <div data-dc-tpl="53" style="padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid rgb(238, 240, 243);">
+      <a data-dc-tpl="54" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="55" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="56" cx="12" cy="12" r="3"></circle><path data-dc-tpl="57" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path></svg><span data-dc-tpl="59">Settings</span></a>
+      <a data-dc-tpl="60" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="61" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="62" cx="12" cy="12" r="9"></circle><path data-dc-tpl="63" d="M9.6 9.2a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1.3.9-1.3 1.7"></path><circle data-dc-tpl="64" cx="12" cy="16.6" r=".7" fill="currentColor" stroke="none"></circle></svg><span data-dc-tpl="66">Help &amp; Support</span></a>
+    </div>
+
+    <div data-dc-tpl="67" style="position: relative; border-top: 1px solid rgb(238, 240, 243);">
+      
+      <div data-dc-tpl="90" class="scp1" style="display: flex; align-items: center; gap: 11px; padding: 14px 24px; border-top: 1px solid rgb(238, 240, 243); cursor: pointer;">
+      <div data-dc-tpl="91" style="width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: rgb(231, 211, 196); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: rgb(138, 90, 59);">AS</div>
+      
+      <div data-dc-tpl="93" style="flex: 1 1 0%; min-width: 0px; line-height: 1.25; text-align: left;">
+          <div data-dc-tpl="94" style="font-size: 13.5px; font-weight: 700; color: rgb(31, 41, 55);">Anna Smith</div>
+          <div data-dc-tpl="95" style="font-size: 12px; color: rgb(154, 162, 175); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Demand Planner</div>
+        </div>
+      <svg data-dc-tpl="96" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="1.8" stroke-linecap="round" style="flex: 0 0 auto;"><circle data-dc-tpl="97" cx="12" cy="5" r="1"></circle><circle data-dc-tpl="98" cx="12" cy="12" r="1"></circle><circle data-dc-tpl="99" cx="12" cy="19" r="1"></circle></svg>
+      
+      </div>
+    </div>
+  </aside>
+
+  
+  <div data-dc-tpl="100" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; height: 100vh;">
+
+    
+    <header data-dc-tpl="101" style="flex: 0 0 auto; height: 72px; background: rgb(244, 245, 247); display: flex; align-items: center; gap: 20px; padding: 0px 32px; border-bottom: 1px solid rgb(236, 236, 241);">
+      <div data-dc-tpl="102" style="position: relative; flex: 1 1 0%; max-width: 360px;">
+        <svg data-dc-tpl="103" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="104" cx="11" cy="11" r="7"></circle><path data-dc-tpl="105" d="M20 20l-3-3"></path></svg>
+        <input data-dc-tpl="106" placeholder="Search SKUs, cycles, suppliers…" value="" style="width: 100%; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 14px 0px 40px; font-size: 14px; font-family: inherit; outline: none; color: rgb(26, 29, 36);">
+      </div>
+      <div data-dc-tpl="107" style="flex: 1 1 0%;"></div>
+      <div data-dc-tpl="108" style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; height: 42px; justify-content: center; padding: 0px 15px; border-radius: 999px; border: 1px solid rgb(191, 231, 205); background: rgb(231, 246, 236); white-space: nowrap;">
+        <span data-dc-tpl="109" style="display: flex; align-items: center; gap: 8px; color: rgb(21, 128, 61); font-size: 13.5px; font-weight: 600;"><span data-dc-tpl="110" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(22, 163, 74); box-shadow: rgba(22, 163, 74, 0.2) 0px 0px 0px 3px;"></span>Current Cycle Q3-W28</span>
+        <span data-dc-tpl="111" style="font-size: 10.5px; color: rgb(77, 138, 99); font-weight: 500; padding-left: 15px;">01 Oct – 31 Oct 2026</span>
+      </div>
+      <button data-dc-tpl="112" style="position: relative; width: 42px; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg data-dc-tpl="113" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="114" d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path data-dc-tpl="115" d="M10 20a2 2 0 0 0 4 0"></path></svg>
+        <span data-dc-tpl="116" style="position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: rgb(239, 68, 68); border: 1.5px solid rgb(255, 255, 255);"></span>
+      </button>
+    </header>
+
+    
+    <div data-dc-tpl="117" style="flex: 1 1 0%; overflow-y: auto; padding: 28px 32px 48px;">
+
+      
+
+      
+
+      
+      
+
+      
+      
+
+      
+      
+      
+      
+
+      
+      
+      <div data-dc-tpl="1274">
+        <div data-dc-tpl="1275" style="margin-bottom: 20px;">
+          <h1 data-dc-tpl="1276" style="font-size: 29px; font-weight: 800; letter-spacing: -0.6px; margin: 0px;">Market Pulse</h1>
+          <p data-dc-tpl="1277" style="margin: 7px 0px 0px; font-size: 15px; color: rgb(107, 114, 128);">Live commodity, logistics and market intelligence for GCC food operations.</p>
+        </div>
+        <div data-dc-tpl="1278" style="display: flex; gap: 26px; border-bottom: 1px solid rgb(236, 236, 241); margin-bottom: 22px;">
+          <button data-dc-tpl="1279" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Command Center</button>
+          <button data-dc-tpl="1280" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Alerts<span data-dc-tpl="1282" style="font-size: 11px; font-weight: 700; color: rgb(255, 255, 255); background: rgb(239, 68, 68); padding: 2px 7px; border-radius: 99px;"><span class="sc-interp">5</span></span></button>
+          <button data-dc-tpl="1283" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor rgb(47, 91, 246); border-image: initial; background: none; cursor: pointer; font-family: inherit;">Market Report</button>
+          <button data-dc-tpl="1284" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Recommendations</button>
+        </div>
+
+        
+
+        
+
+        
+        <div data-dc-tpl="1429" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; overflow: hidden;">
+          <div data-dc-tpl="1430" style="display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid rgb(236, 236, 241); flex-wrap: wrap;">
+            <div data-dc-tpl="1431" style="flex: 1 1 0%; min-width: 180px;"><div data-dc-tpl="1432" style="font-size: 17px; font-weight: 700;">GCC Food Industry Insights</div><div data-dc-tpl="1433" style="font-size: 12.5px; color: rgb(154, 162, 175); margin-top: 2px;">Published 06 Aug 2026 · Market Intelligence</div></div>
+            <button data-dc-tpl="1434" class="scp2" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0px 15px; border-radius: 10px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;"><svg data-dc-tpl="1435" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="1436" d="M12 3v12M7 11l5 5 5-5M5 21h14"></path></svg>Download</button>
+            <button data-dc-tpl="1437" class="scp2" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0px 15px; border-radius: 10px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;"><svg data-dc-tpl="1438" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="1439" cx="18" cy="5" r="2.5"></circle><circle data-dc-tpl="1440" cx="6" cy="12" r="2.5"></circle><circle data-dc-tpl="1441" cx="18" cy="19" r="2.5"></circle><path data-dc-tpl="1442" d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"></path></svg>Share</button>
+            <button data-dc-tpl="1443" class="scp2" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0px 15px; border-radius: 10px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;"><svg data-dc-tpl="1444" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="1445" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>Fullscreen</button>
+          </div>
+          <div data-dc-tpl="1446" style="height: calc(-300px + 100vh); overflow: auto; background: rgb(233, 235, 239); padding: 24px; display: flex; justify-content: center; align-items: flex-start;">
+            <img data-dc-tpl="1447" src="uploads/Frame 7-dd9d4cd7.png" alt="GCC Food Industry Insights report" style="display: block; flex: 0 0 auto; box-shadow: rgba(20, 24, 40, 0.14) 0px 4px 24px; border-radius: 8px;">
+          </div>
+        </div>
+        
+
+        
+      </div>
+      
+
+      
+      
+
+      
+      
+
+      
+
+    </div>
+  </div>
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+  <button data-dc-tpl="2088" title="FOps Copilot" style="position: fixed; bottom: 92px; right: 28px; z-index: 80; width: 64px; height: 64px; border-radius: 18px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; cursor: pointer; background: rgb(47, 91, 246); display: flex; align-items: center; justify-content: center; animation: 3.2s ease-in-out 0s infinite normal none running copBreath;">
+    <svg data-dc-tpl="2089" width="30" height="30" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="2090" d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.2A7.5 7.5 0 1 1 20 11.5z" fill="#fff"></path><circle data-dc-tpl="2091" cx="8.7" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2092" cx="12" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2093" cx="15.3" cy="11.5" r="1.15" fill="#2f5bf6"></circle></svg>
+  </button>
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  </div></div>
+  
+  
+  
+  
+  
+  
+
+  </div></div>
+<div class="mp-panel" data-mp="Recommendations"><div class="role-stage" style="width:100%">
+
+  
+    <div class="sc-host" data-sc-name="Demand Planner Dashboard" data-dc-tpl="20"><div data-dc-tpl="5" style="display: flex; height: 100vh; overflow: hidden; background: rgb(244, 245, 247);">
+
+  
+  <aside data-dc-tpl="6" style="width: 246px; flex: 0 0 auto; background: rgb(255, 255, 255); border-right: 1px solid rgb(236, 237, 240); display: flex; flex-direction: column; height: 100vh; padding: 0px; transition: width 0.18s;">
+    <div data-dc-tpl="7" style="display: flex; align-items: center; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid rgb(238, 240, 243); margin-bottom: 8px;">
+      <div data-dc-tpl="8" style="width: 40px; height: 40px; border-radius: 11px; background: rgb(0, 57, 156); display: flex; align-items: center; justify-content: center; flex: 0 0 auto;">
+        <svg data-dc-tpl="9" width="24" height="24" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="10" d="M6.6 4.4H16.4V7.9H10.3V11.1H15.4V14.6H10.3V20.2H6.6Z" fill="#F69B29"></path><path data-dc-tpl="11" d="M17.3 3C19.3 2.3 21.1 2.9 21.5 5.1C19.5 5.9 17.7 5.3 17.3 3Z" fill="#7DC242"></path><path data-dc-tpl="12" d="M17.9 4.5L20.9 3" stroke="#4e8f27" stroke-width=".8" stroke-linecap="round"></path></svg>
+      </div>
+      
+      <div data-dc-tpl="14" style="line-height: 1.1;">
+        <div data-dc-tpl="15" style="font-size: 19px; font-weight: 800; letter-spacing: -0.3px; color: rgb(31, 41, 55);">FOps</div>
+        <div data-dc-tpl="16" style="font-size: 10px; font-weight: 600; letter-spacing: 1.3px; color: rgb(154, 162, 175); margin-top: 2px;">DEMAND PLANNING</div>
+      </div>
+      
+    </div>
+
+    <nav data-dc-tpl="17" style="flex: 1 1 0%; display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; overflow-y: auto;">
+      <a data-dc-tpl="18" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="19" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect data-dc-tpl="20" x="3" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="21" x="14" y="3" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="22" x="3" y="14" width="7" height="7" rx="1.5"></rect><rect data-dc-tpl="23" x="14" y="14" width="7" height="7" rx="1.5"></rect></svg><span data-dc-tpl="25">Dashboard</span></a>
+      <a data-dc-tpl="26" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="27" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="28" d="M4 4v16h16"></path><path data-dc-tpl="29" d="M7 14l3-4 3 3 4-6"></path></svg><span data-dc-tpl="31">Forecast Cycles</span></a>
+      <a data-dc-tpl="32" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="33" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="34" d="M3 7h11v9H3z"></path><path data-dc-tpl="35" d="M14 10h4l3 3v3h-7z"></path><circle data-dc-tpl="36" cx="7" cy="18" r="1.7"></circle><circle data-dc-tpl="37" cx="17" cy="18" r="1.7"></circle></svg><span data-dc-tpl="39">Suppliers</span></a>
+      <a data-dc-tpl="40" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="41" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="42" d="M14 3H6v18h12V7z"></path><path data-dc-tpl="43" d="M14 3v4h4"></path><path data-dc-tpl="44" d="M12 12v5"></path><path data-dc-tpl="45" d="M9.5 14.5L12 17l2.5-2.5"></path></svg><span data-dc-tpl="47">Reports &amp; Export</span></a>
+      <a data-dc-tpl="48" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); margin-left: -12px; border-left: 3px solid rgb(246, 154, 42); cursor: pointer; text-decoration: none; background: rgb(246, 249, 255);"><svg data-dc-tpl="49" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="50" d="M3 12h4l2-7 4 14 2-7h6"></path></svg><span data-dc-tpl="52">Market Pulse</span></a>
+    </nav>
+
+    <div data-dc-tpl="53" style="padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid rgb(238, 240, 243);">
+      <a data-dc-tpl="54" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="55" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="56" cx="12" cy="12" r="3"></circle><path data-dc-tpl="57" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path></svg><span data-dc-tpl="59">Settings</span></a>
+      <a data-dc-tpl="60" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0px 12px 0px 21px; border-radius: 0px 9px 9px 0px; font-size: 14px; font-weight: 500; color: rgb(91, 100, 114); margin-left: -12px; border-left: 3px solid transparent; cursor: pointer; text-decoration: none;"><svg data-dc-tpl="61" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle data-dc-tpl="62" cx="12" cy="12" r="9"></circle><path data-dc-tpl="63" d="M9.6 9.2a2.4 2.4 0 1 1 3.2 2.3c-.8.3-1.3.9-1.3 1.7"></path><circle data-dc-tpl="64" cx="12" cy="16.6" r=".7" fill="currentColor" stroke="none"></circle></svg><span data-dc-tpl="66">Help &amp; Support</span></a>
+    </div>
+
+    <div data-dc-tpl="67" style="position: relative; border-top: 1px solid rgb(238, 240, 243);">
+      
+      <div data-dc-tpl="90" class="scp1" style="display: flex; align-items: center; gap: 11px; padding: 14px 24px; border-top: 1px solid rgb(238, 240, 243); cursor: pointer;">
+      <div data-dc-tpl="91" style="width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: rgb(231, 211, 196); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: rgb(138, 90, 59);">AS</div>
+      
+      <div data-dc-tpl="93" style="flex: 1 1 0%; min-width: 0px; line-height: 1.25; text-align: left;">
+          <div data-dc-tpl="94" style="font-size: 13.5px; font-weight: 700; color: rgb(31, 41, 55);">Anna Smith</div>
+          <div data-dc-tpl="95" style="font-size: 12px; color: rgb(154, 162, 175); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Demand Planner</div>
+        </div>
+      <svg data-dc-tpl="96" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="1.8" stroke-linecap="round" style="flex: 0 0 auto;"><circle data-dc-tpl="97" cx="12" cy="5" r="1"></circle><circle data-dc-tpl="98" cx="12" cy="12" r="1"></circle><circle data-dc-tpl="99" cx="12" cy="19" r="1"></circle></svg>
+      
+      </div>
+    </div>
+  </aside>
+
+  
+  <div data-dc-tpl="100" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; height: 100vh;">
+
+    
+    <header data-dc-tpl="101" style="flex: 0 0 auto; height: 72px; background: rgb(244, 245, 247); display: flex; align-items: center; gap: 20px; padding: 0px 32px; border-bottom: 1px solid rgb(236, 236, 241);">
+      <div data-dc-tpl="102" style="position: relative; flex: 1 1 0%; max-width: 360px;">
+        <svg data-dc-tpl="103" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9aa2af" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%);"><circle data-dc-tpl="104" cx="11" cy="11" r="7"></circle><path data-dc-tpl="105" d="M20 20l-3-3"></path></svg>
+        <input data-dc-tpl="106" placeholder="Search SKUs, cycles, suppliers…" value="" style="width: 100%; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); padding: 0px 14px 0px 40px; font-size: 14px; font-family: inherit; outline: none; color: rgb(26, 29, 36);">
+      </div>
+      <div data-dc-tpl="107" style="flex: 1 1 0%;"></div>
+      <div data-dc-tpl="108" style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; height: 42px; justify-content: center; padding: 0px 15px; border-radius: 999px; border: 1px solid rgb(191, 231, 205); background: rgb(231, 246, 236); white-space: nowrap;">
+        <span data-dc-tpl="109" style="display: flex; align-items: center; gap: 8px; color: rgb(21, 128, 61); font-size: 13.5px; font-weight: 600;"><span data-dc-tpl="110" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(22, 163, 74); box-shadow: rgba(22, 163, 74, 0.2) 0px 0px 0px 3px;"></span>Current Cycle Q3-W28</span>
+        <span data-dc-tpl="111" style="font-size: 10.5px; color: rgb(77, 138, 99); font-weight: 500; padding-left: 15px;">01 Oct – 31 Oct 2026</span>
+      </div>
+      <button data-dc-tpl="112" style="position: relative; width: 42px; height: 42px; border-radius: 11px; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg data-dc-tpl="113" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-dc-tpl="114" d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"></path><path data-dc-tpl="115" d="M10 20a2 2 0 0 0 4 0"></path></svg>
+        <span data-dc-tpl="116" style="position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: rgb(239, 68, 68); border: 1.5px solid rgb(255, 255, 255);"></span>
+      </button>
+    </header>
+
+    
+    <div data-dc-tpl="117" style="flex: 1 1 0%; overflow-y: auto; padding: 28px 32px 48px;">
+
+      
+
+      
+
+      
+      
+
+      
+      
+
+      
+      
+      
+      
+
+      
+      
+      <div data-dc-tpl="1274">
+        <div data-dc-tpl="1275" style="margin-bottom: 20px;">
+          <h1 data-dc-tpl="1276" style="font-size: 29px; font-weight: 800; letter-spacing: -0.6px; margin: 0px;">Market Pulse</h1>
+          <p data-dc-tpl="1277" style="margin: 7px 0px 0px; font-size: 15px; color: rgb(107, 114, 128);">Live commodity, logistics and market intelligence for GCC food operations.</p>
+        </div>
+        <div data-dc-tpl="1278" style="display: flex; gap: 26px; border-bottom: 1px solid rgb(236, 236, 241); margin-bottom: 22px;">
+          <button data-dc-tpl="1279" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Command Center</button>
+          <button data-dc-tpl="1280" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Alerts<span data-dc-tpl="1282" style="font-size: 11px; font-weight: 700; color: rgb(255, 255, 255); background: rgb(239, 68, 68); padding: 2px 7px; border-radius: 99px;"><span class="sc-interp">5</span></span></button>
+          <button data-dc-tpl="1283" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 500; color: rgb(138, 146, 158); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor transparent; border-image: initial; background: none; cursor: pointer; font-family: inherit;">Market Report</button>
+          <button data-dc-tpl="1284" style="display: flex; align-items: center; gap: 8px; padding: 0px 4px; height: 46px; font-size: 14px; font-weight: 600; color: rgb(47, 91, 246); border-width: medium medium 2px; border-style: none none solid; border-color: currentcolor currentcolor rgb(47, 91, 246); border-image: initial; background: none; cursor: pointer; font-family: inherit;">Recommendations</button>
+        </div>
+
+        
+
+        
+
+        
+
+        
+        <div data-dc-tpl="1449">
+          <div data-dc-tpl="1450" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128); margin-bottom: 14px;">SHORT TERM (90 DAYS)</div>
+          <div data-dc-tpl="1451" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 26px;">
+            
+              <div data-dc-tpl="1453" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column;">
+                <div data-dc-tpl="1454" style="font-size: 16.5px; font-weight: 700; text-wrap: pretty;"><span class="sc-interp">Book forward cover on COPPER near $6.7475</span></div>
+                <div data-dc-tpl="1455" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">COPPER has hit a 90-day high and is above its 90-day range. Lock in prices for open purchase commitments before the rally flows through to manufacturing costs.</span></div>
+                <div data-dc-tpl="1456" style="margin-top: 14px; padding: 13px 15px; border-radius: 11px; background: rgb(244, 246, 251);"><div data-dc-tpl="1457" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">BUSINESS IMPACT</div><div data-dc-tpl="1458" style="font-size: 13px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Caps Q4 raw-material cost before the COPPER price rally reaches production.</span></div></div>
+                <div data-dc-tpl="1459" style="margin-top: 10px; padding: 13px 15px; border-radius: 11px; background: rgb(250, 251, 252);"><div data-dc-tpl="1460" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">REASONING</div><div data-dc-tpl="1461" style="font-size: 13px; color: rgb(107, 114, 128); line-height: 1.5;"><span class="sc-interp">Active risk alert: COPPER trading at $6.7570 /lb, above its 90-day range.</span></div></div>
+                <div data-dc-tpl="1462" style="display: flex; align-items: center; gap: 9px; margin-top: 16px; flex-wrap: wrap;">
+                  <button data-dc-tpl="1463" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Helpful</button>
+                  <button data-dc-tpl="1464" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Not helpful</button>
+                  <span data-dc-tpl="1465" style="flex: 1 1 0%;"></span>
+                  <button data-dc-tpl="1466" class="scp8" style="height: 34px; padding: 0px 14px; border-radius: 9px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: rgb(47, 91, 246); color: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Request AI Deep Dive</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1453" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column;">
+                <div data-dc-tpl="1454" style="font-size: 16.5px; font-weight: 700; text-wrap: pretty;"><span class="sc-interp">Review open GOLD purchase commitments</span></div>
+                <div data-dc-tpl="1455" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">GOLD experienced an unusual +4.94% price jump today, now trading at $4,331.00 /oz. Re-price near-term commitments against the move.</span></div>
+                <div data-dc-tpl="1456" style="margin-top: 14px; padding: 13px 15px; border-radius: 11px; background: rgb(244, 246, 251);"><div data-dc-tpl="1457" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">BUSINESS IMPACT</div><div data-dc-tpl="1458" style="font-size: 13px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Reduces the impact of GOLD price volatility on production costs for near-term commitments.</span></div></div>
+                <div data-dc-tpl="1459" style="margin-top: 10px; padding: 13px 15px; border-radius: 11px; background: rgb(250, 251, 252);"><div data-dc-tpl="1460" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">REASONING</div><div data-dc-tpl="1461" style="font-size: 13px; color: rgb(107, 114, 128); line-height: 1.5;"><span class="sc-interp">Active risk alert: GOLD moved +4.94% today, ~3× its typical daily move of 1.74%.</span></div></div>
+                <div data-dc-tpl="1462" style="display: flex; align-items: center; gap: 9px; margin-top: 16px; flex-wrap: wrap;">
+                  <button data-dc-tpl="1463" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Helpful</button>
+                  <button data-dc-tpl="1464" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Not helpful</button>
+                  <span data-dc-tpl="1465" style="flex: 1 1 0%;"></span>
+                  <button data-dc-tpl="1466" class="scp8" style="height: 34px; padding: 0px 14px; border-radius: 9px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: rgb(47, 91, 246); color: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Request AI Deep Dive</button>
+                </div>
+              </div>
+            
+          </div>
+          <div data-dc-tpl="1467" style="font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: rgb(107, 114, 128); margin-bottom: 14px;">LONG TERM (365 DAYS)</div>
+          <div data-dc-tpl="1468" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 26px;">
+            
+              <div data-dc-tpl="1470" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column;">
+                <div data-dc-tpl="1471" style="font-size: 16.5px; font-weight: 700; text-wrap: pretty;"><span class="sc-interp">Diversify ALUMINUM sourcing</span></div>
+                <div data-dc-tpl="1472" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">Explore sourcing ALUMINUM from alternative suppliers to reduce dependence on current partners as the $3,424.00 price may signal volatility.</span></div>
+                <div data-dc-tpl="1473" style="margin-top: 14px; padding: 13px 15px; border-radius: 11px; background: rgb(244, 246, 251);"><div data-dc-tpl="1474" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">BUSINESS IMPACT</div><div data-dc-tpl="1475" style="font-size: 13px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Meaningfully reduces exposure to ALUMINUM price fluctuations by increasing the number of suppliers.</span></div></div>
+                <div data-dc-tpl="1476" style="margin-top: 10px; padding: 13px 15px; border-radius: 11px; background: rgb(250, 251, 252);"><div data-dc-tpl="1477" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">REASONING</div><div data-dc-tpl="1478" style="font-size: 13px; color: rgb(107, 114, 128); line-height: 1.5;"><span class="sc-interp">Live commodity price of ALUMINUM may signal a need for a more diversified supply chain.</span></div></div>
+                <div data-dc-tpl="1479" style="display: flex; align-items: center; gap: 9px; margin-top: 16px; flex-wrap: wrap;">
+                  <button data-dc-tpl="1480" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Helpful</button>
+                  <button data-dc-tpl="1481" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Not helpful</button>
+                  <span data-dc-tpl="1482" style="flex: 1 1 0%;"></span>
+                  <button data-dc-tpl="1483" class="scp8" style="height: 34px; padding: 0px 14px; border-radius: 9px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: rgb(47, 91, 246); color: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Request AI Deep Dive</button>
+                </div>
+              </div>
+            
+              <div data-dc-tpl="1470" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column;">
+                <div data-dc-tpl="1471" style="font-size: 16.5px; font-weight: 700; text-wrap: pretty;"><span class="sc-interp">Renegotiate LUMBER contract terms</span></div>
+                <div data-dc-tpl="1472" style="font-size: 13.5px; color: rgb(75, 85, 99); margin-top: 9px; line-height: 1.55; text-wrap: pretty;"><span class="sc-interp">The current LUMBER price of $579.50 may be subject to change long-term. Secure more flexible contract arrangements.</span></div>
+                <div data-dc-tpl="1473" style="margin-top: 14px; padding: 13px 15px; border-radius: 11px; background: rgb(244, 246, 251);"><div data-dc-tpl="1474" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">BUSINESS IMPACT</div><div data-dc-tpl="1475" style="font-size: 13px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Caps long-term LUMBER costs by securing terms that account for potential price fluctuations.</span></div></div>
+                <div data-dc-tpl="1476" style="margin-top: 10px; padding: 13px 15px; border-radius: 11px; background: rgb(250, 251, 252);"><div data-dc-tpl="1477" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; color: rgb(154, 162, 175); margin-bottom: 5px;">REASONING</div><div data-dc-tpl="1478" style="font-size: 13px; color: rgb(107, 114, 128); line-height: 1.5;"><span class="sc-interp">Live commodity price of LUMBER may signal a need for more flexible contract arrangements.</span></div></div>
+                <div data-dc-tpl="1479" style="display: flex; align-items: center; gap: 9px; margin-top: 16px; flex-wrap: wrap;">
+                  <button data-dc-tpl="1480" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Helpful</button>
+                  <button data-dc-tpl="1481" style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid rgb(228, 230, 235); background: rgb(255, 255, 255); color: rgb(75, 85, 99);">Not helpful</button>
+                  <span data-dc-tpl="1482" style="flex: 1 1 0%;"></span>
+                  <button data-dc-tpl="1483" class="scp8" style="height: 34px; padding: 0px 14px; border-radius: 9px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: rgb(47, 91, 246); color: rgb(255, 255, 255); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;">Request AI Deep Dive</button>
+                </div>
+              </div>
+            
+          </div>
+          <div data-dc-tpl="1484" style="background: rgb(255, 255, 255); border: 1px solid rgb(236, 236, 241); border-radius: 16px; padding: 22px 24px;">
+            <div data-dc-tpl="1485" style="font-size: 16px; font-weight: 700;">Data Gaps</div>
+            <div data-dc-tpl="1486" style="font-size: 13px; color: rgb(154, 162, 175); margin: 4px 0px 14px;">Missing inputs that would improve recommendation quality</div>
+            <div data-dc-tpl="1487" style="display: flex; flex-direction: column; gap: 10px;">
+              
+                <div data-dc-tpl="1489" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid rgb(240, 241, 244); border-radius: 11px;"><span data-dc-tpl="1490" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(217, 119, 6); flex: 0 0 auto; margin-top: 6px;"></span><span data-dc-tpl="1491" style="font-size: 13.5px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Soil-moisture satellite data for key growing regions (ESA CCI or SMAP)</span></span></div>
+              
+                <div data-dc-tpl="1489" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid rgb(240, 241, 244); border-radius: 11px;"><span data-dc-tpl="1490" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(217, 119, 6); flex: 0 0 auto; margin-top: 6px;"></span><span data-dc-tpl="1491" style="font-size: 13.5px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Live EGP black-market rate vs official CBE rate</span></span></div>
+              
+                <div data-dc-tpl="1489" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid rgb(240, 241, 244); border-radius: 11px;"><span data-dc-tpl="1490" style="width: 7px; height: 7px; border-radius: 50%; background: rgb(217, 119, 6); flex: 0 0 auto; margin-top: 6px;"></span><span data-dc-tpl="1491" style="font-size: 13.5px; color: rgb(55, 65, 81); line-height: 1.5;"><span class="sc-interp">Real-time GCC port dwell times by terminal</span></span></div>
+              
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+
+      
+      
+
+      
+      
+
+      
+
+    </div>
+  </div>
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+  <button data-dc-tpl="2088" title="FOps Copilot" style="position: fixed; bottom: 92px; right: 28px; z-index: 80; width: 64px; height: 64px; border-radius: 18px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; cursor: pointer; background: rgb(47, 91, 246); display: flex; align-items: center; justify-content: center; animation: 3.2s ease-in-out 0s infinite normal none running copBreath;">
+    <svg data-dc-tpl="2089" width="30" height="30" viewBox="0 0 24 24" fill="none"><path data-dc-tpl="2090" d="M20 11.5a7.5 7.5 0 0 1-10.9 6.7L4 19.5l1.4-4.2A7.5 7.5 0 1 1 20 11.5z" fill="#fff"></path><circle data-dc-tpl="2091" cx="8.7" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2092" cx="12" cy="11.5" r="1.15" fill="#2f5bf6"></circle><circle data-dc-tpl="2093" cx="15.3" cy="11.5" r="1.15" fill="#2f5bf6"></circle></svg>
+  </button>
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  
+
+  
+  </div></div>
+  
+  
+  
+  
+  
+  
+
+  </div></div>
+<script>
+document.addEventListener("click",function(e){
+ var el=e.target.closest("button,a,div");
+ if(!el) return; var t=(el.innerText||"").trim().replace(/\s+/g," ");
+ var names=["Command Center","Alerts","Market Report","Recommendations"];
+ var hit=names.find(function(n){return t===n||t.indexOf(n)===0&&t.length<n.length+6;});
+ if(!hit) return; e.preventDefault();
+ document.querySelectorAll(".mp-panel").forEach(function(p){p.classList.toggle("on",p.dataset.mp===hit);});
+},true);
+</script>
