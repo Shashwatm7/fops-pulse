@@ -420,9 +420,15 @@ export async function insertPipelineAuditLog(userId, article, stageDropped, reje
     const d = new Date(article.publishedAt);
     if (!isNaN(d.getTime())) publishedAt = d;
   }
+  // idx_audit_dedupe (migration 027) makes a repeated verdict a conflict: the
+  // scanner re-evaluates the same articles every run, and re-logging an
+  // unchanged decision adds no information. A verdict that CHANGED differs on
+  // one of the indexed columns and still inserts. DO NOTHING returns no row, so
+  // callers must treat a missing id as "already recorded", not as a failure.
   const sql =
     `INSERT INTO pipeline_audit_logs (user_id, article_title, article_url, source, stage_dropped, rejection_reason, relevance_score, is_accepted, extracted_features, published_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT DO NOTHING
      RETURNING id`;
   const params = [
     userId,

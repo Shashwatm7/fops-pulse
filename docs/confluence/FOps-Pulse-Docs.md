@@ -1,0 +1,1013 @@
+# FOps Pulse — Complete Documentation
+
+> **ℹ️ How to use this in Confluence**
+> Paste this whole file into a blank Confluence **Page** (not a live doc) — the editor auto-converts the Markdown. Then, for a clickable sidebar-style index, delete the "Contents" list below and type `/toc` to insert Confluence's **Table of Contents** macro (it auto-builds from the headings). Mermaid diagrams render only if the "Mermaid Diagrams for Confluence" Marketplace app is installed; otherwise they show as code blocks.
+
+_Documents the FOps Pulse platform **as built**: Node.js/Express + React + PostgreSQL on Render. Owner: Drizzla / FOps team. Last full review: 2026-07-17._
+
+## Contents
+
+1. Project Overview
+2. Functional Requirements
+3. Non-Functional Requirements
+4. Solution Architecture
+5. Data Flow
+6. AI Pipeline
+7. Database Design
+8. API Documentation
+9. Recommendation Engine
+11. Deployment Architecture
+12. Security
+13. Testing Strategy
+14. Monitoring
+15. Risks
+16. Future Enhancements
+
+
+
+---
+
+# 1. Project Overview
+
+## 1.1 Vision
+
+Give every planner in a GCC food-manufacturing supply chain a single, live, **commodity- and region-specific intelligence layer** — so procurement and S&OP decisions are made on today's market reality, not last week's spreadsheet.
+
+## 1.2 Business Problem
+
+> **⚠️ Problem statement**
+> Food manufacturers in the GCC import the majority of their inputs (grains, protein, dairy, oils, packaging). The signals that move their cost and supply — commodity prices, FX, port throughput, weather, geopolitics, trade policy — are scattered across dozens of sources. Planners either miss events entirely or find them days late. Generic news alerting (keyword-based) drowns them in irrelevant noise.
+
+Concrete pains:
+
+| Persona | Pain |
+|---|---|
+| Procurement / buyer | Learns of a price spike or export ban after the market has moved |
+| Demand / supply planner | No structured view of supply-disruption risk touching their lanes |
+| S&OP manager | Market context assembled manually for every cycle |
+| Supply Chain Director | No defensible, auditable "why" behind buy/hedge decisions |
+
+## 1.3 Solution Overview
+
+FOps Pulse is a web platform that:
+
+1. **Ingests** news (Google News RSS + curated feeds), commodity prices (Yahoo Finance), FX spot rates (Open Exchange Rates), live weather (WeatherAPI), port activity (IMF PortWatch), and macro data (World Bank).
+2. **Filters news per user profile** through a 9-stage relevance pipeline (keywords → region gate → scoring → local MiniLM semantic filter) so each user sees only what touches *their* commodities and regions.
+3. **Raises alerts** (severity-scored, deduplicated, 24-hour freshness) and a categorized news feed.
+4. **Generates AI outputs** — market indicators, article deep-dives, and a procurement planner producing 90-day and 365-day recommendations — via Groq (Llama 3.3 70B) and Gemini 2.5 Flash. **No-fallback policy:** if generation fails, the UI shows an error, never canned text.
+5. **Displays** everything in a React dashboard: Command Center (prices, ports, FX, weather, indicators), Alerts + News, Market Report (GCC industry study), Recommendations.
+
+## 1.4 Objectives
+
+| # | Objective | Measure |
+|---|---|---|
+| O1 | Cut time-to-awareness of supply-relevant events | Event published → alert visible < 1 scan interval |
+| O2 | High alert precision (signal over noise) | Acceptance rate of pipeline + user feedback (👍/👎) |
+| O3 | Decision support, not just news | ≥ 4 actionable planner recommendations per cycle (2×90D, 2×365D) |
+| O4 | Near-zero marginal data cost | All external sources on free tiers |
+
+## 1.5 Success Metrics
+
+- **Alert precision:** % of surfaced alerts rated relevant (via `ai_feedback` + Ack behavior).
+- **Freshness:** 100% of news alerts based on articles published ≤ 24 h before alerting.
+- **Coverage:** every tracked commodity/region produces candidate articles per scan (visible in Pipeline Analytics).
+- **Engagement:** planners open Command Center daily; recommendations acknowledged.
+
+## 1.6 Scope
+
+**In scope (current):** GCC food manufacturing; news/price/FX/weather/port intelligence; per-user profiles; AI planner, deep-dive, market indicators; admin tuning panel; email alerting (nodemailer).
+**Out of scope (current):** ERP/MES write-back, automated purchasing, demand forecasting from customer order data, mobile app, multi-tenant customer isolation beyond profile grafting.
+
+## 1.7 Stakeholders
+
+| Role | Interest |
+|---|---|
+| Supply / demand planners | Daily users — alerts, news, prices |
+| Procurement teams | Planner recommendations, FX, price anomalies |
+| S&OP managers / SC Directors | Market Report, trend context, auditability |
+| Business analysts | Pipeline Analytics, tuning, data quality |
+| Platform admin | User management, relevance tuning (threshold, seeds, γ) |
+
+
+---
+
+# 2. Functional Requirements
+
+## 2.1 User Stories
+
+| ID | As a… | I want… | So that… |
+|---|---|---|---|
+| US-01 | Planner | to sign up, onboard with a template (commodities, regions, focus product/region) | the platform is personalized from day one |
+| US-02 | Planner | live prices for *my* tracked commodities vs previous close | I spot moves without a terminal |
+| US-03 | Planner | severity-ranked alerts for news touching my supply chain | I act on disruptions early |
+| US-04 | Planner | a news feed filtered by stream/category/region/publish-date | I can research a topic quickly |
+| US-05 | Procurement | AI recommendations on 90-day and 365-day horizons | I time purchases and hedges |
+| US-06 | Planner | an AI deep-dive on any alert ("what does this mean for me?") | I get context without reading 10 articles |
+| US-07 | Planner | live weather for locations I choose | I anticipate crop/logistics impact |
+| US-08 | Planner | GCC port activity vs baseline | I get early warning of throughput disruption |
+| US-09 | Planner | FX spot rates for currencies I select | I track import cost exposure |
+| US-10 | Admin | to tune relevance parameters (threshold, γ, seeds) at runtime | precision improves without redeploys |
+| US-11 | Admin | to manage users (roles, deletion) | access stays controlled |
+| US-12 | Analyst | pipeline audit logs (accept/reject + reason per article) | filtering is explainable and debuggable |
+
+## 2.2 Features (as built)
+
+| Feature | Detail |
+|---|---|
+| Auth & onboarding | Email/password (bcrypt), session cookie (24 h), onboarding wizard with industry templates |
+| Command Center | Price Ticker (vs prev close), Port Congestion (GCC), FX Spot Rates, Live Weather, Market Indicators |
+| Alerts | Sources: PROFILE_NEWS, GEO, PRICE. Severity CRITICAL/HIGH/MEDIUM/LOW; display quota (max 1 CRITICAL, 2 HIGH, 1 MEDIUM); Ack; AI summary; "Last time this happened" precedent |
+| News feed | Two streams (risk / commodity) + transparency bucket; filters: search, stream, category, region, publish-date (≤24h/7d/30d); entity chips |
+| Freshness rules | News alerts suppressed if article published > 24 h ago; alert rows auto-expire 24 h after creation; profile change hides pre-change alerts (`settings_changed_at`) |
+| AI Planner | Exactly 4 recommendations: 2 × 90-day, 2 × 365-day (Groq Llama 3.3 70B) |
+| Deep-dive | Per-alert analysis, 300–450 words, 3–5 bullets (Groq) |
+| Market indicators | 3 drivers with direction/strength/evidence (Gemini 2.5 Flash), 1 h cache keyed by profile + active alerts |
+| Market Report | Static GCC industry study (demand index, consumption, food-security, M&A, sector economics) |
+| Settings | Commodities, news regions (free-text), keywords, blocklist, focus product/region |
+| Admin panel | User role management; runtime tuning: semantic threshold, Rocchio γ, extra seeds, noise seeds; expanded-query preview per user |
+| Pipeline Analytics | Per-article accept/reject audit with stage + reason; manual "Run scanner now" with persisted result |
+| Email notifications | New CRITICAL/HIGH alerts emailed (nodemailer), gated per user |
+
+## 2.3 Acceptance Criteria (representative)
+
+> **✅ AC — Profile news alert**
+> **Given** a user tracks WHEAT and region "Middle East"
+> **When** the scanner ingests an article published ≤ 24 h ago that passes stages 1–8 with priority ≥ Medium
+> **Then** one alert row is inserted (unique on `user_id + dedup_key`), severity mapped from priority, visible in Alerts tab and Morning Brief, and emailed if severity ≥ HIGH.
+
+> **✅ AC — No-fallback AI**
+> **Given** all Groq pool keys are rate-limited
+> **When** the planner is requested
+> **Then** the API returns an error (5xx with message) and the UI shows the error state. No cached, degraded, or canned recommendations are shown.
+
+> **✅ AC — Publish-date filter**
+> **Given** the News tab date filter = "Published ≤ 24h"
+> **Then** only articles with a parseable `published_at` within 24 h are listed; articles lacking a publish date are excluded.
+
+> **✅ AC — Price change basis**
+> All three surfaces (Price Ticker, SSE live cards, price-anomaly alerts) report change vs **previous close** — one consistent number.
+
+## 2.4 Assumptions
+
+1. Free-tier external sources remain available (Google News RSS, Yahoo Finance unofficial API, WeatherAPI, Open Exchange Rates, IMF PortWatch, Open-Meteo, World Bank).
+2. One Render web service instance; in-memory caches are acceptable if backed by DB persistence for critical state (alerts, scan results, audit logs).
+3. English-language news is sufficient for the current market.
+4. Users belong to at most one customer profile (e.g., Aramtec) whose keywords/regions/seeds graft onto their profile.
+
+## 2.5 Constraints
+
+| Constraint | Consequence |
+|---|---|
+| Render free tier (spin-down, no cron) | Boot-time `setInterval` scheduling; cold start 30–60 s; scan results persisted to DB (mig. 025) |
+| Groq/Gemini free-tier rate limits | Per-key circuit breaker + key-pool rotation; task→key pinning |
+| PortWatch weekly refresh (~1 wk lag) | Port panel labeled "weekly, ~1wk lag"; not real-time congestion |
+| No dwell-time data exists in PortWatch | Port metric is throughput anomaly (calls vs 28-day baseline), not queue length |
+| Yahoo unofficial API | Chart fallback lane + roll-guards for futures contract rolls |
+
+
+---
+
+# 3. Non-Functional Requirements
+
+| Category | Requirement (as built) | Notes / gaps |
+|---|---|---|
+| **Performance** | Dashboard bundle < 350 kB gz per chunk; heavy chart modal lazy-loaded with stale-chunk self-heal. API reads served from Postgres or in-memory caches; LLM endpoints are the slow path (2–20 s) and are async on the client. | Scan is background (fire-and-forget + poll) because full scans exceed gateway timeout. |
+| **Scalability** | Single-instance Node process; per-user pipeline scan is O(articles × stages); embeddings computed locally (MiniLM, 384-dim) with seed-vector caching. | Multi-instance would break in-memory state (`global.scanState`, breakers, caches) — needs Redis/DB before horizontal scale. |
+| **Availability** | Render free tier: spins down when idle; cold start 30–60 s. Alerts, audit logs, scan results, embeddings all DB-persisted so restarts lose nothing durable. | Paid instance removes spin-down. |
+| **Reliability** | Idempotent migrations run on every boot (`node migrate.js && node server.js`); per-source failure isolation (one RSS feed/port/key failing never aborts the batch); Groq per-key circuit breaker with pool rotation; Yahoo chart-endpoint fallback; lazy self-heal for missing DB columns (42703 retry). | |
+| **Security** | bcrypt (cost 10); httpOnly session cookie, `secure` in production, SameSite=Lax; role-gated admin routes; secrets via env / Render secret files. | See page 12 — SESSION_SECRET fallback constant must be overridden in prod. |
+| **Monitoring** | Structured console logs per subsystem tag (`[USER-SCANNER]`, `[GROQ]`, `[TOKENS]`, `[TICK PRICES]`, `[SEMANTIC]`, `[DB]`); token usage counters; rate-limit headers tracked in `global.apiRateLimits`; Render log stream. | No external APM/metrics store yet (page 14). |
+| **Logging** | Every article's accept/reject decision persisted to `pipeline_audit_logs` (stage, reason, score, publish date) — full explainability of filtering. | |
+| **Maintainability** | Modular services (`services/ingestion/*`, `services/news-pipeline/stages/*`, `services/planner`, `services/labeling`); runtime tuning store avoids redeploys for relevance parameters; migrations append-only. | `server.js` is large (~4k lines) — candidate for route-module extraction. |
+| **Data freshness** | Prices: 15-min server tick, 5-s SSE broadcast, 60-s client poll on Command Center. Weather: live per request. FX: live per request (hourly upstream). Ports: weekly (source cadence). News: scan interval (env `USER_SCAN_INTERVAL_MS`) + manual trigger. News alerts: article publish ≤ 24 h. | |
+| **Cost** | All data sources and LLM keys on free tiers; embeddings local (no API cost); summary = titles-only ingestion to cap input tokens. | Groq key pool spreads free-tier budgets. |
+
+
+---
+
+# 4. Solution Architecture
+
+## 4.1 Stack (as built)
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite, Recharts, lucide-react; served as static `dist/` by the backend |
+| Backend | **Node.js + Express 5** (single service, `server.js` + `services/*` modules) |
+| Database | PostgreSQL (Render managed; local Postgres for dev) |
+| AI — generation | Groq `llama-3.3-70b-versatile` (planner, deep-dive, summaries); Gemini 2.5 Flash (market indicators, precedent classifier) |
+| AI — embeddings | Local MiniLM `Xenova/all-MiniLM-L6-v2` via `@xenova/transformers` (384-dim, zero API cost) |
+| NLP utilities | `compromise` (entities), `sentiment`, `cheerio` (extraction), `rss-parser` |
+| Sessions | `express-session` + `connect-pg-simple` (PgStore) |
+| Email | `nodemailer` |
+| Hosting | Render web service (free tier), auto-deploy from `main` |
+
+> **ℹ️ Note** — There is no FastAPI, Docker, or Ollama in this system. REST APIs are Express routes under `/api/*`.
+
+## 4.2 Component Diagram
+
+```mermaid
+flowchart LR
+  subgraph EXT[External Sources - all free tier]
+    GN[Google News RSS - XML]
+    CF[Curated RSS/Atom feeds]
+    YF[Yahoo Finance quotes+charts]
+    WX[WeatherAPI]
+    OM[Open-Meteo daily]
+    OXR[Open Exchange Rates]
+    PW[IMF PortWatch ArcGIS]
+    WB[World Bank]
+    GROQ[Groq LLM API]
+    GEM[Gemini 2.5 Flash API]
+  end
+
+  subgraph BE[Express Backend - single Render service]
+    ING[Ingestion layer<br/>services/ingestion/*]
+    PIPE[News pipeline<br/>9 stages + rescue lane]
+    EMB[Embedding service<br/>MiniLM local]
+    LLM[LLM router<br/>callGroq key pool + breaker / callGeminiFlash]
+    DET[Deterministic engine<br/>+ price anomaly + precedent + analogs]
+    PLAN[Planner service]
+    API[REST API /api/*<br/>+ SSE /api/live-feed]
+    TUNE[Runtime tuning store]
+  end
+
+  DB[(PostgreSQL<br/>25 migrations)]
+  FE[React dashboard<br/>Command Center / Alerts+News / Market Report / Recommendations / Admin]
+
+  GN & CF --> ING
+  YF --> ING
+  WX & OM --> ING
+  OXR --> API
+  PW --> ING
+  WB --> ING
+  ING --> PIPE --> DB
+  PIPE <--> EMB
+  API <--> DB
+  API <--> LLM
+  LLM <--> GROQ & GEM
+  API --> DET --> API
+  PLAN --> LLM
+  API --> PLAN
+  TUNE -.live params.-> PIPE
+  FE <--> API
+```
+
+## 4.3 Component Responsibilities
+
+| Component | Responsibility | Key files |
+|---|---|---|
+| Ingestion layer | Fetch + normalize external data; per-item upsert; failure isolation | `services/ingestion/{news_rss,curated_feeds,weather,market,port_activity}.js`, inline fetchers in `server.js` |
+| News pipeline | Per-user relevance decision for every article; audit every decision | `services/news-pipeline/pipeline.js`, `stages/1..8`, `entity_matcher.js`, `categorizer.js` |
+| Embedding service | Local MiniLM embeddings; seed-vector + noise-centroid caches | `services/labeling/embeddingService.js`, stage 6 |
+| LLM router | Task→key pinning, per-key circuit breaker, pool rotation on 429, token accounting, **no fallback** | `callGroq` / `callGeminiFlash` in `server.js` |
+| Deterministic engine | Alert quota/sort, market snapshot assembly, drivers prompt data | `services/deterministic-engine.js`, `services/alert-relevance.js`, `services/price-anomaly.js`, `services/precedent-engine.js`, `services/price-analogs.js` |
+| Planner | Context bundle (headlines-only) + strict-format prompt → 4 recommendations | `services/planner/plannerService.js` |
+| Runtime tuning | Admin-editable live params: `semanticThreshold`, `rocchioGamma` (currently 0 = Rocchio off), `extraSeeds`, `noiseSeeds`, `llmTemperature` | `services/tuning.js` |
+| REST API + SSE | ~40 authed routes; 5-s SSE price broadcast | `server.js`, `auth.js` |
+| Frontend | Tabs: Command Center (`pulse`), Alerts+News (`alerts`), Market Report (`marketinfo`), Recommendations (`actions`); Settings, Admin, Pipeline Analytics pages | `dashboard/src/*.jsx` |
+
+## 4.4 External Integration Points (FOps connect surface)
+
+| System | Direction | Protocol | Cadence |
+|---|---|---|---|
+| Google News RSS | in | HTTPS XML | per scan (interval + manual) |
+| Curated feeds (`RSS_FEEDS` env) | in | HTTPS RSS/Atom | per scan |
+| Yahoo Finance | in | HTTPS JSON (unofficial) | 15-min tick + on-demand charts |
+| WeatherAPI | in | HTTPS JSON | per dashboard request |
+| Open-Meteo | in | HTTPS JSON | manual script (`raw_weather`) |
+| Open Exchange Rates | in | HTTPS JSON (app_id) | per request; hourly upstream |
+| IMF PortWatch | in | ArcGIS FeatureServer JSON | boot + weekly |
+| World Bank | in | HTTPS JSON | manual (`raw_market_data`) |
+| Groq / Gemini | out+in | HTTPS JSON | per AI request |
+| SMTP (nodemailer) | out | SMTP | on new HIGH/CRITICAL alert |
+| **Future:** ERP/MES/WMS | — | API/ETL | not yet built (page 16) |
+
+
+---
+
+# 5. Data Flow — Lifecycle of a News Article
+
+## 5.1 Narrative
+
+1. **Fetch.** The user scanner builds up to 20 search queries from the user's profile (keywords + commodities + regions, region-pinned) and pulls Google News RSS (XML) plus curated feeds. XML is parsed to plain JS objects immediately: `{ title, description, url, publishedAt, source }`. Nothing is stored as XML.
+2. **Within-scan dedup.** Same-story syndication collapsed by normalized title key.
+3. **Pipeline decision (per user).** The article runs stages 1→8 (page 6). Every outcome — accept or reject, with stage and reason — is written to `pipeline_audit_logs` (including `published_at`, migration 024).
+4. **Rescue lane.** Keyword-rejected articles that are semantically unmistakable (MiniLM similarity ≥ rescue threshold) are re-accepted with a rescue score.
+5. **Ranking + freshness gate.** Accepted articles with priority ≥ Medium are sorted by relevance; articles **published > 24 h ago are not alerted**. Top-N become alerts.
+6. **Alert persistence.** `INSERT` into `alerts` with `dedup_key = profile:<titleKey>` (unique per user — the durable dedup guard). Payload carries source, description, `semanticSimilarity`, `publishedAt`. New CRITICAL/HIGH alerts trigger email.
+7. **Serving.** `getActiveAlerts` lazily expires rows > 24 h old, hides pre-profile-change rows (`settings_changed_at`) and stale-published news alerts; the severity quota (1 CRITICAL / 2 HIGH / 1 MEDIUM) shapes the Alerts tab, `/api/alerts`, and Morning Brief identically.
+8. **Categorized feed.** Accepted articles from the audit log are entity-matched, categorized, split into risk/commodity streams, and served by `/api/news/categorized` with `publishedAt` for the date filter.
+9. **On-demand AI.** From an alert the user can request an AI summary (Groq, cached in `article_summary_cache`), a deep-dive, or a precedent lookup ("last time this happened").
+
+## 5.2 Flowchart
+
+```mermaid
+flowchart TD
+  A[Profile: keywords, commodities, regions] -->|build ≤20 queries| B[Google News RSS + curated feeds]
+  B -->|XML → JS objects| C[Within-scan title dedup]
+  C --> D{9-stage pipeline<br/>per user}
+  D -->|reject stage 3-8| E[(pipeline_audit_logs<br/>reason + stage + published_at)]
+  D -->|accept| E
+  D -->|keyword-rejected| F{Semantic rescue<br/>MiniLM sim ≥ threshold?}
+  F -->|yes| G[Accepted set]
+  F -->|no| E
+  D -->|accept| G
+  G --> H{Priority ≥ Medium AND<br/>published ≤ 24h?}
+  H -->|no| I[Feed only - no alert]
+  H -->|yes, top-N by score| J[(alerts<br/>unique user+dedup_key)]
+  J -->|HIGH/CRITICAL| K[Email via nodemailer]
+  J --> L[/api/alerts + /analyze<br/>quota: 1C/2H/1M/]
+  E -->|is_accepted=true| M[/api/news/categorized<br/>streams + filters incl. publish date/]
+  L --> N[Alerts tab / Morning Brief]
+  M --> O[News feed]
+  N -->|user click| P[AI summary / deep-dive / precedent<br/>Groq + Gemini, cached]
+```
+
+## 5.3 Freshness & Consistency Rules
+
+| Rule | Mechanism |
+|---|---|
+| No alerts on stale stories | Publish-date gate (> 24 h ⇒ no alert) at creation **and** at read time |
+| No zombie alerts | `status='expired'` when `created_at` > 24 h (lazy, on read) |
+| No stale-profile alerts | `created_at >= settings_changed_at` filter |
+| No duplicate alerts across scans/restarts | DB unique index `(user_id, dedup_key)` |
+| Same numbers everywhere | Alerts tab, `/api/alerts`, Morning Brief share the same fetch + sort + quota; price change is vs previous close on all surfaces |
+| Re-evaluate on profile change | Rejection memo keyed by profile fingerprint (includes `custom_regions`) |
+
+
+---
+
+# 6. AI Pipeline
+
+## 6.1 Relevance Pipeline (stages)
+
+| Stage | Name | What it does | Reject reason examples |
+|---|---|---|---|
+| 1 | Normalize | Trim/decode fields; carry `publishedAt` through | — |
+| 2 | Profile builder | Builds the watchlist profile: expanded query seeds (`mlSeeds`, incl. customer graft), per-profile semantic threshold | — |
+| 3 | Rule checks | Blocklist / excluded-context kills | "Matched excluded context" |
+| 4 | Region gate | Article must touch a tracked region (canonicalized) unless commodity-matched | "No tracked region" |
+| 5 | Relevance scoring | Keyword/commodity/business scoring → 0–100 | "Score too low (n)" |
+| 6 | Semantic filter | MiniLM max-cosine of article vs profile seeds vs threshold (see 6.3) | "Semantic similarity x < threshold" |
+| 7 | Dedup / memo | Rejection memo keyed by profile fingerprint; already-alerted set | "Previously rejected (unchanged profile)" |
+| 8 | Priority classifier | Score → Critical/High/Medium/Low/Ignored | "Priority Ignored" |
+| 9 | Emission | Audit log + alert insert + email | — |
+
+**Rescue lane:** an article rejected at stages 3–5 can still be accepted if MiniLM similarity to the profile seeds is unmistakably high — score is derived from similarity (60–84), reason recorded as "Semantic rescue".
+
+## 6.2 Entity Extraction & Event Categorization
+
+- **Entity matcher** (`entity_matcher.js`): master-data match of commodities, regions, chokepoints, ports, routes, suppliers → typed chips on news cards (`REGION_CATALOG` powers the region filter).
+- **Categorizer** (`categorizer.js`): assigns one business category per article (e.g. Supply Chain Disruption, Trade Policy, Prices) with `isDisruption` flag; combined with entity streams to produce `risk` / `commodity` / `other`.
+- **Local extraction** (`compromise` + sentiment): entities and extractive "NLP Summary" sentences without any LLM call.
+
+## 6.3 Semantic Filter & Rocchio (current state)
+
+- Embeddings: `Xenova/all-MiniLM-L6-v2`, 384-dim, L2-normalized; cosine = dot product. Seed vectors cached by content hash; article embedded once (title + description, ≤ 500 chars).
+- **Decision score:** `maxCosine(article, positiveSeeds)`; accept if ≥ effective threshold.
+  - Effective threshold precedence: admin-touched tuning value → per-profile calibration → tuning default → 0.30.
+- **Rocchio noise term is currently DISABLED** (`rocchioGamma = 0` by default). When γ > 0 the gate instead uses `maxPos − γ · cosine(article, noiseCentroid)`. Re-enable via env `ROCCHIO_GAMMA` or the admin slider (prior default 0.5). The raw similarity is always recorded and shown as the ⛭% badge regardless.
+- Failure policy: gate **fails open** (embedding error ⇒ pass), rescue **fails closed**.
+
+## 6.4 LLM Task Routing
+
+| Task | Model | Key pinning | Output |
+|---|---|---|---|
+| Planner | Groq `llama-3.3-70b-versatile` | key 0 | JSON, exactly 4 recommendations (2×90D, 2×365D), max_tokens 3000 |
+| Deep-dive | Groq 70B | key 1 | JSON, 300–450 words, 3–5 bullets, max_tokens 3000 |
+| Article summary | Groq 70B | key 2 (`LABELING_GROQ_KEY_INDEX`) | Cached in `article_summary_cache` |
+| Market indicators | Gemini 2.5 Flash | — | JSON, 3 drivers {factor, direction, strength, evidence}, 1 h cache |
+| Precedent classifier | Gemini 2.5 Flash | — | Event normalization/matching |
+
+- `GROQ_API_KEY` = comma-separated key pool. Preferred key per task; **on 429 the per-key breaker opens for the provider-stated cooldown and the call rotates to the next closed-breaker key (same model)**. Only when all keys are limited does the error propagate.
+- Temperature: `tuning.llmTemperature` (0.1). Token usage tracked per call (`[TOKENS]` logs).
+
+> **⚠️ No-fallback policy** — On any generation failure the route returns an error; the UI renders an error banner. No smaller model, no canned text, no stale cache substitution.
+
+## 6.5 Sequence — Planner Request
+
+```mermaid
+sequenceDiagram
+  participant U as User (Recommendations tab)
+  participant FE as React App
+  participant API as Express /api/analyze-planner
+  participant PS as plannerService
+  participant DB as PostgreSQL
+  participant G as Groq (key pool)
+
+  U->>FE: open tab / force refresh
+  FE->>API: POST prices, energy, news, weather, fx
+  API->>DB: getActiveAlerts + accepted headlines (titles only)
+  API->>PS: buildPlannerPrompt(contextBundle)
+  PS-->>API: system prompt + MARKET INTELLIGENCE (HEADLINES ONLY)
+  API->>G: callGroq(llama-3.3-70b, json, task=planner)
+  alt 429 on pinned key
+    G-->>API: rate limited
+    API->>G: retry on next pool key (same model)
+  end
+  G-->>API: JSON (4 recommendations)
+  API-->>FE: recommendations
+  alt all keys limited / parse failure
+    API-->>FE: 5xx error message (no fallback)
+  end
+```
+
+## 6.6 Sequence — Alert Deep-Dive
+
+```mermaid
+sequenceDiagram
+  participant U as User (alert card)
+  participant API as /api/analyze-deep-dive
+  participant DB as PostgreSQL
+  participant G as Groq key 1
+
+  U->>API: POST alert {title, reason, url}
+  API->>DB: profile + tracked regions/commodities
+  API->>G: analysisPrompt (300-450 words, 3-5 bullets, temp 0.1)
+  G-->>API: JSON analysis
+  API-->>U: rendered deep-dive
+  Note over API: short/unparseable response ⇒ 503 (no retry-with-fallback)
+```
+
+## 6.7 Forecast / Analytics Components (as built)
+
+| Component | Method | Output |
+|---|---|---|
+| Price anomaly detector (`price-anomaly.js`) | Robust σ (MAD) on daily returns; z ≥ 2.5 and move ≥ 1.5%; 90-day range breaks; vol-regime shift (σ7/σ90 ≥ 2); futures roll-guards | PRICE alerts with planner-readable wording ("5× its typical daily move") |
+| Precedent engine | Normalize event → match historical events → compute aftermath | "Last time this happened" panel |
+| Price analogs | Similar historical price patterns | Analog summaries in analysis |
+| ML forecasts (`/api/ml-forecasts`, mig. 006) | Stored forecast outputs surfaced to dashboard | Forecast panel |
+| Planner horizons | LLM recommendations constrained to 2 × 90-day + 2 × 365-day | Recommendations tab |
+
+> **ℹ️** There is no separate 7/30/90-day statistical forecast engine; horizon guidance is produced by the planner (90/365-day) plus the anomaly/precedent analytics above.
+
+
+---
+
+# 7. Database Design
+
+PostgreSQL; schema managed by **append-only, idempotent migrations** (`migrations/001…025`, executed on every boot by `migrate.js`; one failure does not block the rest). All user-linked tables use `ON DELETE CASCADE`.
+
+## 7.1 Core Tables
+
+| Table | Grain | Key columns | Purpose / cadence |
+|---|---|---|---|
+| `users` | 1 row / user | `id` PK, `email` (unique), `password_hash` (bcrypt), `is_admin`, `is_onboarded`, `company_name`, `created_at` | Identity + role |
+| `user_profiles` | 1 row / user | `user_id` PK/FK; JSONB: `commodities`, `regions`, `custom_regions`, `news_keywords`, `custom_blocklist`, `price_alerts`, `weather_regions` (021), `tracked_ports` (022), `tracked_currencies` (023, default 6), `last_scan_result` (025); `focus_product`, `focus_region`, `template_name`, `customer_id`, `settings_changed_at` (017), `last_scan_at` | Personalization hub |
+| `session` | 1 row / session | `sid` PK, `sess` JSON, `expire` | connect-pg-simple store |
+| `alerts` (010) | 1 row / alert / user | `id` PK, `user_id` FK, `source` (GEO\|PROFILE_NEWS\|PRICE), `category`, `severity`, `title`, `reason`, `url`, `relevance_score`, `payload` JSONB (incl. `semanticSimilarity`, `publishedAt`), `dedup_key`, `status` (active\|acknowledged\|expired), `created_at` | **Unique `(user_id, dedup_key)`** = durable dedup; 24 h lazy expiry |
+| `pipeline_audit_logs` (008/009/024) | 1 row / article / user / scan | `id` PK, `user_id` FK, `article_title`, `article_url`, `source`, `stage_dropped`, `rejection_reason`, `relevance_score`, `is_accepted`, `extracted_features` JSONB, `published_at` (024), `scanned_at` | Explainability + categorized feed source |
+| `price_ticks` (001) | 1 row / symbol / tick | `symbol`, `price`, `change_pct`, `recorded_at` | 15-min Yahoo tick; BRIN on time |
+| `weather_snapshots` (001) | 1 row / region / fetch | `region_name`, `lat`, `lon`, `temp_c`, `precip_mm`, `humidity`, `wind_kph`, `condition`, `recorded_at` | Written on each `/api/weather` |
+| `port_activity_snapshots` (022) | 1 row / port / day | `portid`, `portname`, `country`, `iso3`, `activity_date`, `portcalls`, `portcalls_container`, `import_tons`, `export_tons`, `fetched_at`; **unique `(portid, activity_date)`** | IMF PortWatch cache; weekly |
+| `news_embeddings` (011) | 1 row / article | `article_url`, `title`, `summary`, `source`, `published_at`, `embedding`, `region`, `commodity` | MiniLM vectors for similarity search |
+| `article_summary_cache` (015/018/019) | 1 row / article | url/title key, summary, key figures, version | Avoids re-summarizing (SUMMARY_VERSION busts) |
+| `customer_profiles` (012) | 1 row / customer | `id`, `news_keywords`, `regions`, `ml_seeds` (20 curated positive headlines for Aramtec), `custom_blocklist`, `signal_keywords` | Grafted onto member users at scan time |
+| `ai_feedback` (002) | 1 row / rating | user, feature, context, response, is_helpful, notes | 👍/👎 loop |
+| `sop_plans` | 1 row / plan | plan fields + status | S&OP plan store |
+| `raw_news_articles` (004) | 1 row / RSS item | incl. `raw_json` JSONB, `published_at` NOT NULL | rss-parser lane |
+| `raw_weather` (004) | 1 row / region / day | unique `(date, region)` | Open-Meteo ingester |
+| `raw_market_data` (004) | 1 row / metric obs | unique `(date, source, metric_name, category, region)` | World Bank |
+| Forecast/reco stores (005–007) | per output | canonical signals, forecast outputs, recommendations | `/api/ml-forecasts` etc. |
+
+## 7.2 ER Diagram
+
+```mermaid
+erDiagram
+  users ||--|| user_profiles : "user_id"
+  users ||--o{ alerts : "user_id (cascade)"
+  users ||--o{ pipeline_audit_logs : "user_id (cascade)"
+  users ||--o{ ai_feedback : "user_id"
+  users ||--o{ sop_plans : "user_id"
+  customer_profiles ||--o{ user_profiles : "customer_id (graft)"
+
+  user_profiles {
+    int user_id PK
+    jsonb commodities
+    jsonb regions
+    jsonb custom_regions
+    jsonb weather_regions
+    jsonb tracked_ports
+    jsonb tracked_currencies
+    jsonb last_scan_result
+    text focus_product
+    text focus_region
+    timestamptz settings_changed_at
+  }
+  alerts {
+    serial id PK
+    int user_id FK
+    text source
+    text severity
+    text dedup_key UK
+    text status
+    jsonb payload
+    timestamptz created_at
+  }
+  pipeline_audit_logs {
+    serial id PK
+    int user_id FK
+    text article_title
+    numeric stage_dropped
+    text rejection_reason
+    boolean is_accepted
+    timestamptz published_at
+    timestamptz scanned_at
+  }
+  price_ticks {
+    serial id PK
+    text symbol
+    numeric price
+    timestamptz recorded_at
+  }
+  port_activity_snapshots {
+    serial id PK
+    text portid UK
+    date activity_date UK
+    int portcalls
+    bigint import_tons
+  }
+  news_embeddings {
+    serial id PK
+    text article_url
+    timestamptz published_at
+    text embedding
+  }
+```
+
+## 7.3 Indexing Highlights
+
+| Index | Table | Why |
+|---|---|---|
+| UNIQUE `(user_id, dedup_key)` | alerts | Cross-restart alert dedup (insert-first pattern) |
+| `(user_id, status, created_at DESC)` | alerts | Active-alert reads |
+| `(user_id, scanned_at DESC)` | pipeline_audit_logs | Analytics + categorized feed |
+| `(user_id, published_at DESC)` (024) | pipeline_audit_logs | Publish-date filter |
+| BRIN `recorded_at` + btree `symbol` | price_ticks | Time-series reads at low index cost |
+| UNIQUE `(portid, activity_date)` | port_activity_snapshots | Weekly upsert idempotency |
+
+## 7.4 Conventions & Notes
+
+- **JSONB for per-user lists** (commodities, regions, ports, currencies): read-modify-write via dedicated setters (`setWeatherRegions`, `setTrackedPorts`, `setTrackedCurrencies`) so unrelated profile fields are never clobbered.
+- **Self-healing inserts:** audit-log insert retries after `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` on error 42703 (schema drift on old deployments).
+- **Timestamps:** `created_at`/`scanned_at` = system time; `published_at` = article publish time. Alert freshness uses **both** (creation expiry + publish gate).
+- Legacy: `better-sqlite3` dependencies remain from the pre-Postgres era (`migrate-sqlite-to-pg.js`); Postgres is the only live store.
+
+
+---
+
+# 8. API Documentation
+
+**Base:** same origin as the dashboard (Express serves both). **Auth:** session cookie (`credentials: 'include'`); login via `/api/auth/login`. `requireAuth` guards all routes below unless noted; `requireAdmin` additionally checks `is_admin`. **Errors:** JSON `{ "error": "message" }` with 4xx/5xx; AI routes return 5xx on generation failure (no fallback payloads).
+
+## 8.1 Auth
+
+| Method + URL | Body | Response |
+|---|---|---|
+| POST `/api/auth/register` | `{username, email, password, company_name?}` | `{user}` — bcrypt(10) hash stored |
+| POST `/api/auth/login` | `{email, password}` | `{user, profile}` + sets session cookie (24 h) |
+| POST `/api/auth/logout` | — | `{success}` |
+| GET `/api/auth/me` | — | `{user, profile}` or `{user:null}` |
+| PUT `/api/auth/profile` | profile fields (commodities, regions, keywords, focus_*) | `{profile}`; sets `settings_changed_at` on material change |
+| GET `/api/auth/templates` | — | onboarding templates + `ALL_COMMODITIES` |
+| PUT `/api/auth/admin/users/:id/role` 🔒admin | `{is_admin}` | `{success}` |
+
+## 8.2 Market Data
+
+| Method + URL | Params | Response (shape) |
+|---|---|---|
+| GET `/api/commodities` | — | `{prices:[{symbol, price, unit, currency, producers, regions}]}` |
+| GET `/api/history` | `symbol`, `range=1D\|7D\|1M\|1Y` | `{data:[{time, price, open, high, low, volume}]}` — 1D is time-bounded to last 24 h of trading |
+| GET `/api/price-history/:symbol` | `days` | `{history}` from `price_ticks` |
+| GET `/api/energy` | — | Brent + NatGas |
+| POST `/api/track` | `{symbol}` | adds symbol to profile + global tracker |
+| GET `/api/search` | `q` | Yahoo symbol search |
+| GET `/api/live-feed` (SSE) | — | 5-s price ticks filtered to the user's commodities |
+
+**Example** — `GET /api/history?symbol=WHEAT&range=1D`
+```json
+{ "success": true, "symbol": "WHEAT", "range": "1D",
+  "data": [ { "time": "2026-07-16T13:15:00.000Z", "price": 5.4325, "open": 5.44, "high": 5.45, "low": 5.42, "volume": 1250 } ] }
+```
+
+## 8.3 Weather / Ports / FX (Command Center)
+
+| Method + URL | Body/Params | Notes |
+|---|---|---|
+| GET `/api/weather` | — | Live WeatherAPI for `weather_regions`; writes `weather_snapshots` |
+| GET `/api/weather-extended` | — | 30-d history + 7-d forecast + analytics for news regions |
+| GET `/api/regions/search` | `q` | WeatherAPI location type-ahead |
+| POST `/api/weather-regions/add` / `remove` | `{name, country?, lat?, lon?}` / `{name}` | Manages `weather_regions` only |
+| GET `/api/ports` | — | Tracked ports + throughput anomaly (recent 7d vs 28-d baseline; status bands; lazy first-ingest) |
+| GET `/api/ports/search` | `q` | Static 50-port GCC catalog |
+| POST `/api/ports/add` / `remove` | `{portid}` | Validates GCC portid |
+| GET `/api/forex` | — | Selected currencies only: `{rates:{AED:{rate, name}}, base:"USD", lastUpdate}`; **503 if `OPEN_EXCHANGE_APP_ID` missing** |
+| GET `/api/forex/search` | `q` | 173-currency OXR catalog (keyless), minus already-tracked |
+| POST `/api/forex/add` / `remove` | `{code}` | 3-letter code validated against catalog |
+
+## 8.4 News & Alerts
+
+| Method + URL | Params | Notes |
+|---|---|---|
+| GET `/api/news` | — | Raw profile-query feed `{articles:[{title,url,publishedAt,description,source,via}]}` |
+| GET `/api/news/categorized` | — | `{items:[{title,url,source,score,scannedAt,publishedAt,category*,stream,priority,entities,regions}], regionCatalog}` |
+| GET `/api/alerts` | — | Active alerts after sort + severity quota |
+| POST `/api/analyze` | market payload | Deterministic analysis + alerts view (`detectedAt`) + market indicators (`drivers`, `driversError`) |
+| POST `/api/trigger-scan` | — | Fire-and-forget scan; returns `{started, running}` |
+| GET `/api/scan-status` | — | `{running, stats, finishedAt}`; falls back to DB-persisted `last_scan_result` after restarts; `known:false` if never scanned |
+| GET `/api/pipeline-audit` | — | Per-article audit rows |
+| GET `/api/morning-brief` | — | `{priceMovers (vs prevClose), alertCounts, newAlerts, acceptedNews}` |
+| POST `/api/feedback` | `{featureName, context, aiResponse, isHelpful, userNotes}` | 👍/👎 store |
+| GET `/api/geo-alerts` | — | Recent geopolitical alerts |
+
+## 8.5 AI Endpoints
+
+| Method + URL | Body | Behavior |
+|---|---|---|
+| POST `/api/analyze-planner` | `{prices, energy, news, weather, forex, weatherExtended, keywords, forceRefresh?}` | Groq 70B, task=planner. Returns exactly 4 recommendations (2×90D + 2×365D). 5xx on failure. |
+| POST `/api/analyze-deep-dive` | `{alert}` | Groq 70B, 300–450 words, 3–5 bullets. 503 on parse failure/short output. |
+| POST `/api/weather/ai-forecast` | `{region}` | Deterministic yield text (no LLM) |
+
+**Planner response example (truncated):**
+```json
+{ "success": true, "recommendations": [
+  { "horizon": "90D", "action": "Forward-buy 60% of Q4 wheat requirement",
+    "rationale": "Black Sea export friction + 12% price rally...", "confidence": "Medium" } ] }
+```
+**Failure example:** `500 { "error": "Groq llama-3.3-70b-versatile generation failed: rate limit..." }`
+
+## 8.6 Admin 🔒
+
+| Method + URL | Body | Notes |
+|---|---|---|
+| GET/POST `/api/admin/tuning` | `{semanticThreshold?, rocchioGamma?, extraSeeds?, noiseSeeds?, ...}` | Runtime-only (resets on restart); unchanged values ignored; lists sanitized (≤24 items, ≤300 chars) |
+| GET `/api/admin/tuning/seeds-preview/:userId` | — | `{profileSeeds, extraSeeds, effectiveSeeds, effectiveThreshold, noiseSeeds, rocchioGamma}` |
+| GET `/api/auth/admin/users` | — | User list for the panel |
+
+## 8.7 Error Code Summary
+
+| Code | Meaning here |
+|---|---|
+| 400 | Missing/invalid parameter (symbol, portid, currency code, region name) |
+| 401 | No/expired session |
+| 403 | Not admin |
+| 404 | Unknown entity (currency, weather location) |
+| 503 | Dependency not configured (missing OXR/Weather key) or AI generation degraded (deep-dive parse failure, all Groq keys rate-limited) |
+| 500 | Upstream/API failure with `error` message |
+
+
+---
+
+# 9. Recommendation Engine
+
+Two cooperating layers: a **deterministic alert-relevance layer** (rules, scoring, quotas — fully explainable) and the **LLM planner** (structured recommendations grounded in the deterministic layer's outputs).
+
+## 9.1 Rule Matching & Business Logic (deterministic)
+
+| Step | Logic | Module |
+|---|---|---|
+| Exposure scoring | Event × user exposure: commodity match, region match, keyword strength → `relevance_score` 0–100 | `services/alert-relevance.js` (`scoreAlertExposure`) |
+| Severity mapping | From pipeline priority (`severityFromPriority`) or score bands (`severityFromScore`) → CRITICAL/HIGH/MEDIUM/LOW | same |
+| Alert quota | Display shape: **max 1 CRITICAL, 2 HIGH, 1 MEDIUM, LOW dropped** — keeps alerts scarce and trusted; identical on Alerts tab, `/api/alerts`, Morning Brief | `applyAlertQuota` |
+| Freshness | Publish ≤ 24 h to create; `created_at` ≤ 24 h to display; `settings_changed_at` gate after profile changes | `getActiveAlerts` |
+| Dedup | `dedup_key = profile:<normalized-title>`; DB unique index is the source of truth | insert-first pattern |
+| Price rules | Anomaly detector: z-score ≥ 2.5 **and** move ≥ 1.5% (materiality floor); 90-day range breaks; vol-regime shift; futures roll-guards suppress fake moves | `services/price-anomaly.js` |
+| Precedents | Event normalized → matched to historical analogs → aftermath computed ("last time this happened") | `services/precedent-engine.js` |
+
+### Severity / priority scoring
+
+```
+pipeline score (0–100) ─→ priority: ≥ threshold bands → Critical / High / Medium / Low / Ignored
+priority ─→ alert severity (Critical→CRITICAL …)
+price anomaly ─→ severity: |z| ≥ 3.5 → CRITICAL, ≥ 2.5 → HIGH; range-break → HIGH/MEDIUM
+```
+
+Prioritization within a severity: newest `created_at` first; ties broken by `relevance_score`.
+
+## 9.2 LLM Planner (recommendation generation)
+
+- **Input bundle (titles-only by design** — caps input tokens): active alerts (post-quota), accepted news headlines, live prices, energy, FX, weather analytics, profile keywords.
+- **Prompt contract** (`services/planner/plannerService.js`): senior procurement strategist persona; **exactly 4 recommendations — 2 × 90-day, 2 × 365-day**; each with action, rationale tied to cited signals, confidence; JSON-mode output; temperature 0.1.
+- **Model/routing:** Groq `llama-3.3-70b-versatile`, task=planner (key 0, pool rotation on 429), max_tokens 3000.
+- **Grounding rule:** rationale must reference the supplied signals (alerts/headlines/prices) — the deterministic layer decides *what the model is allowed to see*, which is the primary hallucination control.
+- **Failure:** error surfaced to UI; no fallback content.
+
+## 9.3 Market Indicators (drivers)
+
+- Gemini 2.5 Flash; input = active non-PRICE alerts (top 5) + short prices/weather/news lists; output = 3 drivers `{factor, direction UP|DOWN|FLAT, strength 1–10, explanation, evidence[]}`.
+- PRICE alerts are excluded as inputs (a price move is an *effect*, not a driver).
+- 1-hour cache keyed by profile + active-alert titles — a new alert invalidates immediately.
+- On failure: `drivers: []` + `driversError` rendered as a banner.
+
+## 9.4 Explainability Chain
+
+Every recommendation is traceable end-to-end:
+
+```
+recommendation → cited alert/headline → alerts row (reason, relevance_score, payload.semanticSimilarity)
+             → pipeline_audit_logs row (stage, rejection/acceptance reason, published_at)
+             → raw article URL
+```
+
+
+---
+
+# 11. Deployment Architecture
+
+> **ℹ️** No Docker, no Kubernetes, no separate CI system. Deployment is **Render-native**: push to `main` → Render builds → runs. This page documents that accurately.
+
+## 11.1 Topology
+
+```mermaid
+flowchart TD
+  DEV[Developer laptop<br/>local Node + local Postgres] -->|git push main| GH[GitHub<br/>Shashwatm7/fops-pulse]
+  GH -->|auto-deploy webhook| R[Render Web Service - free tier]
+  subgraph R
+    B[Build: npm install<br/>+ cd dashboard && npm install && npm run build]
+    S[Start: node migrate.js && node server.js]
+    B --> S
+  end
+  S <--> PG[(Render PostgreSQL<br/>fops-pulse-db)]
+  S <--> X1[Groq / Gemini]
+  S <--> X2[Yahoo / WeatherAPI / OXR / PortWatch / RSS]
+  U[Users] -->|HTTPS| S
+```
+
+## 11.2 Build & Start
+
+| Phase | Command | Notes |
+|---|---|---|
+| Build | `npm install` + `npm run build` (`cd dashboard && npm install && npm run build`) | `dashboard/dist` is **gitignored** and rebuilt on every deploy |
+| Start | `node migrate.js && node server.js` | Migrations are idempotent and re-run on **every boot**; one failing file logs and continues |
+| Static serving | Express serves `dashboard/dist`; `index.html` sent `Cache-Control: no-cache`, hashed `/assets/` immutable | Prevents stale-chunk crashes after deploys |
+
+## 11.3 Free-Tier Behavior (operationally important)
+
+| Behavior | Impact | Mitigation |
+|---|---|---|
+| Spin-down when idle | First request after idle: 30–60 s cold start | Warm the URL before demos; paid tier removes this |
+| Deploy queue lag | Push → live can lag several minutes | Check Render dashboard "Events" |
+| Restart wipes memory | In-memory caches/breakers/scan state lost | Critical state persisted: alerts, audit logs, embeddings, `last_scan_result` (mig. 025) |
+| No cron | Schedulers are boot-time `setInterval`s | Prices 15 min; PortWatch boot + weekly; scans gated by last-scan age |
+
+## 11.4 Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Postgres connection (TLS for Render external) |
+| `SESSION_SECRET` | **Must be set in prod** (code has a dev fallback constant) |
+| `GROQ_API_KEY` | Comma-separated key pool; task pinning planner:0, deepdive:1, summary:2, drivers:3, precedent:4 (mod N) |
+| `GEMINI_API_KEY` | Market indicators + precedent classifier |
+| `WEATHER_API_KEY` | WeatherAPI (live weather + location search) |
+| `OPEN_EXCHANGE_APP_ID` | Open Exchange Rates (FX panel; 503 without it) |
+| `RSS_FEEDS` | Optional curated feed URLs (prevetted lane) |
+| `ENABLE_USER_SCANNER`, `ENABLE_GEO_SCANNER`, `ENABLE_BACKGROUND_AI`, `ENABLE_AI_WORKER`, `ENABLE_AI_FORECASTER` | Feature switches (`'true'` to enable) |
+| `USER_SCAN_INTERVAL_MS`, `GEO_SCAN_INTERVAL_MS`, `AI_WORKER_INTERVAL_MS` | Scheduler cadences |
+| `ROCCHIO_GAMMA`, `SEMANTIC_THRESHOLD`, `LABELING_GROQ_KEY_INDEX` | Relevance/AI boot defaults (admin panel can override at runtime) |
+| SMTP settings | nodemailer alert emails |
+
+Local dev: `.env` at repo root (**`dotenv` loads with `override: true`** — .env beats inline shell vars; also loads `/etc/secrets/.env` on Render).
+
+## 11.5 CI/CD
+
+- **Pipeline:** GitHub `main` = production. No PR gate or test stage currently — a deliberate early-stage trade-off. Recommended next step: GitHub Action running `node --check`, `npm run build`, and the smoke script before merge.
+- **Rollback:** `git revert` + push (Render redeploys), or Render "Rollback" to a previous deploy.
+- **DB changes:** append a new numbered idempotent migration + register it in `migrate.js`. Never edit an applied migration.
+
+## 11.6 Local Development
+
+```bash
+npm install && (cd dashboard && npm install)
+# .env: DATABASE_URL=postgres://localhost/fops, GROQ_API_KEY=..., WEATHER_API_KEY=...
+node migrate.js && node server.js     # backend :3001
+cd dashboard && npm run dev            # Vite dev server, proxies /api
+npm run smoke:endpoints                # AI endpoint smoke test
+node scripts/make-admin.mjs you@x.com "<postgres url>"   # grant admin (works on Render DB)
+```
+
+
+---
+
+# 12. Security
+
+## 12.1 Authentication
+
+- Email + password; **bcryptjs, cost 10**; hashes only (`users.password_hash`).
+- Session-based auth: `express-session` + `connect-pg-simple` (sessions in Postgres, survive restarts).
+- Cookie: `httpOnly`, `SameSite=Lax`, `maxAge` 24 h, `secure` when `NODE_ENV=production` or on Render.
+
+> **🔴 Action required** — `SESSION_SECRET` falls back to a constant in code when unset. It **must** be set as an env var in production; rotate if the repo was ever shared while the fallback was live.
+
+## 12.2 Authorization
+
+| Level | Mechanism |
+|---|---|
+| Authenticated user | `requireAuth` middleware on all `/api/*` data routes; SSE feed included |
+| Admin | `requireAdmin` (checks `users.is_admin`) on tuning, user-role, seeds-preview routes |
+| Data isolation | All per-user reads/writes keyed by `req.session.userId` / `req.user.id`; user-linked tables `ON DELETE CASCADE` |
+
+Role grant paths: Admin panel (PUT `/users/:id/role`) or `scripts/make-admin.mjs` (explicit DB URL required — deliberately does not read `.env`).
+
+## 12.3 Secrets Management
+
+- All provider keys via env vars / Render secret files (`/etc/secrets/.env`). None in the frontend bundle — every external call is server-side.
+- Groq keys held in a pool string; **breaker map is keyed by key string in memory and never logged**.
+- `.env` is gitignored; `make-admin.mjs` requires the URL explicitly so operators always know which DB they're touching.
+
+## 12.4 Rate Limiting
+
+| Direction | Status |
+|---|---|
+| Outbound (providers) | Per-key circuit breakers honoring provider cooldowns; key-pool rotation; Gemini embedding cooldown; batch pacing on Yahoo |
+| Inbound (our API) | **None yet** — no per-IP/per-user request limiting. Login brute-force throttling recommended (see page 16 backlog). |
+
+## 12.5 Input Handling
+
+- Parameterized SQL everywhere (`pg` placeholders) — no string-built queries.
+- Region/port/currency inputs validated against catalogs or sanitized (length caps, list caps in tuning).
+- React escapes rendered content by default; no `dangerouslySetInnerHTML` in the dashboard code.
+- RSS content is parsed to plain fields; article HTML never rendered raw.
+
+## 12.6 Logging & Privacy
+
+- Logs contain user IDs and article titles, never passwords or API keys.
+- PII stored: email, username, company name. No financial or personal-sensitive data.
+- User deletion cascades all owned rows (profiles, alerts, audit logs, feedback).
+- Alert emails go only to the account's own address.
+
+## 12.7 Transport
+
+- TLS terminated by Render (HTTPS externally).
+- Outbound: HTTPS to all providers **except** WeatherAPI calls currently using `http://api.weatherapi.com` — flip to `https://` (backlog).
+
+
+---
+
+# 13. Testing Strategy
+
+## 13.1 Current State (honest)
+
+| Layer | Exists today | Detail |
+|---|---|---|
+| AI endpoint smoke tests | ✅ | `scripts/ai-endpoints-smoke.mjs` (`npm run smoke:endpoints`): mints a session, hits planner / deep-dive / drivers, asserts real content and **absence of any fallback markers** ("DETERMINISTIC FALLBACK", "AI Generation Failed", …). `SMOKE_BASE` targets any environment. |
+| Groq key smoke | ✅ | `scripts/groq-smoke.mjs` — validates pool keys |
+| Syntax gate | ✅ (manual) | `node --check server.js db.js services/...` before push |
+| Build gate | ✅ (manual) | `npm run build` (Vite) must pass |
+| Ad-hoc verification harness | ✅ | Direct-module scripts against local Postgres (e.g. insertAlert round-trip, migration application, PortWatch ingest, anomaly math vs raw source data) |
+| Unit / integration suites | ❌ | No Jest/Vitest suite yet |
+| Load tests | ❌ | Not yet |
+
+## 13.2 Target Test Pyramid
+
+| Level | Scope | Priority candidates |
+|---|---|---|
+| Unit | Pure logic, no I/O | `price-anomaly.js` (σ/z/roll-guards — highest value), `alert-relevance.js` (quota, severity), stage-6 gate math (threshold precedence, γ=0 vs γ>0), `trackedRegionNames`, publish-date freshness gate, `groqRetryMs` parsing |
+| Integration (DB) | Against throwaway Postgres schema | insert-first alert dedup (unique index), audit-log self-heal (42703), `getActiveAlerts` gating (24 h + settings_changed_at + publish date), JSONB setters don't clobber siblings |
+| API | supertest against Express app | Auth flows, 401/403 gates, ports/forex add-remove validation, scan-status fallback (memory → DB → known:false) |
+| AI evaluation | Prompt-contract checks | Planner: exactly 4 recs, 2×90D + 2×365D, JSON schema; deep-dive length bounds; drivers: 3 items with valid direction/strength; **golden-set relevance eval**: labeled articles vs pipeline accept/reject to regression-test threshold/γ changes |
+| Load | k6/artillery | SSE fan-out, `/api/news/categorized` under audit-log growth, concurrent scans |
+| Acceptance | Scripted user journeys | Onboard → track commodity → scan → alert visible → deep-dive → planner |
+
+## 13.3 Principles Already in Force
+
+1. **Verify against the real source** — e.g., PortWatch anomaly math was validated by re-querying the FeatureServer and comparing to displayed values; chart 1D fix validated against live Yahoo bars.
+2. **No-fallback is a testable contract** — smoke test fails if any canned-text marker appears.
+3. **Bug fix ⇒ regression check** — each fixed defect (stale chunks, price-basis mismatch, fingerprint memo, 1D window) has a documented reproduction that belongs in the future suite.
+4. **Migrations must be re-runnable** — every migration is executed on every boot; new migrations are tested by running `migrate.js` twice locally.
+
+## 13.4 Recommended CI Gate (next step)
+
+```yaml
+# .github/workflows/ci.yml (proposed)
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services: { postgres: { image: postgres:16, env: { POSTGRES_PASSWORD: test } } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci && node --check server.js db.js migrate.js
+      - run: node migrate.js && node migrate.js   # idempotency: run twice
+      - run: cd dashboard && npm ci && npm run build
+      # unit tests once added: npx vitest run
+```
+
+
+---
+
+# 14. Monitoring & Operations
+
+## 14.1 What Exists Today
+
+| Signal | Where | Tag / Source |
+|---|---|---|
+| Scan lifecycle | Render logs + DB | `[USER-SCANNER]` fetched/accepted counts; `user_profiles.last_scan_result` + `last_scan_at` (survives restarts); `/api/scan-status` |
+| LLM usage & limits | Render logs + in-memory | `[TOKENS]` per-call in/out tokens + cumulative; `[GROQ]` rate-limit + rotation events (`key#N (failover)`); `global.apiRateLimits` from provider headers |
+| Pipeline decisions | Postgres | `pipeline_audit_logs` — every accept/reject with stage + reason; surfaced in Pipeline Analytics UI |
+| Price engine | Render logs | `[TICK PRICES]` fetch issues, chart-fallback pricing |
+| Ingestion health | Render logs | Per-port PortWatch failures, per-feed RSS failures (isolated, non-fatal) |
+| Semantic layer | Render logs | `[SEMANTIC]` fail-open events; `[EMBEDDINGS]` Gemini cooldowns |
+| DB self-heal | Render logs | `[DB]` 42703 column self-heals, insert failures |
+| User feedback | Postgres | `ai_feedback` (👍/👎 per AI feature) |
+
+## 14.2 Failure Recovery & Retry Mechanisms (as built)
+
+| Failure | Recovery |
+|---|---|
+| Groq 429 | Per-key breaker opens for provider-stated cooldown → **rotate to next pool key (same model)** → only all-keys-limited surfaces an error |
+| Gemini quota | Embedding circuit pauses embedding calls for parsed cooldown |
+| Yahoo quote path broken | Chart-endpoint fallback lane; roll-guards prevent fake moves; no-prevClose ⇒ honest null % |
+| One RSS feed / port / key fails | Loop continues; failure logged; batch result reports ok/fail counts |
+| Server restart mid-scan | Scan re-runs on schedule; last result persisted (mig. 025); alerts/audit already durable |
+| Stale frontend chunks after deploy | `index.html` no-cache + `lazyWithReload` one-shot reload |
+| Missing DB column (schema drift) | Insert retries after `ADD COLUMN IF NOT EXISTS` |
+| Embedding failure in gate | Fail-open (article passes) so filtering degrades safe, not silent-drop |
+
+## 14.3 Dashboards
+
+- **In-product:** Pipeline Analytics (accept/reject table, scan trigger + persisted result), Admin tuning panel (live params, seeds preview), token/rate-limit chip (from `global.apiRateLimits`).
+- **Render:** service Events (deploys), Logs (live tail), Metrics (CPU/mem/requests).
+
+## 14.4 Gaps & Recommended Additions
+
+| Gap | Recommendation |
+|---|---|
+| No metrics store / APM | Lightweight: `/metrics` endpoint (Prometheus format) or a free-tier APM; track scan duration, accept rate, LLM latency, breaker-open time |
+| No alerting on failures | Uptime ping (e.g. UptimeRobot on `/api/auth/me`) + log-based alert on `Global failure` / `MIGRATION FAILED` |
+| Token spend visibility | Persist `tokenUsage` counters to DB daily (currently reset on restart) |
+| Acceptance-rate drift | Weekly query on `pipeline_audit_logs`: accept % per user; sudden drops signal source or threshold problems |
+
+## 14.5 Runbook Snippets
+
+| Symptom | First checks |
+|---|---|
+| "AI Planner Error: circuit-breaker active" | How many keys in `GROQ_API_KEY`? Logs show `key#N` rotation? All-keys-limited ⇒ wait for cooldown or add keys |
+| Alerts tab empty | `/api/scan-status`; `settings_changed_at` recently bumped? Publish-date gate (only articles ≤ 24 h alert); check audit logs for rejects |
+| No FX panel data | `OPEN_EXCHANGE_APP_ID` set? Route returns 503 with reason |
+| Dashboard blank after deploy | Old tab open during deploy — reload; verify `index.html` no-cache header |
+| Everything slow / first load fails | Free-tier cold start (30–60 s); warm before demos |
+
+
+---
+
+# 15. Risks
+
+| # | Risk | Category | Likelihood | Impact | Mitigation (in place) | Residual action |
+|---|---|---|---|---|---|---|
+| R1 | Free-tier LLM rate limits block AI features | Technical | High | Medium | Key pool + task pinning + per-key breaker + rotation; no-fallback keeps failures honest | Add keys; paid tier for production |
+| R2 | Yahoo Finance unofficial API changes/blocks | Data | Medium | High | Chart-endpoint fallback lane; roll-guards; honest nulls | Licensed feed before commercial scale |
+| R3 | Google News RSS rate-limits server IP | Data | Medium | Medium | Query cap (20/scan), scan gating by last-scan age; curated-feed lane | Rotate feeds; commercial news API |
+| R4 | **AI hallucination** in planner/deep-dive/drivers | AI | Medium | High | Grounding: titles-only curated context; JSON-mode; temp 0.1; deterministic layer picks inputs; drivers exclude price alerts; summary cache versioning busts known-bad outputs (mig. 019); 👍/👎 feedback | Add claim-vs-source eval on golden set |
+| R5 | Relevance filter too strict/loose (silent) | AI/Data | Medium | Medium | Full audit trail per article; admin tuning without redeploy; semantic rescue lane; fail-open gate | Golden-set regression eval per tuning change |
+| R6 | PortWatch misread as real-time congestion | Data | Medium | Medium | UI labeled "weekly, ~1wk lag"; metric named throughput-anomaly; docs state **no dwell data exists** | Small-baseline guard for low-traffic ports (backlog) |
+| R7 | Forecast/recommendation uncertainty taken as fact | Business | Medium | High | Confidence field on recs; horizons bounded (90/365D); precedent panel shows historical dispersion | Add explicit uncertainty ranges (page 16) |
+| R8 | Render free tier availability (spin-down, restarts) | Technical | High | Low–Med | All critical state DB-persisted (alerts, audit, scan results); cold-start documented | Paid instance for production |
+| R9 | Single-instance in-memory state blocks scaling | Technical | Low (now) | High (later) | Documented; DB-backed where critical | Redis/DB for breakers, caches, scanState before scale-out |
+| R10 | SESSION_SECRET fallback constant | Security | Low | High | Env override supported; flagged in docs | Enforce: refuse to boot in prod without env secret |
+| R11 | External API schema drift (WeatherAPI, OXR, PortWatch) | Data | Medium | Medium | Defensive parsing, per-item isolation, explicit 503s | Contract checks in smoke tests |
+| R12 | No inbound rate limiting / brute-force protection | Security | Medium | Medium | Session auth, bcrypt | Add login throttling + per-IP limits |
+| R13 | Alert fatigue if quotas mistuned | Product | Low | Medium | Hard display quota (1C/2H/1M); 24 h freshness both ways | Feedback-driven quota tuning |
+| R14 | Key-person/knowledge risk | Org | Medium | Medium | This documentation space; audit-log explainability | Keep docs versioned with code (`docs/confluence/`) |
+
+
+---
+
+# 16. Future Enhancements
+
+Ordered by the platform's stated priority: (1) feasibility & data availability, (2) measurable waste/service impact, (3) elegance.
+
+## 16.1 Near Term (weeks)
+
+| Item | Rationale | Notes |
+|---|---|---|
+| ERP/MES/WMS integration (read) | Recommendations against *actual* inventory/orders is the core product thesis | Start with CSV/API ingest of stock + open POs; map to commodity exposure |
+| Golden-set relevance eval | Make threshold/γ changes regression-safe | Label ~200 articles per profile; CI job replays pipeline |
+| DB-persisted tuning | Admin tuning currently resets on restart | Move `tuning` store to a table; keep live-read semantics |
+| Small-baseline guard on port panel | Kill misleading % on low-traffic ports (< 2 calls/day baseline) | "Low traffic" neutral band |
+| Inbound rate limiting + login throttling | Security gap | `express-rate-limit` on auth + AI routes |
+| CI gate | Prevent broken pushes to prod | Workflow from page 13 |
+
+## 16.2 Mid Term (quarters)
+
+| Item | Detail |
+|---|---|
+| **Better forecasting models** | Per-commodity statistical baselines (seasonal naive → SARIMAX/LightGBM) on `price_ticks` + `raw_market_data`; publish with uncertainty ranges; planner consumes forecast + interval, not just spot |
+| **Explainable AI** | Every planner rec links its cited alerts/headlines inline (the data chain already exists — surface it in UI); driver evidence chips → source articles |
+| **Multi-region support** | Beyond GCC: region packs (sources, catalogs, port lists per geography); PortWatch already global; news queries per region pack |
+| **Real-time streaming** | Upgrade poll-based scans to streaming ingest (webhooks/SSE from commercial news API); SSE already exists client-side for prices |
+| Waste-reduction module | Tie disruption alerts to shelf-life/stock at risk (needs ERP data) — the FOps core value metric |
+| Multi-tenant hardening | Customer-level isolation, per-tenant tuning, SSO |
+
+## 16.3 Long Term
+
+| Item | Detail |
+|---|---|
+| **Agentic AI** | Scheduled agent runs: monitor → investigate (fetch full articles, cross-check prices/FX) → draft action (PO timing, hedge note) → human approve. Requires audited tool-use layer; the no-fallback + audit-log culture is the right substrate |
+| **Scenario simulation** | "What if Hormuz closes / wheat +20% / AED re-pegs": propagate shocks through exposure model to cost & service KPIs; precedent engine provides historical priors |
+| Demand-side S&OP loop | Combine market intelligence with customer demand signals for full S&OP (per the FOps product vision) |
+| Mobile / notification channels | Push/WhatsApp/Teams for CRITICAL alerts |
+
+## 16.4 Explicit Non-Goals (for now)
+
+- Automated trade execution or autonomous purchasing (human-in-the-loop is a product principle).
+- Real-time dwell/queue port data (no free source exists; PortWatch has no dwell field — revisit only with a paid AIS provider).
