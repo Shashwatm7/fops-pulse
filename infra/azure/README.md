@@ -109,6 +109,37 @@ Without this, sign-in fails with `redirect_uri_mismatch`.
 
 ---
 
+## Step 7 — Continuous deployment from Azure DevOps
+
+`azure-pipelines.yml` at the repo root deploys `dev` to this same container app.
+Two one-time setup steps, both in the Azure DevOps UI (neither can be done from
+the CLI without permissions we do not have):
+
+1. **Service connection.** Project settings → Service connections → New →
+   Azure Resource Manager → Workload identity federation (automatic). Scope it
+   to the subscription that holds `FOps-Dev`. Name it exactly `FOps-Dev-ARM`
+   (the `azureServiceConnection` variable in the YAML) and tick *Grant access
+   permission to all pipelines*.
+2. **Pipeline.** Pipelines → New pipeline → Azure Repos Git →
+   `FOps-MarketPulse` → Existing Azure Pipelines YAML file →
+   `/azure-pipelines.yml`, branch `dev`.
+
+What it does: runs `npm test`, builds the image with `az acr build` inside
+`fopsdev`, then `az containerapp update --image ... --revision-suffix b<buildId>`
+and polls `/readyz` until the new revision reports `db: up`. `main` builds but
+does not deploy; pull requests only run tests.
+
+**The pipeline holds no application secrets.** `az containerapp update --image`
+patches the image only and leaves existing secrets and env vars in place, so
+`DATABASE_URL`, `SESSION_SECRET`, `GROQ_API_KEY` and the rest stay where
+`deploy.sh` put them — as Container Apps secrets, with exactly one copy to
+rotate. The consequence is that **changing an env var is still a `deploy.sh`
+job**, not a pipeline job. If that becomes annoying, move the keys into a DevOps
+variable group (or Key Vault) and add `--replace-env-vars` to the update step —
+but then you own two copies of every credential.
+
+---
+
 ## Things that will bite you
 
 ### pgvector must be allowlisted
