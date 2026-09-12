@@ -25,3 +25,6 @@ dashboard/dist/
 # Runtime state (written by the server at runtime)
 alerted_articles.json
 tracked.json
+
+# Azure deploy secrets (infra/azure)
+infra/azure/.env.azure

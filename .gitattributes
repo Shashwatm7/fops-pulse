@@ -1,0 +1,6 @@
+# Shell scripts and the Dockerfile must keep LF endings: Git Bash on Windows
+# fails on CRLF ("$'\r': command not found"), and Docker copies them verbatim
+# into a Linux image.
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
