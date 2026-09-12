@@ -27,15 +27,25 @@ export const ALL_COMMODITIES = [
   { key: 'LIVE_CATTLE', label: 'Live Cattle', category: 'Livestock', unit: '$/lb', yahooSymbol: 'LE=F', centsQuoted: true },
   { key: 'MILK', label: 'Class III Milk', category: 'Dairy', unit: '$/cwt', yahooSymbol: 'DC=F' },
   { key: 'ORANGE_JUICE', label: 'Frozen Orange Juice', category: 'Soft Commodities', unit: '$/lb', yahooSymbol: 'OJ=F', centsQuoted: true },
-  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: '$/lb', yahooSymbol: 'HG=F' },
-  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: '$/ton', yahooSymbol: 'ALI=F' },
-  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: '$/oz', yahooSymbol: 'GC=F' },
-  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: '$/oz', yahooSymbol: 'SI=F' },
-  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: '$/oz', yahooSymbol: 'PL=F' },
-  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: '$/1000bf', yahooSymbol: 'LBR=F' },
-  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: '$/bbl', yahooSymbol: 'BZ=F' },
-  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: '$/MMBtu', yahooSymbol: 'NG=F' },
+  { key: 'COPPER', label: 'Copper', category: 'Metals', unit: '$/lb', yahooSymbol: 'HG=F', userSelectable: false },
+  { key: 'ALUMINUM', label: 'Aluminum', category: 'Metals', unit: '$/ton', yahooSymbol: 'ALI=F', userSelectable: false },
+  { key: 'GOLD', label: 'Gold', category: 'Metals', unit: '$/oz', yahooSymbol: 'GC=F', userSelectable: false },
+  { key: 'SILVER', label: 'Silver', category: 'Metals', unit: '$/oz', yahooSymbol: 'SI=F', userSelectable: false },
+  { key: 'PLATINUM', label: 'Platinum', category: 'Metals', unit: '$/oz', yahooSymbol: 'PL=F', userSelectable: false },
+  { key: 'LUMBER', label: 'Lumber', category: 'Metals', unit: '$/1000bf', yahooSymbol: 'LBR=F', userSelectable: false },
+  { key: 'BRENT_CRUDE', label: 'Brent Crude Oil', category: 'Energy', unit: '$/bbl', yahooSymbol: 'BZ=F', userSelectable: false },
+  { key: 'NATURAL_GAS', label: 'Natural Gas', category: 'Energy', unit: '$/MMBtu', yahooSymbol: 'NG=F', userSelectable: false },
 ];
+
+// What onboarding and the commodity picker are allowed to show.
+// Metals and Energy stay in ALL_COMMODITIES because the price fetcher, the
+// unit map and the cents map are all derived from it (server.js:66-78) and
+// deterministic-engine.js weights BRENT_CRUDE 0.95, NATURAL_GAS 0.6 and
+// ALUMINUM 0.3 as cold-chain energy, freight and frozen-packaging drivers.
+// /api/energy also falls back to a hardcoded $82 Brent when the live price is
+// absent, so dropping them from the fetch would silently score every
+// recommendation against a frozen constant. They are hidden, not removed.
+export const SELECTABLE_COMMODITIES = ALL_COMMODITIES.filter(c => c.userSelectable !== false);
 
 // lat/lon point at REAL WeatherAPI-covered locations (verified via
 // search.json) so weather queries return genuine station data, not a
@@ -59,7 +69,7 @@ export const TEMPLATES = {
     name: 'Frozen Foods – Middle East',
     description: 'Full frozen food supply chain intelligence for the GCC and MENA region.',
     icon: '🧊',
-    commodities: ['MILK', 'LIVE_CATTLE', 'ORANGE_JUICE', 'WHEAT', 'CORN', 'RICE', 'SOYBEANS', 'SUGAR', 'BRENT_CRUDE'],
+    commodities: ['MILK', 'LIVE_CATTLE', 'ORANGE_JUICE', 'WHEAT', 'CORN', 'RICE', 'SOYBEANS', 'SUGAR'],
     regions: [],
     focus_region: 'Middle East',
     focus_countries: ['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Egypt', 'Jordan'],
@@ -101,6 +111,7 @@ export const TEMPLATES = {
 
   metals_mining: {
     id: 'metals_mining',
+    userSelectable: false,
     name: 'Metals & Mining',
     description: 'Industrial and precious metals pricing and supply chain intelligence.',
     icon: '⛏️',
@@ -116,6 +127,7 @@ export const TEMPLATES = {
 
   energy: {
     id: 'energy',
+    userSelectable: false,
     name: 'Energy & Petrochemicals',
     description: 'Crude oil, natural gas, and energy market monitoring.',
     icon: '⚡',
@@ -150,7 +162,8 @@ export function getTemplateById(id) {
 }
 
 export function getAllTemplates() {
-  return Object.values(TEMPLATES).map(t => ({
+  return Object.values(TEMPLATES)
+    .filter(t => t.userSelectable !== false).map(t => ({
     id: t.id, name: t.name, description: t.description, icon: t.icon,
     commodityCount: t.commodities.length, regionCount: t.regions.length,
   }));

@@ -9,7 +9,7 @@ import {
   findUserByEntraIdentity, linkEntraIdentity, createSsoUser,
 } from './db.js';
 import { ENTRA_ENABLED, LOGIN_SCOPES, getMsalClient, extractIdentity, isBootstrapAdmin, authorizeIdentity, allowlistConfigured, emailDomainsConfigured, IS_EXTERNAL_ID } from './entra.js';
-import { getTemplateById, getAllTemplates, ALL_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
+import { getTemplateById, getAllTemplates, SELECTABLE_COMMODITIES, ALL_REGIONS, TEMPLATES } from './onboarding-templates.js';
 
 const router = Router();
 
@@ -467,7 +467,7 @@ router.get('/entra/callback', async (req, res) => {
 router.get('/templates', async (req, res) => {
   let customers = [];
   try { customers = await listCustomerProfiles(); } catch (e) { console.error('listCustomerProfiles failed:', e.message); }
-  res.json({ templates: getAllTemplates(), commodities: ALL_COMMODITIES, regions: ALL_REGIONS, customers });
+  res.json({ templates: getAllTemplates(), commodities: SELECTABLE_COMMODITIES, regions: ALL_REGIONS, customers });
 });
 
 // ── ADMIN: GET /api/auth/admin/db-stats ─────────────────────
