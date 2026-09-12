@@ -30,6 +30,7 @@ import { summarizeArticle, extractLocalEntities, SUMMARY_VERSION } from './servi
 import { buildPlannerPrompt } from './services/planner/plannerService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
+import { composePage, PAGES } from './services/page-composer/index.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
 import { simulateLogistics } from './logistics-engine.js';
@@ -59,9 +60,10 @@ let transporter = {
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['yahooSurvey'], validation: { logErrors: false, logOptionsErrors: false } });
 
-// Derived from ALL_COMMODITIES — the onboarding list and the price fetcher
-// share one source of truth, so users can only select commodities with a
-// real Yahoo Finance futures feed. No proxies.
+// Derived from ALL_COMMODITIES — the price fetcher tracks EVERY commodity with a
+// yahooSymbol, including the Metals/Energy ones hidden from onboarding (those are
+// filtered only in SELECTABLE_COMMODITIES). Users can only select commodities with
+// a real Yahoo Finance futures feed. No proxies.
 const YAHOO_SYMBOLS = Object.fromEntries(
     ALL_COMMODITIES.filter(c => c.yahooSymbol).map(c => [c.key, c.yahooSymbol])
 );
@@ -147,6 +149,29 @@ app.use(session({
 
 // ── Auth routes (no auth required) ──────────────────────────
 app.use('/api/auth', authRouter);
+
+// ── Liveness probe (no auth) ────────────────────────────────
+// Must sit ABOVE express.static and the SPA catch-all: that catch-all answers
+// EVERY unmatched path with 200 + index.html, so a probe pointed anywhere else
+// would pass even when this process is broken. Deliberately shallow — no DB
+// round-trip — so a transient Postgres blip cannot make Container Apps kill
+// and restart an otherwise healthy replica.
+app.get('/healthz', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json({ ok: true, service: 'fops-pulse', uptime: process.uptime() });
+});
+
+// Readiness DOES touch Postgres. Used for post-deploy verification and as the
+// startup probe, NOT as the liveness probe, for the reason above.
+app.get('/readyz', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+        await pool.query('SELECT 1');
+        res.status(200).json({ ok: true, db: 'up' });
+    } catch (err) {
+        res.status(503).json({ ok: false, db: 'down', error: err.message });
+    }
+});
 
 // NOTE: never add endpoints that echo process.env values — a debug route
 // here once returned the raw GROQ_API_KEY unauthenticated.
@@ -847,6 +872,49 @@ async function generateBatchEmbeddings(texts) {
 }
 
 // ── ROUTE: commodity prices (reads from live Yahoo-fed engine) ──────
+
+// ── ROUTE: page composition (BFF) ───────────────────────────
+// GET /api/pages/:page[?sections=a,b,c]
+//
+// One request returns every section a dashboard page needs, replacing the
+// 8-way Promise.all in App.jsx:1072. Measured on Azure 2026-09-10: the fan-out
+// paid ~0.93s wall clock (dominated by /api/news) plus 8 Postgres session
+// lookups; this pays one session lookup and the same ~0.93s, since the slowest
+// section still gates the response.
+//
+// Returns 200 whenever the PAGE resolved, even if individual sections failed —
+// section status lives in the body. See composePage() for why.
+//
+// The legacy per-section routes are unchanged and still work; the composer
+// dispatches those same handlers, so there is exactly one copy of each.
+app.get('/api/pages/:page', requireAuth, async (req, res) => {
+    try {
+        const requested = (req.query.sections || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+
+        const payload = await composePage({
+            app,
+            page: req.params.page,
+            req,
+            sections: requested,
+        });
+
+        // Sections carry their own freshness; prices tick every 15 min, so
+        // never let a shared cache serve one user's composed page to another.
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json({ success: true, ...payload });
+    } catch (err) {
+        if (err.statusCode === 404) {
+            return res.status(404).json({
+                success: false,
+                error: err.message,
+                knownPages: err.knownPages || Object.keys(PAGES),
+            });
+        }
+        console.error('Page composition failed:', err.message);
+        res.status(500).json({ success: false, error: 'Page composition failed' });
+    }
+});
 app.get('/api/commodities', requireAuth, async (req, res) => {
     const prices = Object.entries(COMMODITY_DATA)
         .map(([symbol, data]) => {
@@ -1063,27 +1131,75 @@ const trackedCurrencyCodes = (profile) => {
 };
 
 // GET /api/forex — spot rates (per USD) for the user's selected currencies only.
+// ── FX rate sourcing, primary + fallback ────────────────────
+// Open Exchange Rates is preferred (hourly updates on paid tiers) but needs a
+// valid OPEN_EXCHANGE_APP_ID. open.er-api.com needs no key at all and carries
+// 166 currencies including the full GCC set (AED, SAR, QAR, KWD, BHD, OMR) plus
+// the sourcing corridors that matter here (EGP, INR, BRL). Verified 2026-09-10.
+//
+// The fallback exists because an absent OR INVALID key used to 503 this whole
+// route, and the dashboard's per-fetch .catch() swallowed it — so the FX panel
+// silently showed nothing with no error anywhere. Degrading to daily rates beats
+// showing none.
+//
+// Trade-off: open.er-api.com updates once daily (~00:02 UTC) versus hourly on
+// OXR. Fine for procurement horizons; do not use it for intraday hedging. Its
+// terms request attribution for the keyless endpoint — confirm that is
+// acceptable before relying on it in a paid product.
+async function fetchFxRates() {
+    const appId = process.env.OPEN_EXCHANGE_APP_ID;
+
+    if (appId && appId !== 'unset') {
+        try {
+            const { data } = await axios.get('https://openexchangerates.org/api/latest.json', {
+                params: { app_id: appId, base: 'USD' },
+                timeout: 15000,
+            });
+            return {
+                source: 'openexchangerates',
+                base: data.base || 'USD',
+                rates: data.rates || {},
+                lastUpdate: data.timestamp ? new Date(data.timestamp * 1000).toUTCString() : null,
+            };
+        } catch (err) {
+            // Log loudly: a configured-but-rejected key is an operator problem
+            // that would otherwise hide behind the fallback forever.
+            const msg = err.response?.data?.description || err.message;
+            console.warn(`[FOREX] Open Exchange Rates rejected the configured key (${msg}); falling back to open.er-api.com`);
+        }
+    }
+
+    const { data } = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 15000 });
+    if (data?.result !== 'success' || !data?.rates) {
+        throw new Error(`open.er-api.com returned ${data?.result || 'no result'}`);
+    }
+    return {
+        source: 'open.er-api.com',
+        base: data.base_code || 'USD',
+        rates: data.rates,
+        lastUpdate: data.time_last_update_utc || null,
+    };
+}
+
 app.get('/api/forex', requireAuth, async (req, res) => {
     try {
-        const appId = process.env.OPEN_EXCHANGE_APP_ID;
-        if (!appId) return res.status(503).json({ error: 'Forex not configured: OPEN_EXCHANGE_APP_ID is missing' });
-        const [{ data }, catalog] = await Promise.all([
-            axios.get('https://openexchangerates.org/api/latest.json', { params: { app_id: appId, base: 'USD' } }),
+        const [fx, catalog] = await Promise.all([
+            fetchFxRates(),
             getCurrencyCatalog().catch(() => ({})),
         ]);
         const relevant = {};
         for (const code of trackedCurrencyCodes(req.userProfile)) {
-            if (data.rates?.[code] != null) {
-                relevant[code] = { rate: data.rates[code], name: catalog[code] || code };
+            if (fx.rates?.[code] != null) {
+                relevant[code] = { rate: fx.rates[code], name: catalog[code] || code };
             }
         }
-        const lastUpdate = data.timestamp ? new Date(data.timestamp * 1000).toUTCString() : null;
-        res.json({ success: true, base: data.base || 'USD', lastUpdate, rates: relevant });
+        // `source` is returned so the UI and ops can tell which provider served
+        // this, rather than guessing why rates look a day old.
+        res.json({ success: true, base: fx.base, lastUpdate: fx.lastUpdate, source: fx.source, rates: relevant });
     } catch (err) {
-        // Surface Open Exchange Rates' own error text (e.g. invalid/inactive key).
         const msg = err.response?.data?.description || err.message;
-        console.error('Forex (Open Exchange Rates) error:', msg);
-        res.status(err.response?.status === 401 ? 503 : 500).json({ error: `Forex fetch failed: ${msg}` });
+        console.error('Forex error (both providers failed):', msg);
+        res.status(503).json({ error: `Forex fetch failed: ${msg}` });
     }
 });
 
