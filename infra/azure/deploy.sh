@@ -81,7 +81,12 @@ echo "   registry    : ${ACR_SERVER}"
 echo "   postgres    : ${PG_HOST}"
 echo "   target URL  : https://${APP_NAME}.${ENV_DOMAIN}"
 
-IMAGE="${ACR_SERVER}/${APP_NAME}:${IMAGE_TAG}"
+# The image repository is normally the app name, but a second app serving the
+# SAME build (e.g. a dedicated hostname for the composed /api/pages endpoints)
+# must reuse the first app's image rather than build its own copy:
+#   APP_NAME=fops-pulse-api IMAGE_REPO=fops-pulse SKIP_BUILD=1 ./deploy.sh
+IMAGE_REPO="${IMAGE_REPO:-${APP_NAME}}"
+IMAGE="${ACR_SERVER}/${IMAGE_REPO}:${IMAGE_TAG}"
 
 # ── Database ─────────────────────────────────────────────────────────────────
 # A DEDICATED database on the shared server. fops-pulse migrations create
@@ -135,7 +140,7 @@ fi
 # deploy trusts the registry's verdict rather than the CLI's exit code.
 if [ -n "${SKIP_BUILD:-}" ]; then
   log "SKIP_BUILD set - reusing existing ${IMAGE}"
-  az acr repository show-tags -n "${ACR_NAME}" --repository "${APP_NAME}" -o tsv 2>/dev/null \
+  az acr repository show-tags -n "${ACR_NAME}" --repository "${IMAGE_REPO}" -o tsv 2>/dev/null \
     | grep -qx "${IMAGE_TAG}" \
     || die "${IMAGE} is not in the registry, so it cannot be reused. Re-run without SKIP_BUILD."
 else
@@ -145,8 +150,8 @@ else
   # build, then read the run id back from the registry.
   az acr build \
     --registry "${ACR_NAME}" \
-    --image "${APP_NAME}:${IMAGE_TAG}" \
-    --image "${APP_NAME}:latest" \
+    --image "${IMAGE_REPO}:${IMAGE_TAG}" \
+    --image "${IMAGE_REPO}:latest" \
     --platform linux \
     --file Dockerfile \
     --no-logs --no-wait \
