@@ -304,6 +304,7 @@ add_optional_secret GEMINI_API_KEY       gemini-api-key       "${GEMINI_API_KEY:
 add_optional_secret ANTHROPIC_API_KEY    anthropic-api-key    "${ANTHROPIC_API_KEY:-}"
 add_optional_secret WEATHER_API_KEY      weather-api-key      "${WEATHER_API_KEY:-}"
 add_optional_secret OPEN_EXCHANGE_APP_ID open-exchange-app-id "${OPEN_EXCHANGE_APP_ID:-}"
+add_optional_secret EIA_API_KEY          eia-api-key          "${EIA_API_KEY:-}"
 add_optional_secret ENTRA_CLIENT_ID      entra-client-id      "${ENTRA_CLIENT_ID:-}"
 add_optional_secret ENTRA_CLIENT_SECRET  entra-client-secret  "${ENTRA_CLIENT_SECRET:-}"
 
