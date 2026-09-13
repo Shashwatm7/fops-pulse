@@ -892,11 +892,28 @@ app.get('/api/pages/:page', requireAuth, async (req, res) => {
         const requested = (req.query.sections || '')
             .split(',').map(s => s.trim()).filter(Boolean);
 
+        // Per-section params are namespaced: ?pipelineAudit.limit=50 reaches
+        // only that section. A flat ?limit=50 is NOT forwarded, because one
+        // section's parameters must never silently steer another's handler.
+        const sectionQuery = {};
+        for (const [key, value] of Object.entries(req.query)) {
+            const dot = key.indexOf('.');
+            if (dot <= 0) continue;
+            const section = key.slice(0, dot);
+            const param = key.slice(dot + 1);
+            if (!param) continue;
+            (sectionQuery[section] ||= {})[param] = value;
+        }
+
         const payload = await composePage({
             app,
             page: req.params.page,
             req,
             sections: requested,
+            sectionQuery,
+            // requireAuth has already run on THIS request; every other
+            // middleware on a section route (requireAdmin) still executes.
+            skipMiddleware: [requireAuth],
         });
 
         // Sections carry their own freshness; prices tick every 15 min, so
