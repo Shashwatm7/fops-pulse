@@ -2514,14 +2514,6 @@ app.post('/api/analyze-commodity', requireAuth, async (req, res) => {
 });
 
 
-// ── ROUTE: fallback to Gemini ───────────────────────────────────────
-app.post('/api/analyze-fallback', requireAuth, async (req, res) => {
-    res.status(403).json({
-        success: false,
-        error: 'Gemini fallback is disabled. API tokens are reserved for planner recommendations and deep dives only.'
-    });
-});
-
 
 // ══════════════════════════════════════════════════════════════════════
 // LIVE PRICE ENGINE — SSE stream with realistic micro-movements
@@ -3022,16 +3014,6 @@ setInterval(() => {
 }, 24 * 60 * 60 * 1000); // Reduced to 24 hours
 
 // ── ROUTE: price history (REST fallback) ──
-app.get('/api/live-prices', requireAuth, (req, res) => {
-    const result = {};
-    const userCommodities = req.userProfile?.commodities || [];
-    for (const [symbol, state] of Object.entries(livePrices)) {
-        if (userCommodities.length === 0 || userCommodities.includes(symbol)) {
-            result[symbol] = { ...state, history: priceHistory[symbol] || [] };
-        }
-    }
-    res.json({ success: true, prices: result, timestamp: Date.now() });
-});
 
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3834,9 +3816,6 @@ app.post('/api/feedback', requireAuth, async (req, res) => {
 });
 
 // ── API: Get recent geopolitical alerts ──
-app.get('/api/geo-alerts', requireAuth, (req, res) => {
-  res.json({ success: true, alerts: recentGeoAlerts });
-});
 
 // ── Morning Brief: "what changed since yesterday", real data only ──
 // Alerts + accepted articles from Postgres; price moves computed from the
@@ -4141,15 +4120,6 @@ app.get('/api/debug-labeling', requireAuth, async (req, res) => {
 // Recent labeled insights, read straight from storage — always has data
 // once any scan has labeled something, unlike hover-matching against the
 // live (rotating) news feed.
-app.get('/api/insights/recent', requireAuth, async (req, res) => {
-    try {
-        const rows = await getRecentInsights(req.session.userId, 15);
-        res.json({ success: true, insights: rows });
-    } catch (err) {
-        console.error('Recent insights error:', err.message);
-        res.status(500).json({ success: false, error: 'Failed to load insights' });
-    }
-});
 
 // Categorized news intelligence — replaces the (now-empty) LLM-labeled feed
 // with deterministic categorization of accepted articles. Supply-chain
@@ -4518,33 +4488,7 @@ async function runLLMForecastLoop() {
 }
 
 // ── Phase 5: Event-Aware Forecasting APIs ──────────────────────────────
-app.get('/api/forecast/:category', async (req, res) => {
-    try {
-        const cat = req.params.category;
-        const result = await pool.query(
-            `SELECT * FROM forecast_outputs WHERE category = $1 ORDER BY forecast_date DESC, horizon_days ASC LIMIT 10`,
-            [cat]
-        );
-        res.json({ success: true, data: result.rows });
-    } catch (err) {
-        console.error('Forecast fetch error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch forecast outputs' });
-    }
-});
 
-app.get('/api/recommendations/:category', async (req, res) => {
-    try {
-        const cat = req.params.category;
-        const result = await pool.query(
-            `SELECT * FROM recommendations WHERE category = $1 ORDER BY generated_at DESC LIMIT 10`,
-            [cat]
-        );
-        res.json({ success: true, data: result.rows });
-    } catch (err) {
-        console.error('Recommendations fetch error:', err.message);
-        res.status(500).json({ error: 'Failed to fetch recommendations' });
-    }
-});
 
 const PORT = process.env.PORT || 3001;
 
