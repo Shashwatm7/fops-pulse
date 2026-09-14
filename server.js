@@ -31,6 +31,7 @@ import { buildPlannerPrompt } from './services/planner/plannerService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { composePage, PAGES } from './services/page-composer/index.js';
+import { composeMarketPulse, MARKET_PULSE_KEYS } from './services/page-composer/aggregate.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
 import { simulateLogistics } from './logistics-engine.js';
@@ -930,6 +931,55 @@ app.get('/api/pages/:page', requireAuth, async (req, res) => {
         }
         console.error('Page composition failed:', err.message);
         res.status(500).json({ success: false, error: 'Page composition failed' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/market-pulse/full[?sections=a,b,c]
+//
+// One call returning every dashboard endpoint's body under a flat key, shaped
+// to match the FOps API reference payload:
+//
+//   { success: true, data: { templates: {...}, userProfile: {...},
+//                            commodities: {...}, energy: {...}, ... } }
+//
+// Values are the endpoints' own bodies, verbatim -- no per-section wrapper.
+// Every existing endpoint is untouched and still served; this composes them.
+//
+// ?sections= narrows the set. Worth using: analyze, analyze-planner and
+// by-articles are LLM calls and dominate the response time, so a caller that
+// only needs market data should ask for the thirteen data sections.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/market-pulse/full', requireAuth, async (req, res) => {
+    try {
+        const requested = (req.query.sections || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+
+        const unknown = requested.filter(s => !MARKET_PULSE_KEYS.includes(s));
+        if (unknown.length) {
+            return res.status(400).json({
+                success: false,
+                error: `unknown section(s): ${unknown.join(', ')}`,
+                knownSections: MARKET_PULSE_KEYS,
+            });
+        }
+
+        const payload = await composeMarketPulse({
+            app,
+            req,
+            sections: requested,
+            // requireAuth has already run on THIS request; every other
+            // middleware on a section route still executes.
+            skipMiddleware: [requireAuth],
+        });
+
+        // Per-user data with per-section freshness: never let a shared cache
+        // hand one user's composed payload to another.
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json(payload);
+    } catch (err) {
+        console.error('Market Pulse aggregation failed:', err.message);
+        res.status(500).json({ success: false, error: 'Aggregation failed' });
     }
 });
 app.get('/api/commodities', requireAuth, async (req, res) => {

@@ -100,11 +100,12 @@ const ERROR_CODES = {
  * {path: '/api/auth'} for a path under the mount and false otherwise, which
  * gives both the test and the prefix to strip.
  */
-function findRoute(app, path) {
+export function findRoute(app, path, method = 'get') {
+    const want = method.toLowerCase();
     const walk = (stack, remaining) => {
         for (const layer of stack) {
             if (layer.route) {
-                if (layer.route.path === remaining && layer.route.methods?.get) return layer.route;
+                if (layer.route.path === remaining && layer.route.methods?.[want]) return layer.route;
                 continue;
             }
             if (layer.name === 'router' && layer.handle?.stack) {
@@ -141,7 +142,7 @@ function findRoute(app, path) {
  * than two handlers. That was safe but could not express an admin page at all;
  * running the chain is both safer and more general.
  */
-function runHandlerChain(route, req, skip) {
+export function runHandlerChain(route, req, skip) {
     const handlers = route.stack.map(layer => layer.handle);
     if (handlers.length === 0) throw new Error('route has no handlers');
 
@@ -197,7 +198,7 @@ function runHandlerChain(route, req, skip) {
  * real request via the prototype chain, but gets its own query/params so one
  * section cannot see another's parameters.
  */
-function sectionRequest(req, path, query) {
+export function sectionRequest(req, path, query, opts = {}) {
     const sub = Object.create(req);
 
     // Express defines `path` and `query` as GETTERS on the request prototype
@@ -210,10 +211,10 @@ function sectionRequest(req, path, query) {
         url: path,
         originalUrl: path,
         baseUrl: '',
-        method: 'GET',
+        method: (opts.method || 'GET').toUpperCase(),
         query: query || {},
         params: {},
-        body: {},
+        body: opts.body || {},
     };
     for (const [key, value] of Object.entries(own)) {
         Object.defineProperty(sub, key, {
