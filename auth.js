@@ -24,8 +24,79 @@ if (!PASSWORD_LOGIN_ENABLED) {
   console.warn('[AUTH] DISABLE_PASSWORD_LOGIN=true ignored: Entra SSO is not configured, so disabling passwords would lock everyone out.');
 }
 
+
+// ── API keys: machine access without a browser session ──────
+// A session cookie is sameSite:lax, so a browser will NOT attach it to a
+// cross-origin XHR — a frontend on localhost:3000 or another service calling
+// this API gets 401 no matter who is logged in. An API key travels in a
+// header, so it works from any origin, any tool, with no login step.
+//
+// API_KEYS is a comma-separated list, so a key can be rotated by adding the
+// new one, moving consumers over, then dropping the old.
+// API_KEY_USER_EMAIL names the existing user a key acts as: handlers read
+// req.userProfile (tracked commodities, regions, keywords) and would return
+// nothing useful without one.
+const API_KEYS = (process.env.API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
+const API_KEY_USER_EMAIL = (process.env.API_KEY_USER_EMAIL || '').trim();
+
+if (API_KEYS.length && !API_KEY_USER_EMAIL) {
+  console.warn('[AUTH] API_KEYS set but API_KEY_USER_EMAIL is not — key auth is inert until it names a user.');
+} else if (API_KEYS.length) {
+  console.log(`[AUTH] API key auth enabled: ${API_KEYS.length} key(s), acting as ${API_KEY_USER_EMAIL}`);
+}
+
+/** Constant-time compare that does not leak length through early return. */
+function keyMatches(presented) {
+  const a = Buffer.from(presented);
+  return API_KEYS.some((k) => {
+    const b = Buffer.from(k);
+    // timingSafeEqual throws on length mismatch, so hash both to a fixed width
+    // first: this compares in constant time regardless of key length.
+    const ha = crypto.createHash('sha256').update(a).digest();
+    const hb = crypto.createHash('sha256').update(b).digest();
+    return crypto.timingSafeEqual(ha, hb);
+  });
+}
+
+/** Read a key from X-API-Key or Authorization: Bearer <key>. */
+function presentedKey(req) {
+  const header = req.get('x-api-key');
+  if (header) return header.trim();
+  const auth = req.get('authorization') || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
 // ── Middleware: require authentication ──────────────────────
 export async function requireAuth(req, res, next) {
+  // ── API key lane (machine / cross-origin callers) ──────────
+  // Checked BEFORE the session so a key works with no cookie at all. A key is
+  // only consulted when one is actually presented, so browser sessions are
+  // unaffected.
+  const key = presentedKey(req);
+  if (key) {
+    if (!API_KEYS.length) {
+      return res.status(401).json({ error: 'API key auth is not configured on this server' });
+    }
+    if (!keyMatches(key)) {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+    const user = API_KEY_USER_EMAIL ? await findUserByEmail(API_KEY_USER_EMAIL) : null;
+    if (!user) {
+      return res.status(503).json({ error: 'API key is valid but API_KEY_USER_EMAIL names no existing user' });
+    }
+    req.user = user;
+    req.userProfile = await getUserProfile(user.id);
+    // Marks the request as key-authenticated. requireAdmin refuses these: a
+    // shared static key must not reach user management or tuning, even when the
+    // user it acts as happens to be an admin.
+    req.isApiKey = true;
+    // Handlers that read req.session.userId (insights, audit) need it present;
+    // the session itself is never persisted for a key request.
+    if (!req.session) req.session = {};
+    req.session.userId = user.id;
+    return next();
+  }
+
   if (!req.session?.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
@@ -42,6 +113,11 @@ export async function requireAuth(req, res, next) {
 
 // ── Middleware: require admin role ───────────────────────────
 export function requireAdmin(req, res, next) {
+  // A shared static key must never reach user management or tuning, even when
+  // the user it acts as is an admin: the key has no individual accountability.
+  if (req.isApiKey) {
+    return res.status(403).json({ error: 'Admin routes require an interactive session, not an API key' });
+  }
   if (!req.user?.is_admin) {
     return res.status(403).json({ error: 'Admin access required' });
   }
