@@ -1069,22 +1069,45 @@ export default function Dashboard() {
     setProfile(null);
   };
 
+  // Current tab, readable from refresh() without making it a dependency —
+  // taking `tab` directly would rebuild refresh on every tab switch and
+  // retrigger the effects that depend on it.
+  const activeTabRef = useRef(tab);
+  useEffect(() => { activeTabRef.current = tab; }, [tab]);
+
   // ── Data refresh ──
   const refresh = useCallback(async () => {
     if (!user || !user.is_onboarded) return;
     setLoading(true);
     try {
       const fetchOpts = { credentials: 'include' };
-      const [priceRes, energyRes, newsRes, weatherRes, forexRes, weatherExtRes, sopRes, mlForecastRes] = await Promise.all([
-        fetch(`${API_BASE}/commodities`, fetchOpts).then(r => r.json()).catch(() => ({ prices: [] })),
-        fetch(`${API_BASE}/energy`, fetchOpts).then(r => r.json()).catch(() => ({})),
-        fetch(`${API_BASE}/news`, fetchOpts).then(r => r.json()).catch(() => ({ articles: [] })),
-        fetch(`${API_BASE}/weather`, fetchOpts).then(r => r.json()).catch(() => ({ regions: [] })),
-        fetch(`${API_BASE}/forex`, fetchOpts).then(r => r.json()).catch(() => null),
-        fetch(`${API_BASE}/weather-extended`, fetchOpts).then(r => r.json()).catch(() => ({ regions: [] })),
-        fetch(`${API_BASE}/sop`, fetchOpts).then(r => r.json()).catch(() => ({ plans: [] })),
-        fetch(`${API_BASE}/ml-forecasts`, fetchOpts).then(r => r.json()).catch(() => ({ forecasts: [] })),
-      ]);
+
+      // ONE request for the whole Command Center instead of eight. The server
+      // composes the same eight handlers in-process (/api/pages/dashboard), so
+      // the payload is identical but the browser pays one round trip and the
+      // server does one session lookup instead of eight.
+      //
+      // Per-section failures are isolated server-side: a section that throws
+      // or returns 4xx/5xx arrives as {status:'error'} and the rest of the page
+      // still renders. `sec()` maps that back to the same empty-shape defaults
+      // the old per-fetch .catch() handlers used, so a broken section degrades
+      // exactly as it did before rather than blanking the dashboard.
+      const page = await fetch(`${API_BASE}/pages/dashboard`, fetchOpts)
+        .then(r => r.json())
+        .catch(() => ({ sections: {} }));
+      const sec = (name, fallback) => {
+        const s = page?.sections?.[name];
+        return s && s.status === 'ok' && s.data ? s.data : fallback;
+      };
+
+      const priceRes = sec('commodities', { prices: [] });
+      const energyRes = sec('energy', {});
+      const newsRes = sec('news', { articles: [] });
+      const weatherRes = sec('weather', { regions: [] });
+      const forexRes = sec('forex', null);
+      const weatherExtRes = sec('weatherExtended', { regions: [] });
+      const sopRes = sec('sop', { plans: [] });
+      const mlForecastRes = sec('mlForecasts', { forecasts: [] });
 
       const p = priceRes.prices || [];
       const e = energyRes;
@@ -1108,9 +1131,13 @@ export default function Dashboard() {
       // be slow on first ingest, so it must not hold up the Command Center).
       refetchPorts();
 
-      // Categorized news feed (Alerts tab): refetch so a refresh picks up new
-      // scan results without needing a tab switch.
-      refetchCategorizedNews();
+      // Categorized news feed: only while the Alerts tab is actually open.
+      // Unconditionally it fetched a feed the user could not see on every
+      // Command Center refresh, AND double-fetched while the Alerts tab was
+      // open, because the tab effect below already loads it on entry. Read
+      // through a ref so refresh() does not take `tab` as a dependency and
+      // get rebuilt on every tab switch.
+      if (activeTabRef.current === 'alerts') refetchCategorizedNews();
 
       // Morning brief: independent, non-blocking. Errors are surfaced — a
       // silent failure here left the panel stuck on its loading skeleton
