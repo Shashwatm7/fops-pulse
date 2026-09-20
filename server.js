@@ -3060,10 +3060,30 @@ async function checkPriceAlerts() {
 initLivePrices();
 
 // Tick prices via real Internet live fetch (Yahoo Finance).
-// 15-minute cadence: ~5 batched Yahoo requests per tick (21 symbols in
-// chunks of 5) — trivial volume, and it makes user price-threshold alerts
-// actually fire near the crossing instead of up to 24h late.
-setInterval(tickPrices, 15 * 60 * 1000);
+// Each tick is ~5 batched Yahoo requests (21 symbols in chunks of 5), so the
+// request rate is 5 / PRICE_TICK_MS.
+//
+// Default 15 minutes: trivial volume, and it makes user price-threshold alerts
+// fire near the crossing instead of up to 24h late.
+//
+// PRICE_TICK_MS lowers it, but know what you are buying. Yahoo's quote API is
+// undocumented and rate-limits aggressively: at 1s that is ~432,000 requests a
+// day from one IP, and the observed failure mode is 429s followed by a block,
+// which stops prices entirely rather than speeding them up. Anything under a
+// minute is logged as a warning at startup so the cadence is visible in the
+// logs when prices do stop.
+//
+// Note the SSE live-price engine (see LIVE PRICE ENGINE above) already emits
+// per-second motion between real fetches, so the UI looks live regardless of
+// this value — lowering it changes how often the underlying quote is TRUE, not
+// how often the number on screen moves.
+const PRICE_TICK_MS = envMs('PRICE_TICK_MS', 15 * 60 * 1000);
+if (PRICE_TICK_MS < 60 * 1000) {
+    console.warn(`[TICK PRICES] Cadence ${PRICE_TICK_MS}ms — roughly ${(5000 / PRICE_TICK_MS).toFixed(1)} Yahoo req/s. Expect 429s and possible blocking.`);
+} else {
+    console.log(`[TICK PRICES] Cadence ${PRICE_TICK_MS}ms`);
+}
+setInterval(tickPrices, PRICE_TICK_MS);
 
 // Reset intraday high/low every hour. change/changePct are NOT zeroed — they
 // track vs the previous close (same basis as the ticker and alerts), so we
