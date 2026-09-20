@@ -133,8 +133,17 @@ export async function composeMarketPulse({ app, req, sections: requested, skipMi
 
     const data = {};
 
+    // A phase-2 section is built FROM phase-1 output, so asking for
+    // analyze-planner alone still has to resolve the market data first --
+    // otherwise it posts an empty body and the model answers about nothing.
+    // Those extra sections are fetched but not emitted: `wanted` still governs
+    // the response shape.
+    const needsPhase1 = wanted.some(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === 2);
+
     const runPhase = async (phase) => {
-        const names = wanted.filter(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === phase);
+        const names = phase === 1 && needsPhase1
+            ? MARKET_PULSE_KEYS.filter(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === 1)
+            : wanted.filter(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === phase);
         const results = await Promise.all(names.map(n =>
             resolveSection(app, n, MARKET_PULSE_SECTIONS[n], req, skip, data)));
         names.forEach((n, i) => { data[n] = results[i]; });

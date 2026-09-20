@@ -306,6 +306,7 @@ add_optional_secret WEATHER_API_KEY      weather-api-key      "${WEATHER_API_KEY
 add_optional_secret OPEN_EXCHANGE_APP_ID open-exchange-app-id "${OPEN_EXCHANGE_APP_ID:-}"
 add_optional_secret EIA_API_KEY          eia-api-key          "${EIA_API_KEY:-}"
 add_optional_secret API_KEYS             api-keys             "${API_KEYS:-}"
+add_optional_secret OPENAI_API_KEY       openai-api-key       "${OPENAI_API_KEY:-}"
 add_optional_secret ENTRA_CLIENT_ID      entra-client-id      "${ENTRA_CLIENT_ID:-}"
 add_optional_secret ENTRA_CLIENT_SECRET  entra-client-secret  "${ENTRA_CLIENT_SECRET:-}"
 
@@ -336,6 +337,9 @@ ENV_ARGS+=( "ENABLE_GEO_SCANNER=${ENABLE_GEO_SCANNER:-false}" )
 ENV_ARGS+=( "ENABLE_ARTICLE_LABELING=${ENABLE_ARTICLE_LABELING:-false}" )
 ENV_ARGS+=( "API_KEY_USER_EMAIL=${API_KEY_USER_EMAIL:-}" )
 ENV_ARGS+=( "API_RATE_LIMIT_PER_MIN=${API_RATE_LIMIT_PER_MIN:-60}" )
+ENV_ARGS+=( "LLM_PROVIDER=${LLM_PROVIDER:-groq}" )
+ENV_ARGS+=( "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}" )
+ENV_ARGS+=( "OPENAI_MODEL=${OPENAI_MODEL:-}" )
 
 # Entra non-secret settings: same rule. An empty ENTRA_AUTHORITY must be ABSENT,
 # not present-and-empty, so entra.js falls back to the workforce /organizations

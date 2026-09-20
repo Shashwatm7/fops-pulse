@@ -102,3 +102,33 @@ test('a missing route is reported rather than silently omitted', async () => {
     assert.equal(out.data.commodities.success, false);
     assert.match(out.data.commodities.error, /not registered/);
 });
+
+test('a phase-2 section alone still resolves its phase-1 inputs', async () => {
+    // Asking for analyze-planner on its own must not post an empty body: the
+    // market data it summarises has to be fetched first, even though it is not
+    // part of the response.
+    let planner = null;
+    const out = await composeMarketPulse({
+        app: stubApp({
+            commodities: (rq, rs) => rs.json({ success: true, prices: [{ symbol: 'CHEESE' }] }),
+            news: (rq, rs) => rs.json({ success: true, articles: [{ title: 'a' }] }),
+            'analyze-planner': (rq, rs) => { planner = rq.body; rs.json({ success: true, recommendations: [1] }); },
+        }),
+        req: req(),
+        sections: ['analyze-planner'],
+    });
+    assert.deepEqual(Object.keys(out.data), ['analyze-planner'], 'only the asked-for section is emitted');
+    assert.deepEqual(planner.prices, [{ symbol: 'CHEESE' }], 'but it received real phase-1 input');
+    assert.deepEqual(planner.news, [{ title: 'a' }]);
+});
+
+test('a phase-1-only request does not fetch anything extra', async () => {
+    const seen = [];
+    await composeMarketPulse({
+        app: stubApp(Object.fromEntries(MARKET_PULSE_KEYS.map(n =>
+            [n, (rq, rs) => { seen.push(n); rs.json({ success: true }); }]))),
+        req: req(),
+        sections: ['commodities', 'forex'],
+    });
+    assert.deepEqual(seen.sort(), ['commodities', 'forex'], 'no speculative fetches');
+});

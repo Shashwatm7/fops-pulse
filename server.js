@@ -342,6 +342,33 @@ const GROQ_TASK_KEY = { planner: 0, deepdive: 1, summary: 2, drivers: 3, precede
 // here depends on. (llama-3.3-70b-versatile / llama-3.1-8b-instant were the
 // previous defaults and are now decommissioned on Groq.)
 const GROQ_MODEL_REASONING = process.env.GROQ_MODEL_REASONING || 'openai/gpt-oss-120b';
+
+// ── OpenAI-compatible provider (Azure AI Foundry, OpenAI, or any /v1 host) ──
+// Set LLM_PROVIDER=openai to route the planner, deep-dive and analysis through
+// OPENAI_BASE_URL instead of Groq. Groq's endpoint is itself OpenAI-compatible
+// (api.groq.com/openai/v1/chat/completions), so the request and response shapes
+// are identical -- only the host, key and model differ. That is why this is a
+// branch inside callGroq rather than a parallel client.
+//
+// Azure AI Foundry exposes .../openai/v1 specifically as the OpenAI-compatible
+// surface: Bearer auth, no api-version query string. A classic Azure OpenAI
+// resource (.openai.azure.com/openai/deployments/<d>/chat/completions?api-version=)
+// is NOT this shape and will 404 here.
+//
+// No key pool and no circuit breaker on this path: those exist to rotate
+// across three free-tier Groq accounts. One paid endpoint needs neither.
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || '').trim().replace(/\/+$/, '');
+const OPENAI_MODEL = (process.env.OPENAI_MODEL || '').trim();
+const OPENAI_ENABLED =
+    (process.env.LLM_PROVIDER || '').toLowerCase() === 'openai'
+    && !!OPENAI_API_KEY && !!OPENAI_BASE_URL && !!OPENAI_MODEL;
+
+if ((process.env.LLM_PROVIDER || '').toLowerCase() === 'openai' && !OPENAI_ENABLED) {
+    console.warn('[LLM] LLM_PROVIDER=openai but OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL is incomplete — falling back to Groq.');
+} else if (OPENAI_ENABLED) {
+    console.log(`[LLM] Provider: openai (${OPENAI_MODEL} @ ${OPENAI_BASE_URL})`);
+}
 const COMMODITY_KEY = process.env.COMMODITY_API_KEY;
 const EIA_KEY = process.env.EIA_API_KEY;
 
@@ -389,7 +416,7 @@ const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 4);
 const ALERTABLE_PRIORITIES = new Set(['Critical', 'High', 'Medium']);
 
 // ── Token Usage Tracking ─────────────────────────────────────
-let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
+let tokenUsage = { groqInput: 0, groqOutput: 0, geminiInput: 0, geminiOutput: 0, openaiInput: 0, openaiOutput: 0, totalCalls: 0, since: new Date().toISOString() };
 
 // ── AI failure tracking ──────────────────────────────────────
 // tokenUsage only counts SUCCESSES, so a provider that is 100% failing looks
@@ -547,6 +574,53 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
     // distribution); if its breaker is open or it 429s, we fail over to the next
     // pool key whose breaker is closed. Only when EVERY key is rate-limited does
     // the error propagate to the route.
+    // OpenAI-compatible provider takes precedence when fully configured. Same
+    // wire format as Groq, so the caller's prompts, jsonMode and token budget
+    // carry over unchanged; only the host, key and model differ. The `model`
+    // argument (a Groq model id) is replaced by OPENAI_MODEL -- a deployment
+    // name on one host is meaningless on the other.
+    if (OPENAI_ENABLED) {
+        const finalUser = jsonMode ? userContent + "\n\nOutput ONLY valid JSON." : userContent;
+        try {
+            const response = await axios.post(
+                `${OPENAI_BASE_URL}/chat/completions`,
+                {
+                    model: OPENAI_MODEL,
+                    max_tokens: maxTokens,
+                    temperature,
+                    ...(jsonMode && { response_format: { type: 'json_object' } }),
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: finalUser },
+                    ],
+                },
+                { headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, timeout: LLM_TIMEOUT_MS }
+            );
+            const usage = response.data.usage;
+            if (usage) {
+                tokenUsage.openaiInput += usage.prompt_tokens || 0;
+                tokenUsage.openaiOutput += usage.completion_tokens || 0;
+                tokenUsage.totalCalls++;
+            }
+            console.log(`[TOKENS] OpenAI ${OPENAI_MODEL} | in:${usage?.prompt_tokens ?? '?'} out:${usage?.completion_tokens ?? '?'}`);
+
+            // Same envelope guard as the Groq path: a filtered or truncated
+            // completion returns no choice, and blind indexing turns that into
+            // an opaque TypeError rather than a named provider failure.
+            const content = response.data.choices?.[0]?.message?.content;
+            if (typeof content !== 'string') {
+                const reason = response.data.choices?.[0]?.finish_reason || 'no choice returned';
+                throw new Error(`OpenAI ${OPENAI_MODEL} returned no usable content (finish_reason: ${reason})`);
+            }
+            return content;
+        } catch (err) {
+            recordAiFailure('openai', OPENAI_MODEL, err);
+            // Deliberately NOT falling through to Groq: a silent provider swap
+            // hides a broken endpoint and bills the wrong account. Fail loudly.
+            throw new Error(`OpenAI call failed: ${err.response?.data?.error?.message || err.message}`);
+        }
+    }
+
     if (GROQ_KEYS.length === 0) throw new Error('Missing GROQ_API_KEY');
     if (!global.aiCircuitBreakers) global.aiCircuitBreakers = {};
 
@@ -980,6 +1054,68 @@ app.get('/api/market-pulse/full', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Market Pulse aggregation failed:', err.message);
         res.status(500).json({ success: false, error: 'Aggregation failed' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/market-pulse/indicators
+//
+// Market data only: prices, energy, FX and port congestion. No LLM call, so it
+// returns in well under a second and costs nothing in tokens -- the counterpart
+// to /recommendations below.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/market-pulse/indicators', requireAuth, async (req, res) => {
+    try {
+        const payload = await composeMarketPulse({
+            app,
+            req,
+            sections: ['commodities', 'energy', 'forex', 'ports'],
+            skipMiddleware: [requireAuth],
+        });
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json(payload);
+    } catch (err) {
+        console.error('Indicators aggregation failed:', err.message);
+        res.status(500).json({ success: false, error: 'Aggregation failed' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/market-pulse/recommendations
+//
+// AI planner recommendations as a plain GET. /api/analyze-planner is a POST
+// that expects the caller to have already fetched prices, energy, news,
+// weather and FX and to hand them back in the body -- which is fine for the
+// dashboard, which has them, and useless for anyone else. This gathers that
+// input server-side and returns just the recommendations.
+//
+// COSTS TOKENS: this is the LLM path. ~4k tokens per call. Callers that only
+// need market data should use /indicators.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/market-pulse/recommendations', requireAuth, async (req, res) => {
+    try {
+        const payload = await composeMarketPulse({
+            app,
+            req,
+            sections: ['analyze-planner'],
+            skipMiddleware: [requireAuth],
+        });
+        const section = payload.data['analyze-planner'] || {};
+        if (section.success === false) {
+            return res.status(503).json({
+                success: false,
+                error: section.error || 'Recommendations unavailable',
+            });
+        }
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json({
+            success: true,
+            recommendations: section.recommendations || [],
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('Recommendations failed:', err.message);
+        res.status(500).json({ success: false, error: 'Recommendations failed' });
     }
 });
 app.get('/api/commodities', requireAuth, async (req, res) => {
