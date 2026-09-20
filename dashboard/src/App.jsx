@@ -133,7 +133,13 @@ function ApiLimitTracker() {
         .catch(console.error);
     };
     fetchLimits();
-    const interval = setInterval(fetchLimits, 15000);
+    // The rate-limit chip only changes when an LLM call happens, so a 15s poll
+    // was four requests a minute to learn nothing. A hidden tab needs no
+    // refresh at all: one dashboard left open on a second monitor was
+    // generating most of this app's traffic with nobody looking at it.
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchLimits();
+    }, 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1211,6 +1217,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (tab !== 'pulse' || !user) return;
     const id = setInterval(() => {
+      // A backgrounded tab cannot show a fresher brief, so do not fetch one.
+      // The next visible tick picks the change up within 60s.
+      if (document.hidden) return;
       fetch(`${API_BASE}/morning-brief`, { credentials: 'include' })
         .then(async r => {
           const d = await r.json();
