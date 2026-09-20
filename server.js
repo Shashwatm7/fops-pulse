@@ -586,8 +586,16 @@ export async function callGroq(model, systemPrompt, userContent, jsonMode = true
                 `${OPENAI_BASE_URL}/chat/completions`,
                 {
                     model: OPENAI_MODEL,
-                    max_tokens: maxTokens,
-                    temperature,
+                    // gpt-5-class models reject `max_tokens` outright:
+                    //   "Unsupported parameter: 'max_tokens' is not supported
+                    //    with this model. Use 'max_completion_tokens' instead."
+                    // They also fix temperature at 1 and reject any other
+                    // value, so it is omitted here rather than sent and
+                    // rejected. OPENAI_TEMPERATURE forces it back for an older
+                    // deployment that does accept it.
+                    max_completion_tokens: maxTokens,
+                    ...(process.env.OPENAI_TEMPERATURE !== undefined
+                        && { temperature: Number(process.env.OPENAI_TEMPERATURE) }),
                     ...(jsonMode && { response_format: { type: 'json_object' } }),
                     messages: [
                         { role: 'system', content: systemPrompt },
