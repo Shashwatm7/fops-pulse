@@ -138,6 +138,29 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+// ── Tolerate quote characters pasted into a URL ─────────────
+// Copying a quoted curl command out of chat or a terminal regularly leaves a
+// trailing " or ' on the URL, which arrives here percent-encoded:
+//
+//   GET /api/market-pulse/indicators%22   -> 404, "No such API endpoint"
+//
+// A quote is never a legitimate part of one of our paths, and the resulting
+// 404 sends people hunting for a server problem that does not exist. Strip
+// them from the PATH only -- the query string is left alone, because a quote
+// there can be real (a search term), and only from the ends, so a genuinely
+// wrong path still 404s.
+app.use((req, _res, next) => {
+    const qIdx = req.url.indexOf('?');
+    const path = qIdx === -1 ? req.url : req.url.slice(0, qIdx);
+    const query = qIdx === -1 ? '' : req.url.slice(qIdx);
+    const cleaned = path.replace(/(?:%22|%27|["'])+$/i, '');
+    if (cleaned !== path) {
+        console.warn(`[URL] Stripped trailing quote from ${path} -> ${cleaned}`);
+        req.url = cleaned + query;
+    }
+    next();
+});
+
 // ── Session middleware (PostgreSQL-backed) ──────────────────
 const PgStore = pgSession(session);
 app.use(session({
