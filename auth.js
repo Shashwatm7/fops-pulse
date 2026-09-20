@@ -66,6 +66,59 @@ function presentedKey(req) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : '';
 }
+
+// ── Per-key rate limiting ───────────────────────────────────
+// Applies ONLY to API-key requests. Browser sessions are untouched: they are
+// one human clicking, and a shared key is what can hammer the API by accident
+// (a retry loop, a useEffect without a dependency array).
+//
+// Fixed one-minute window, counted in memory. That is correct here because the
+// app runs --min-replicas 1 --max-replicas 1, so there is exactly one counter.
+// SCALING OUT WOULD MULTIPLY THE EFFECTIVE LIMIT by the replica count -- if
+// max-replicas ever rises, this needs to move to Postgres or Redis.
+//
+// API_RATE_LIMIT_PER_MIN=0 disables the limit entirely.
+const API_RATE_LIMIT_PER_MIN = Number.parseInt(process.env.API_RATE_LIMIT_PER_MIN ?? '60', 10);
+const RATE_WINDOW_MS = 60 * 1000;
+const rateWindows = new Map();   // key fingerprint -> { windowStart, count }
+
+/** Count this request against the key's window. Never throws. */
+function checkRateLimit(fp) {
+    const limit = API_RATE_LIMIT_PER_MIN;
+    if (!Number.isFinite(limit) || limit <= 0) {
+        return { ok: true, limit: 0, remaining: 0, resetSec: 0 };
+    }
+    const now = Date.now();
+    const windowStart = Math.floor(now / RATE_WINDOW_MS) * RATE_WINDOW_MS;
+
+    let entry = rateWindows.get(fp);
+    if (!entry || entry.windowStart !== windowStart) {
+        entry = { windowStart, count: 0 };
+        rateWindows.set(fp, entry);
+    }
+    entry.count += 1;
+
+    // The map is keyed by configured keys, so it cannot grow without bound in
+    // normal use -- but prune stale windows anyway so a rotated-out key does
+    // not linger for the life of the process.
+    if (rateWindows.size > 64) {
+        for (const [k, v] of rateWindows) {
+            if (v.windowStart !== windowStart) rateWindows.delete(k);
+        }
+    }
+
+    return {
+        ok: entry.count <= limit,
+        limit,
+        remaining: Math.max(0, limit - entry.count),
+        resetSec: Math.ceil((windowStart + RATE_WINDOW_MS - now) / 1000),
+    };
+}
+
+/** Short, non-reversible label for a key: never hold the raw value in a map. */
+function fingerprint(key) {
+    return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+}
 // ── Middleware: require authentication ──────────────────────
 export async function requireAuth(req, res, next) {
   // ── API key lane (machine / cross-origin callers) ──────────
@@ -79,6 +132,21 @@ export async function requireAuth(req, res, next) {
     }
     if (!keyMatches(key)) {
       return res.status(401).json({ error: 'Invalid API key' });
+    }
+    // Rate limit only a VALID key: counting invalid ones would let an attacker
+    // exhaust a legitimate caller's budget by guessing.
+    const rate = checkRateLimit(fingerprint(key));
+    if (rate.limit > 0) {
+      res.setHeader('X-RateLimit-Limit', rate.limit);
+      res.setHeader('X-RateLimit-Remaining', rate.remaining);
+      res.setHeader('X-RateLimit-Reset', rate.resetSec);
+    }
+    if (!rate.ok) {
+      res.setHeader('Retry-After', rate.resetSec);
+      return res.status(429).json({
+        error: `Rate limit exceeded: ${rate.limit} requests per minute`,
+        retryAfterSeconds: rate.resetSec,
+      });
     }
     const user = API_KEY_USER_EMAIL ? await findUserByEmail(API_KEY_USER_EMAIL) : null;
     if (!user) {

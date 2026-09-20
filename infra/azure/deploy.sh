@@ -335,6 +335,7 @@ ENV_ARGS+=( "ENABLE_GEO_SCANNER=${ENABLE_GEO_SCANNER:-false}" )
 # silently stays off after the migration.
 ENV_ARGS+=( "ENABLE_ARTICLE_LABELING=${ENABLE_ARTICLE_LABELING:-false}" )
 ENV_ARGS+=( "API_KEY_USER_EMAIL=${API_KEY_USER_EMAIL:-}" )
+ENV_ARGS+=( "API_RATE_LIMIT_PER_MIN=${API_RATE_LIMIT_PER_MIN:-60}" )
 
 # Entra non-secret settings: same rule. An empty ENTRA_AUTHORITY must be ABSENT,
 # not present-and-empty, so entra.js falls back to the workforce /organizations

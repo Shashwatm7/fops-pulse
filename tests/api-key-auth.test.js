@@ -51,3 +51,67 @@ test('matches any key in the pool, so rotation works', () => {
 test('an empty configured pool matches nothing', () => {
     assert.equal(keyMatches('anything', []), false);
 });
+
+// ── Rate limiting ───────────────────────────────────────────
+// Mirror of auth.js checkRateLimit: fixed one-minute window, counted per key.
+function makeLimiter(limit, nowFn) {
+    const WINDOW = 60_000;
+    const windows = new Map();
+    return (fp) => {
+        if (limit <= 0) return { ok: true, limit: 0, remaining: 0, resetSec: 0 };
+        const now = nowFn();
+        const windowStart = Math.floor(now / WINDOW) * WINDOW;
+        let e = windows.get(fp);
+        if (!e || e.windowStart !== windowStart) { e = { windowStart, count: 0 }; windows.set(fp, e); }
+        e.count += 1;
+        return {
+            ok: e.count <= limit,
+            limit,
+            remaining: Math.max(0, limit - e.count),
+            resetSec: Math.ceil((windowStart + WINDOW - now) / 1000),
+        };
+    };
+}
+
+test('allows up to the limit, then refuses', () => {
+    let now = 1_000_000_000_000;
+    const hit = makeLimiter(3, () => now);
+    assert.equal(hit('k').ok, true);
+    assert.equal(hit('k').ok, true);
+    const third = hit('k');
+    assert.equal(third.ok, true);
+    assert.equal(third.remaining, 0);
+    assert.equal(hit('k').ok, false, 'the 4th request in the window is refused');
+});
+
+test('the window resets, so a refused caller recovers', () => {
+    let now = 1_000_000_000_000;
+    const hit = makeLimiter(1, () => now);
+    assert.equal(hit('k').ok, true);
+    assert.equal(hit('k').ok, false);
+    now += 60_000;                       // next minute
+    assert.equal(hit('k').ok, true, 'a new window starts clean');
+});
+
+test('keys are counted independently, so one caller cannot starve another', () => {
+    let now = 1_000_000_000_000;
+    const hit = makeLimiter(1, () => now);
+    assert.equal(hit('key-a').ok, true);
+    assert.equal(hit('key-a').ok, false);
+    assert.equal(hit('key-b').ok, true, 'key-b has its own budget');
+});
+
+test('a limit of 0 disables rate limiting', () => {
+    let now = 1_000_000_000_000;
+    const hit = makeLimiter(0, () => now);
+    for (let i = 0; i < 500; i++) assert.equal(hit('k').ok, true);
+});
+
+test('resetSec counts down within the window, never negative', () => {
+    // Snap to a real window boundary: 1_000_000_000_000 is not a multiple of 60s.
+    let now = Math.floor(1_000_000_000_000 / 60_000) * 60_000;
+    const hit = makeLimiter(10, () => now);
+    assert.equal(hit('k').resetSec, 60);
+    now += 45_000;
+    assert.equal(hit('k').resetSec, 15);
+});
