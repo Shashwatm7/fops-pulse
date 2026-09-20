@@ -4508,6 +4508,22 @@ app.use(express.static(distPath, {
     },
 }));
 
+// ── Unmatched /api paths are a 404, not the app shell ───────
+// Must sit ABOVE the SPA catch-all below. That catch-all answers EVERY
+// unmatched path with 200 + index.html, which is right for client-side routes
+// (/dashboard, /settings) but wrong for the API: a typo'd or stale endpoint
+// then returns 200 and a page of HTML, so callers see a login screen instead
+// of an error and debug an auth problem that does not exist. This has already
+// bitten an embedded iframe pointed at /api/market-info.html (the real file is
+// at /market-info.html) and a health probe placed below the catch-all.
+app.use('/api', (req, res) => {
+    res.status(404).json({
+        success: false,
+        error: `No such API endpoint: ${req.method} ${req.originalUrl.split('?')[0]}`,
+        hint: 'Static files (e.g. market-info.html) are served from the site root, not under /api.',
+    });
+});
+
 // Catch-all route to serve React's index.html for client-side routing
 app.use((req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
