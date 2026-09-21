@@ -502,6 +502,19 @@ function isGeminiTransient(err) {
 }
 
 export async function callGeminiFlash(systemPrompt, userContent, jsonMode = true, maxTokens = 1500, temperature = 0.1) {
+    // LLM_PROVIDER=openai routes every LLM path through the configured
+    // endpoint, this one included. Market Drivers called straight into Gemini
+    // regardless of the provider setting, so switching the app to OpenAI left
+    // one feature still on Gemini's free tier — where it started returning
+    // 429s ("Failed to generate Market Drivers via LLM: Request failed with
+    // status code 429") while everything else ran fine.
+    //
+    // The name stays callGeminiFlash because ~4 call sites use it and the
+    // Gemini path below is still the fallback when OpenAI is not configured.
+    if (OPENAI_ENABLED) {
+        return callGroq(OPENAI_MODEL, systemPrompt, userContent, jsonMode, maxTokens, temperature, 'drivers');
+    }
+
     if (!process.env.GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
 
     const maxRetries = 3;
