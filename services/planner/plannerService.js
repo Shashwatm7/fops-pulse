@@ -245,7 +245,13 @@ CROSS-CHECK CONSISTENCY: before finalizing, verify no two of your 4 recommendati
 Return a JSON object: {"recommendations": [...]} with exactly 4 objects, each with keys:
 - "timeframe": exactly "90D" or "365D"
 - "action": the recommendation (2-3 sentences max, citing the data)
-- "businessImpact": one sentence, mechanism + direction`;
+- "businessImpact": one sentence, mechanism + direction — the CONSEQUENCE of acting
+- "reasoning": one sentence, the EVIDENCE the recommendation rests on — the specific
+  alert, headline, price level or weather signal from the data above, quoted with its
+  number or source. This is the "why do you believe this", distinct from
+  businessImpact's "what happens if we act". Follow the evidence priority order above:
+  lead with an ACTIVE RISK ALERT if one applies, else Tier 1 news, else a live price
+  or weather figure. Never restate the action here.`;
 
     return { systemPrompt, contextBundle };
 }
