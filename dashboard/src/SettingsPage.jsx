@@ -155,46 +155,17 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
           </select>
         </div>
 
-        <div className="section-label" style={styles.sectionTitle}>Tracked Regions</div>
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 10px', maxWidth: '60ch', lineHeight: 1.5 }}>
-          Used for <strong>news filtering</strong> — which regions' supply-chain news you see. These are geographic
-          tags, not weather stations. For live temperature &amp; rainfall, add real locations in the
-          Command Center's weather panel.
-        </p>
-        <div style={styles.chipRow}>
-          {regions.length === 0 && customRegions.length === 0 && <span style={styles.empty}>None selected yet.</span>}
-          {regions.map(name => (
-            <span key={name} className="chip">
-              {name}
-              <button className="chip-remove" title="Remove" onClick={() => setRegions(regions.filter(x => x !== name))}>✕</button>
-            </span>
-          ))}
-          {customRegions.map((r, i) => (
-            <span key={`custom-${i}`} className="chip" title="Custom region">
-              ★ {r.name}
-              <button className="chip-remove" title="Remove" onClick={() => setCustomRegions(customRegions.filter((_, j) => j !== i))}>✕</button>
-            </span>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input list="region-suggestions" className="form-input" style={{ flex: 2 }} value={customRegionName} onChange={e=>setCustomRegionName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomRegion(); } }} placeholder="Add a region — any city, country, or area (e.g. Middle East, Punjab, Rotterdam)" />
-          <datalist id="region-suggestions">
-            <option value="Omaha, NE" />
-            <option value="Des Moines, IA" />
-            <option value="Fresno, CA" />
-            <option value="Mato Grosso, Brazil" />
-            <option value="Rosario, Argentina" />
-            <option value="Perth, Australia" />
-            <option value="Saskatchewan, Canada" />
-            <option value="Kyiv, Ukraine" />
-            <option value="Krasnodar, Russia" />
-            <option value="Shandong, China" />
-            <option value="Punjab, India" />
-            <option value="Paris Basin, France" />
-          </datalist>
-          <input className="form-input" style={{ flex: 1 }} value={customRegionCrop} onChange={e=>setCustomRegionCrop(e.target.value)} placeholder="Crop (optional)" />
-          <button className="btn-secondary" onClick={handleAddCustomRegion} disabled={addingRegion}>{addingRegion ? 'Adding…' : 'Add Custom'}</button>
-        </div>
+        {/* Tracked Regions is deliberately NOT rendered, same reasoning as the
+            keyword editor above: a template seeds ~15 region chips plus the
+            custom-region form, and the block pushed Market Focus and the news
+            pipeline settings off the screen.
+
+            The data stays live. `regions` and `customRegions` are still loaded
+            from the profile and still submitted on save (regions /
+            custom_regions, below), so news filtering and the planner's region
+            scope behave exactly as before. This hides the editor, not the
+            feature. Restore from git history to bring it back — the state,
+            handleAddCustomRegion and the save path are all intact. */}
 
         <div className="section-label" style={styles.sectionTitle}>Market Focus</div>
         <div style={{display:'flex', gap:'15px', marginBottom:'15px'}}>
