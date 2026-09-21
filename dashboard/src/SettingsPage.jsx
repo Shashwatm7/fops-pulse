@@ -210,13 +210,14 @@ export default function SettingsPage({ user, profile, onSave, onCancel }) {
 
         <div className="section-label" style={styles.sectionTitle}>News Pipeline Configuration</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          <div>
-            <label className="form-label">Extra Tracked Keywords
-              {newsKeywords.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {newsKeywords.length}</span>}
-            </label>
-            <TagInput value={newsKeywords} onChange={setNewsKeywords} placeholder="Type a keyword, press Enter…" />
-            <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-dim)' }}>Each keyword becomes an extra news search query for your pipeline.</div>
-          </div>
+          {/* Extra Tracked Keywords is deliberately NOT rendered. A template
+              seeds ~74 of them, and a wall of 74 tag pills buried the two
+              controls below it that a planner actually adjusts. The keywords
+              remain fully live: newsKeywords is still loaded from the profile
+              and still submitted on save (news_keywords, below), so the news
+              pipeline keeps using every one of them. This hides the editor,
+              it does not disable the feature. To bring it back, restore the
+              block from git history — the state and the save path are intact. */}
           <div>
             <label className="form-label">Blocklisted Sources/Keywords
               {blocklist.length > 0 && <span style={{ opacity: 0.6, textTransform: 'none', letterSpacing: 0 }}> · {blocklist.length}</span>}
