@@ -2704,18 +2704,30 @@ app.post('/api/analyze-planner', requireAuth, async (req, res) => {
         if (!Array.isArray(parsed?.recommendations)) {
             throw new Error(`Planner LLM returned an unexpected shape (expected {recommendations: []}, got keys: ${Object.keys(parsed || {}).join(', ') || 'none'})`);
         }
-        // Guarantee `reasoning` exists on every card. The prompt asks for it,
-        // but an LLM omitting one optional-looking key is normal — and the UI
-        // renders the REASONING block conditionally (App.jsx:1610), so a
-        // missing key made the section appear on some cards and vanish on
-        // others with nothing logged. That intermittency is what got reported
-        // as "Reasoning section is not there". Normalising here means the
-        // frontend can rely on the field being present, and a model that does
-        // drop it shows up in the logs instead of silently reshaping the UI.
+        // Guarantee the text fields exist on every card. The prompt asks for
+        // all of them, but an LLM omitting one optional-looking key is normal
+        // — and the UI renders each block conditionally (BUSINESS IMPACT at
+        // App.jsx:1604, REASONING at :1610), so a missing key made the section
+        // appear on some cards and vanish on others with nothing logged. That
+        // intermittency is what got reported as "Reasoning section is not
+        // there". Normalising here lets the frontend rely on the fields being
+        // present, and a model that drops one shows up in the logs instead of
+        // silently reshaping the UI.
+        const NARRATIVE_KEYS = ['businessImpact', 'reasoning'];
         const recommendations = parsed.recommendations.map((r) => {
-            if (typeof r?.reasoning === 'string' && r.reasoning.trim()) return r;
-            console.warn(`[AI PLANNER] Recommendation missing "reasoning" (timeframe: ${r?.timeframe ?? '?'}) — model omitted a required key`);
-            return { ...r, reasoning: '' };
+            const filled = { ...r };
+            const missing = [];
+            for (const key of NARRATIVE_KEYS) {
+                // A whitespace-only string is truthy, so it would pass a naive
+                // check and render a heading with no text under it.
+                if (typeof filled[key] === 'string' && filled[key].trim()) continue;
+                filled[key] = '';
+                missing.push(key);
+            }
+            if (missing.length) {
+                console.warn(`[AI PLANNER] Recommendation missing ${missing.map(k => `"${k}"`).join(', ')} (timeframe: ${r?.timeframe ?? '?'}) — model omitted required key(s)`);
+            }
+            return filled;
         });
 
         // Only cache a non-empty result. Caching an empty one pins a bad

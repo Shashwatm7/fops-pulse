@@ -31,8 +31,15 @@ test('every one of the four required keys is still requested', () => {
 
 // Mirror of the normalisation in server.js so the behaviour is asserted, not
 // just the presence of the code.
-const normalise = (recs) => recs.map(r =>
-    (typeof r?.reasoning === 'string' && r.reasoning.trim()) ? r : { ...r, reasoning: '' });
+const NARRATIVE_KEYS = ['businessImpact', 'reasoning'];
+const normalise = (recs) => recs.map((r) => {
+    const filled = { ...r };
+    for (const key of NARRATIVE_KEYS) {
+        if (typeof filled[key] === 'string' && filled[key].trim()) continue;
+        filled[key] = '';
+    }
+    return filled;
+});
 
 test('a missing reasoning key is filled in, not dropped', () => {
     const out = normalise([{ timeframe: '90D', action: 'a', businessImpact: 'b' }]);
@@ -55,8 +62,44 @@ test('a whitespace-only reasoning is treated as missing', () => {
 test('the route normalises before caching, not after', () => {
     // Caching the raw model output would pin a reasoning-less generation in
     // place for 2h, which is exactly how this became intermittent.
-    const normIdx = server.indexOf('Recommendation missing "reasoning"');
+    // Anchored on the declaration rather than the log text, which is phrasing
+    // and moves whenever the message is reworded.
+    const normIdx = server.indexOf("const NARRATIVE_KEYS = ['businessImpact', 'reasoning']");
     const cacheIdx = server.indexOf('global.aiPlannerCache[cacheKey] = { data: recommendations');
-    assert.ok(normIdx > -1 && cacheIdx > -1, 'both code paths found');
+    assert.ok(normIdx > -1, 'normalisation block found');
+    assert.ok(cacheIdx > -1, 'cache write found');
     assert.ok(normIdx < cacheIdx, 'normalisation must run before the cache write');
+});
+
+// ── businessImpact gets the same guarantee ──────────────────
+// It is rendered conditionally too (App.jsx:1604), so it fails the same way.
+
+test('a missing businessImpact is filled in, not dropped', () => {
+    const out = normalise([{ timeframe: '90D', action: 'a', reasoning: 'r' }]);
+    assert.equal(out[0].businessImpact, '');
+    assert.ok('businessImpact' in out[0]);
+});
+
+test('both narrative fields can be missing at once', () => {
+    const out = normalise([{ timeframe: '365D', action: 'a' }]);
+    assert.equal(out[0].businessImpact, '');
+    assert.equal(out[0].reasoning, '');
+    assert.equal(out[0].action, 'a', 'other fields are untouched');
+    assert.equal(out[0].timeframe, '365D');
+});
+
+test('real values for both survive normalisation', () => {
+    const rec = { timeframe: '90D', businessImpact: 'Caps Q4 cost.', reasoning: 'COPPER above range.' };
+    const out = normalise([rec]);
+    assert.equal(out[0].businessImpact, 'Caps Q4 cost.');
+    assert.equal(out[0].reasoning, 'COPPER above range.');
+});
+
+test('whitespace-only businessImpact is treated as missing', () => {
+    const out = normalise([{ timeframe: '90D', businessImpact: '  \n ' }]);
+    assert.equal(out[0].businessImpact, '');
+});
+
+test('the route normalises both keys', () => {
+    assert.match(server, /NARRATIVE_KEYS\s*=\s*\['businessImpact',\s*'reasoning'\]/);
 });
