@@ -224,5 +224,26 @@ test('deepDive asked for by name runs, and gets phase-1 input', async () => {
     });
     assert.deepEqual(Object.keys(out.data), ['deepDive']);
     assert.deepEqual(body.prices, [{ symbol: 'WHEAT' }]);
-    assert.equal(body.timeframe, '7d', 'defaults when no query param is given');
+    assert.equal(body.timeframe, '90D', 'defaults to a timeframe the planner actually emits');
+});
+
+test('deepDive timeframe is limited to what the planner emits', async () => {
+    const run = async (timeframe) => {
+        let body = null;
+        await composeMarketPulse({
+            app: stubApp({ deepDive: (rq, rs) => { body = rq.body; rs.json({ success: true }); } }),
+            req: Object.assign(Object.create({ session: { userId: 1 }, user: {}, userProfile: {} }), { query: { timeframe } }),
+            sections: ['deepDive'],
+        });
+        return body.timeframe;
+    };
+    assert.equal(await run('90D'), '90D');
+    assert.equal(await run('365D'), '365D');
+    assert.equal(await run('365d'), '365D', 'case is normalised');
+    // The prompt interpolates this into "their ${timeframe} supply chain
+    // action plan", so a value the planner never produces would ask the model
+    // to explain a plan that does not exist.
+    assert.equal(await run('7d'), '90D', 'an unknown timeframe falls back');
+    assert.equal(await run(''), '90D');
+    assert.equal(await run(undefined), '90D');
 });

@@ -111,6 +111,9 @@ export const MARKET_PULSE_SECTIONS = {
     },
 };
 
+/** The only timeframes the planner produces. See plannerService.js:246. */
+export const DEEP_DIVE_TIMEFRAMES = new Set(['90D', '365D']);
+
 /**
  * On-demand sections: reachable via ?sections= but NOT part of the default
  * payload. deepDive is what the "Request AI Deep Dive" button fires — a user
@@ -123,7 +126,16 @@ export const ON_DEMAND_SECTIONS = {
         path: '/api/analyze-deep-dive', phase: 2, method: 'post',
         body: (data, req) => ({
             ...analysisBody(data, req),
-            timeframe: req.query?.timeframe || '7d',
+            // The planner emits exactly "90D" or "365D"
+            // (services/planner/plannerService.js:246), and the deep-dive
+            // prompt interpolates this straight into "their ${timeframe}
+            // supply chain action plan" (server.js:2519). Anything else asks
+            // the model to explain a plan that does not exist, so an
+            // unrecognised value falls back to 90D rather than passing
+            // through.
+            timeframe: DEEP_DIVE_TIMEFRAMES.has(String(req.query?.timeframe || '').toUpperCase())
+                ? String(req.query.timeframe).toUpperCase()
+                : '90D',
             deterministicAction: req.query?.deterministicAction || '',
         }),
     },

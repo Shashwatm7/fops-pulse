@@ -1190,7 +1190,7 @@ app.get('/api/market-pulse/market-indicators', requireAuth, async (req, res) => 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/market-pulse/deep-dive[?timeframe=7d&deterministicAction=...]
+// GET /api/market-pulse/deep-dive[?timeframe=90D|365D&deterministicAction=...]
 //
 // Backs the "Request AI Deep Dive" button. /api/analyze-deep-dive is a POST
 // expecting the caller to have already fetched prices, news, weather, energy
