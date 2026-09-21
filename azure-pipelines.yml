@@ -1,33 +1,11 @@
-# FOps Pulse -> Azure Container Apps
-#
-# Build happens inside ACR (`az acr build`), not on the agent: the image is
-# ~1.4 GB with a Vite build in it, and the hosted agent would have to push all
-# of that back out over the network. This way the agent only uploads the source
-# context and waits.
-#
-# The pipeline deliberately does NOT know any application secrets. DATABASE_URL,
-# SESSION_SECRET, GROQ_API_KEY and friends live as Container Apps secrets and
-# are set by infra/azure/deploy.sh. `az containerapp update --image` patches the
-# image only and leaves existing secrets and env vars untouched, so there is no
-# second copy of those credentials to rotate.
-#
-# One-time setup, both in the Azure DevOps UI:
-#   1. Project settings -> Service connections -> New -> Azure Resource Manager
-#      -> Workload identity federation (automatic). Scope it to the subscription
-#      holding resource group FOps-Dev. Name it exactly `azureServiceConnection`
-#      below, and tick "Grant access permission to all pipelines".
-#   2. Pipelines -> New pipeline -> Azure Repos Git -> FOps-MarketPulse ->
-#      Existing Azure Pipelines YAML file -> /azure-pipelines.yml on `dev`.
-
 trigger:
   branches:
     include:
       - dev
-      - main
   paths:
     exclude:
       - '**/*.md'
-      - docs/*
+      - docs/**
 
 pr:
   branches:
@@ -35,141 +13,130 @@ pr:
       - dev
 
 variables:
-  azureServiceConnection: 'FOps-Dev-ARM'
-  resourceGroup: 'FOps-Dev'
-  acrName: 'fopsdev'
-  containerApp: 'fops-pulse'
-  imageRepository: 'fops-pulse'
-  # Build.BuildId is monotonic and unique, so every run produces a distinct tag
-  # and a distinct revision. Reusing a tag would make `containerapp update` a
-  # no-op: the template would be unchanged and no new revision would roll.
-  imageTag: '$(Build.BuildId)'
-  nodeVersion: '22.x'
+  azureServiceConnection: sc-fops-dev-wif
+  registryName: acrfopsnonproddrizlaa
+  registryLoginServer: acrfopsnonproddrizlaa.azurecr.io
+  imageRepository: fops-market-pulse
+  resourceGroup: rg-fops-dev
+  containerAppName: ca-fops-market-pulse-dev
+  nodeVersion: 22.x
+  vmImage: ubuntu-latest
 
 stages:
-  - stage: Test
-    displayName: Test
+  - stage: Validate
+    displayName: Validate application
     jobs:
-      - job: unit
-        displayName: Unit tests
+      - job: Tests
+        displayName: Install and test
         pool:
-          vmImage: ubuntu-latest
+          vmImage: $(vmImage)
         steps:
+          - checkout: self
+            clean: true
+
           - task: NodeTool@0
-            displayName: Use Node $(nodeVersion)
+            displayName: Use Node.js $(nodeVersion)
             inputs:
               versionSpec: $(nodeVersion)
 
-          - script: npm ci --fetch-retries 5 --fetch-retry-mintimeout 20000
-            displayName: npm ci
+          - script: npm ci --fetch-retries 5 --fetch-retry-mintimeout 20000 --fetch-retry-maxtimeout 120000
+            displayName: Install dependencies
 
-          # Every test in tests/ is offline: no database, no API keys, no
-          # network. If one starts needing those, split it out rather than
-          # weakening this gate.
           - script: npm test
-            displayName: npm test
+            displayName: Run unit tests
 
   - stage: Build
-    displayName: Build image
-    dependsOn: Test
+    displayName: Build and publish image
+    dependsOn: Validate
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
-      - job: acrBuild
-        displayName: az acr build
+      - job: BuildImage
+        displayName: Build MarketPulse image
+        timeoutInMinutes: 60
         pool:
-          vmImage: ubuntu-latest
-        timeoutInMinutes: 45
+          vmImage: $(vmImage)
         steps:
+          - checkout: self
+            clean: true
+
           - task: AzureCLI@2
-            displayName: Build $(imageRepository):$(imageTag) in ACR
+            displayName: Build and push image
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
-                az acr build \
-                  --registry "$(acrName)" \
-                  --resource-group "$(resourceGroup)" \
-                  --platform linux \
-                  --image "$(imageRepository):$(imageTag)" \
-                  --image "$(imageRepository):latest" \
-                  .
 
-  - stage: Deploy
-    displayName: Deploy to Container Apps
+                az acr login --name "$(registryName)"
+                docker build \
+                  --file Dockerfile \
+                  --tag "$(registryLoginServer)/$(imageRepository):$(Build.BuildId)" \
+                  --tag "$(registryLoginServer)/$(imageRepository):dev" \
+                  .
+                docker push "$(registryLoginServer)/$(imageRepository):$(Build.BuildId)"
+                docker push "$(registryLoginServer)/$(imageRepository):dev"
+
+  - stage: DeployDev
+    displayName: Deploy to DEV
     dependsOn: Build
-    # Only `dev` reaches the running environment. `main` still builds, so a
-    # merge is proven to compile before anyone promotes it.
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/dev'))
     jobs:
-      - deployment: containerApps
-        displayName: Roll a new revision
-        pool:
-          vmImage: ubuntu-latest
+      - deployment: DeployMarketPulse
+        displayName: Deploy MarketPulse
         environment: fops-dev
+        pool:
+          vmImage: $(vmImage)
         strategy:
           runOnce:
             deploy:
               steps:
+                - checkout: none
+
                 - task: AzureCLI@2
-                  displayName: Update container app
+                  displayName: Update Container App
                   inputs:
                     azureSubscription: $(azureServiceConnection)
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -euo pipefail
-                      LOGIN_SERVER="$(az acr show -n "$(acrName)" --query loginServer -o tsv)"
 
-                      # --revision-suffix is what actually forces a new revision.
-                      # It must be unique, lowercase, and <=64 chars overall.
                       az containerapp update \
-                        --name "$(containerApp)" \
+                        --name "$(containerAppName)" \
                         --resource-group "$(resourceGroup)" \
-                        --image "${LOGIN_SERVER}/$(imageRepository):$(imageTag)" \
-                        --revision-suffix "b$(imageTag)" \
+                        --image "$(registryLoginServer)/$(imageRepository):$(Build.BuildId)" \
                         --output none
 
-                      FQDN="$(az containerapp show \
-                        --name "$(containerApp)" \
-                        --resource-group "$(resourceGroup)" \
-                        --query properties.configuration.ingress.fqdn -o tsv)"
-                      echo "##vso[task.setvariable variable=appFqdn;isOutput=false]${FQDN}"
-                      echo "Deployed to https://${FQDN}"
-
                 - task: AzureCLI@2
-                  displayName: Smoke test /readyz
+                  displayName: Verify DEV readiness
                   inputs:
                     azureSubscription: $(azureServiceConnection)
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -euo pipefail
-                      FQDN="$(az containerapp show \
-                        --name "$(containerApp)" \
-                        --resource-group "$(resourceGroup)" \
-                        --query properties.configuration.ingress.fqdn -o tsv)"
 
-                      # A new revision takes ~60-90s to pass its own health
-                      # probes and take traffic; polling avoids asserting
-                      # against the outgoing revision.
+                      FQDN="$(az containerapp show \
+                        --name "$(containerAppName)" \
+                        --resource-group "$(resourceGroup)" \
+                        --query properties.configuration.ingress.fqdn \
+                        --output tsv)"
+
                       for attempt in $(seq 1 30); do
-                        BODY="$(curl -sS --max-time 20 "https://${FQDN}/readyz" || true)"
-                        echo "attempt ${attempt}: ${BODY}"
-                        case "${BODY}" in
-                          *'"db":"up"'*)
-                            echo "Ready."
-                            exit 0
-                            ;;
-                        esac
+                        BODY="$(curl --silent --show-error --max-time 20 "https://${FQDN}/readyz" || true)"
+                        echo "Readiness attempt ${attempt}: ${BODY}"
+                        if [[ "${BODY}" == *'"db":"up"'* ]]; then
+                          echo "MarketPulse is ready at https://${FQDN}"
+                          exit 0
+                        fi
                         sleep 10
                       done
 
-                      echo "##vso[task.logissue type=error]/readyz never reported db up"
-                      az containerapp revision list \
-                        --name "$(containerApp)" \
+                      echo "##vso[task.logissue type=error]MarketPulse did not become ready within five minutes."
+                      az containerapp logs show \
+                        --name "$(containerAppName)" \
                         --resource-group "$(resourceGroup)" \
-                        --query "[?properties.active].{name:name,healthy:properties.healthState,traffic:properties.trafficWeight}" \
-                        -o table
+                        --type system \
+                        --tail 50 || true
                       exit 1
