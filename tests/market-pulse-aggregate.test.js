@@ -3,7 +3,7 @@
 // a stub shaped like Express 5's router.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeMarketPulse, MARKET_PULSE_SECTIONS, MARKET_PULSE_KEYS } from '../services/page-composer/aggregate.js';
+import { composeMarketPulse, MARKET_PULSE_SECTIONS, MARKET_PULSE_KEYS, REQUESTABLE_KEYS } from '../services/page-composer/aggregate.js';
 
 function stubApp(overrides = {}) {
     return {
@@ -197,4 +197,32 @@ test('marketIndicators reports a failed analyze instead of pretending', async ()
     });
     assert.equal(out.data.marketIndicators.success, false);
     assert.match(out.data.marketIndicators.error, /analyze exploded/);
+});
+
+test('on-demand sections are addressable but not in the default payload', async () => {
+    assert.ok(REQUESTABLE_KEYS.includes('deepDive'), 'deepDive can be asked for by name');
+    assert.ok(!MARKET_PULSE_KEYS.includes('deepDive'), 'deepDive is not in the default payload');
+});
+
+test('/full does not fire the deep-dive LLM call', async () => {
+    let deepDiveCalled = false;
+    const app = stubApp({ deepDive: (rq, rs) => { deepDiveCalled = true; rs.json({ success: true }); } });
+    const out = await composeMarketPulse({ app, req: req() });
+    assert.equal(deepDiveCalled, false, 'a page load must not pay for deep dive');
+    assert.ok(!('deepDive' in out.data));
+});
+
+test('deepDive asked for by name runs, and gets phase-1 input', async () => {
+    let body = null;
+    const out = await composeMarketPulse({
+        app: stubApp({
+            commodities: (rq, rs) => rs.json({ success: true, prices: [{ symbol: 'WHEAT' }] }),
+            deepDive: (rq, rs) => { body = rq.body; rs.json({ success: true, deepDive: 'text' }); },
+        }),
+        req: req(),
+        sections: ['deepDive'],
+    });
+    assert.deepEqual(Object.keys(out.data), ['deepDive']);
+    assert.deepEqual(body.prices, [{ symbol: 'WHEAT' }]);
+    assert.equal(body.timeframe, '7d', 'defaults when no query param is given');
 });

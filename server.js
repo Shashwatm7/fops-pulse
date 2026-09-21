@@ -31,7 +31,7 @@ import { buildPlannerPrompt } from './services/planner/plannerService.js';
 import { labelingConfig } from './config/labeling.js';
 import { ALL_REGIONS, ALL_COMMODITIES } from './onboarding-templates.js';
 import { composePage, PAGES } from './services/page-composer/index.js';
-import { composeMarketPulse, MARKET_PULSE_KEYS } from './services/page-composer/aggregate.js';
+import { composeMarketPulse, MARKET_PULSE_KEYS, REQUESTABLE_KEYS } from './services/page-composer/aggregate.js';
 import { runHybridAnalysis } from './algorithms.js';
 import { runDeterministicEngine } from './deterministic-engine.js';
 import { simulateLogistics } from './logistics-engine.js';
@@ -1060,7 +1060,7 @@ app.get('/api/market-pulse/full', requireAuth, async (req, res) => {
         const requested = (req.query.sections || '')
             .split(',').map(s => s.trim()).filter(Boolean);
 
-        const unknown = requested.filter(s => !MARKET_PULSE_KEYS.includes(s));
+        const unknown = requested.filter(s => !REQUESTABLE_KEYS.includes(s));
         if (unknown.length) {
             return res.status(400).json({
                 success: false,
@@ -1186,6 +1186,43 @@ app.get('/api/market-pulse/market-indicators', requireAuth, async (req, res) => 
     } catch (err) {
         console.error('Market indicators failed:', err.message);
         res.status(500).json({ success: false, error: 'Market indicators failed' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/market-pulse/deep-dive[?timeframe=7d&deterministicAction=...]
+//
+// Backs the "Request AI Deep Dive" button. /api/analyze-deep-dive is a POST
+// expecting the caller to have already fetched prices, news, weather, energy
+// and FX and to hand them back; this gathers that input server-side.
+//
+// Deliberately NOT part of /api/market-pulse/full. Deep dive is a user action,
+// not page-load data -- /full already makes two LLM calls, and a third on
+// every request would push it past 40s for output nobody asked to see. It is
+// still addressable there on request: ?sections=deepDive.
+//
+// COSTS TOKENS, and is the slowest endpoint here.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/market-pulse/deep-dive', requireAuth, async (req, res) => {
+    try {
+        const payload = await composeMarketPulse({
+            app,
+            req,
+            sections: ['deepDive'],
+            skipMiddleware: [requireAuth],
+        });
+        const section = payload.data.deepDive || {};
+        if (section.success === false) {
+            return res.status(503).json({
+                success: false,
+                error: section.error || 'Deep dive unavailable',
+            });
+        }
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json({ success: true, ...section, generatedAt: new Date().toISOString() });
+    } catch (err) {
+        console.error('Deep dive failed:', err.message);
+        res.status(500).json({ success: false, error: 'Deep dive failed' });
     }
 });
 app.get('/api/commodities', requireAuth, async (req, res) => {

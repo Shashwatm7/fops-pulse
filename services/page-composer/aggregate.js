@@ -111,7 +111,32 @@ export const MARKET_PULSE_SECTIONS = {
     },
 };
 
-export const MARKET_PULSE_KEYS = Object.keys(MARKET_PULSE_SECTIONS);
+/**
+ * On-demand sections: reachable via ?sections= but NOT part of the default
+ * payload. deepDive is what the "Request AI Deep Dive" button fires — a user
+ * action, not something a page load should pay for. /full already carries two
+ * LLM calls; adding a third to every request would push it past 40s for
+ * output nobody asked to see.
+ */
+export const ON_DEMAND_SECTIONS = {
+    deepDive: {
+        path: '/api/analyze-deep-dive', phase: 2, method: 'post',
+        body: (data, req) => ({
+            ...analysisBody(data, req),
+            timeframe: req.query?.timeframe || '7d',
+            deterministicAction: req.query?.deterministicAction || '',
+        }),
+    },
+};
+
+Object.assign(MARKET_PULSE_SECTIONS, ON_DEMAND_SECTIONS);
+
+/** The default /full payload: everything except the on-demand sections. */
+export const MARKET_PULSE_KEYS = Object.keys(MARKET_PULSE_SECTIONS)
+    .filter(k => !(k in ON_DEMAND_SECTIONS));
+
+/** Every section a caller may request by name, on-demand ones included. */
+export const REQUESTABLE_KEYS = Object.keys(MARKET_PULSE_SECTIONS);
 
 /** Resolve one section to its verbatim response body, or an error body. */
 async function resolveSection(app, name, spec, req, skip, data) {
@@ -149,10 +174,12 @@ async function resolveSection(app, name, spec, req, skip, data) {
 export async function composeMarketPulse({ app, req, sections: requested, skipMiddleware }) {
     const skip = new Set(skipMiddleware || []);
 
-    // A caller may narrow the set but never add to it: an arbitrary name here
-    // must not become a dispatch to an arbitrary route.
+    // A caller may pick from the known catalogue but never invent a name: an
+    // arbitrary string here must not become a dispatch to an arbitrary route.
+    // REQUESTABLE_KEYS is the wider list — it includes the on-demand sections,
+    // which are addressable by name but absent from the default payload.
     const wanted = requested?.length
-        ? MARKET_PULSE_KEYS.filter(k => requested.includes(k))
+        ? REQUESTABLE_KEYS.filter(k => requested.includes(k))
         : MARKET_PULSE_KEYS;
 
     const data = {};
