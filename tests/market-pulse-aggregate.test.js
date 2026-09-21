@@ -33,12 +33,20 @@ test('returns {success, data} with every section as a flat verbatim body', async
     assert.equal(out.data.commodities.data, undefined);
 });
 
-test('the reference payload key set is what we emit', async () => {
-    // The shape the FOps API team supplied.
-    const expected = ['templates', 'userProfile', 'commodities', 'energy', 'news',
+test('the reference payload keys are all present, in order', async () => {
+    // The shape the FOps API team supplied. These must keep their names and
+    // their order: consumers diff this payload.
+    const reference = ['templates', 'userProfile', 'commodities', 'energy', 'news',
         'weather', 'forex', 'weather_extended', 'sop', 'ml-forecasts', 'ports',
         'categorized', 'morning-brief', 'analyze-planner', 'analyze', 'by-articles'];
-    assert.deepEqual(MARKET_PULSE_KEYS, expected);
+    assert.deepEqual(MARKET_PULSE_KEYS.slice(0, reference.length), reference);
+});
+
+test('marketIndicators is an addition on the end, not a reshuffle', async () => {
+    // Appended deliberately: the UI has a "Market Indicators" panel whose data
+    // was only reachable at analyze.analysis.drivers. Adding a key is
+    // backward-compatible; renaming or reordering the reference keys is not.
+    assert.deepEqual(MARKET_PULSE_KEYS.slice(16), ['marketIndicators']);
 });
 
 test('phase 2 sections receive a body built from phase 1 results', async () => {
@@ -131,4 +139,62 @@ test('a phase-1-only request does not fetch anything extra', async () => {
         sections: ['commodities', 'forex'],
     });
     assert.deepEqual(seen.sort(), ['commodities', 'forex'], 'no speculative fetches');
+});
+
+test('marketIndicators is promoted to a top-level section', async () => {
+    const out = await composeMarketPulse({
+        app: stubApp({
+            analyze: (rq, rs) => rs.json({
+                success: true,
+                analysis: { summary: 's', drivers: [{ factor: 'LOGISTICS: Hormuz' }, { factor: 'ENERGY: Crude' }] },
+            }),
+        }),
+        req: req(),
+    });
+    assert.equal(out.data.marketIndicators.success, true);
+    assert.equal(out.data.marketIndicators.drivers.length, 2);
+    // It is derived from analyze, not a separate fetch, so analyze is intact.
+    assert.equal(out.data.analyze.analysis.drivers.length, 2);
+});
+
+test('marketIndicators alone still runs the analyze chain beneath it', async () => {
+    let plannerCalled = false;
+    const out = await composeMarketPulse({
+        app: stubApp({
+            analyze: (rq, rs) => rs.json({ success: true, analysis: { drivers: [{ factor: 'X' }] } }),
+            'analyze-planner': (rq, rs) => { plannerCalled = true; rs.json({ success: true }); },
+        }),
+        req: req(),
+        sections: ['marketIndicators'],
+    });
+    assert.deepEqual(Object.keys(out.data), ['marketIndicators']);
+    assert.equal(out.data.marketIndicators.drivers.length, 1);
+    // analyze-planner is a sibling LLM call, not a dependency — asking for
+    // market indicators must not pay for it.
+    assert.equal(plannerCalled, false, 'the planner must not be called');
+});
+
+test('marketIndicators surfaces driversError rather than an empty list', async () => {
+    const out = await composeMarketPulse({
+        app: stubApp({
+            analyze: (rq, rs) => rs.json({
+                success: true,
+                analysis: { drivers: [], driversError: 'Market drivers unavailable: status code 401' },
+            }),
+        }),
+        req: req(),
+        sections: ['marketIndicators'],
+    });
+    assert.equal(out.data.marketIndicators.success, false);
+    assert.match(out.data.marketIndicators.error, /401/);
+});
+
+test('marketIndicators reports a failed analyze instead of pretending', async () => {
+    const out = await composeMarketPulse({
+        app: stubApp({ analyze: () => { throw new Error('analyze exploded'); } }),
+        req: req(),
+        sections: ['marketIndicators'],
+    });
+    assert.equal(out.data.marketIndicators.success, false);
+    assert.match(out.data.marketIndicators.error, /analyze exploded/);
 });

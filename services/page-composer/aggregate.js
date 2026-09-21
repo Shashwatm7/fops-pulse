@@ -85,6 +85,30 @@ export const MARKET_PULSE_SECTIONS = {
         // from carrying hundreds of articles it will discard.
         body: (data) => ({ articles: (data.news?.articles || []).slice(0, 60) }),
     },
+
+    // DERIVED, not fetched. The UI panel called "Market Indicators" renders
+    // analysis.drivers, which lives at data.analyze.analysis.drivers -- three
+    // levels down, under a different name, next to ten sibling keys. Nobody
+    // integrating against this payload finds it, and the obvious guess
+    // (/indicators) returns prices instead, which are a different thing.
+    //
+    // So promote it to a top-level key with the name the UI uses. No extra
+    // request and no extra tokens: it reads the analyze section that phase 2
+    // already produced.
+    marketIndicators: {
+        phase: 3,
+        derive: (data) => {
+            const analyze = data.analyze;
+            if (!analyze || analyze.success === false) {
+                return sectionError(analyze?.error || 'analyze section unavailable');
+            }
+            const analysis = analyze.analysis || {};
+            if (analysis.driversError) {
+                return sectionError(analysis.driversError);
+            }
+            return { success: true, drivers: analysis.drivers || [] };
+        },
+    },
 };
 
 export const MARKET_PULSE_KEYS = Object.keys(MARKET_PULSE_SECTIONS);
@@ -138,19 +162,40 @@ export async function composeMarketPulse({ app, req, sections: requested, skipMi
     // otherwise it posts an empty body and the model answers about nothing.
     // Those extra sections are fetched but not emitted: `wanted` still governs
     // the response shape.
-    const needsPhase1 = wanted.some(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === 2);
+    // A phase-3 section is derived from a phase-2 one, which is itself built
+    // from phase 1 — so asking for marketIndicators alone has to run the whole
+    // chain. Each level pulls in the one below it; the extra sections are
+    // fetched but not emitted.
+    const phaseOf = n => MARKET_PULSE_SECTIONS[n].phase || 1;
+    const maxPhase = Math.max(1, ...wanted.map(phaseOf));
+    const needsPhase1 = maxPhase >= 2;
+    const needsPhase2 = maxPhase >= 3;
 
     const runPhase = async (phase) => {
-        const names = phase === 1 && needsPhase1
-            ? MARKET_PULSE_KEYS.filter(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === 1)
-            : wanted.filter(n => (MARKET_PULSE_SECTIONS[n].phase || 1) === phase);
-        const results = await Promise.all(names.map(n =>
-            resolveSection(app, n, MARKET_PULSE_SECTIONS[n], req, skip, data)));
+        const all = MARKET_PULSE_KEYS.filter(n => phaseOf(n) === phase);
+        const names =
+            (phase === 1 && needsPhase1) ? all
+            // Only the phase-2 sections a wanted phase-3 section depends on:
+            // marketIndicators needs `analyze`, not the two LLM calls beside it.
+            : (phase === 2 && needsPhase2) ? [...new Set([...wanted.filter(n => phaseOf(n) === 2), 'analyze'])]
+            : wanted.filter(n => phaseOf(n) === phase);
+
+        const results = await Promise.all(names.map(n => {
+            const spec = MARKET_PULSE_SECTIONS[n];
+            // A derived section reads what earlier phases produced rather than
+            // dispatching a route of its own.
+            if (typeof spec.derive === 'function') {
+                try { return Promise.resolve(spec.derive(data)); }
+                catch (err) { return Promise.resolve(sectionError(err.message)); }
+            }
+            return resolveSection(app, n, spec, req, skip, data);
+        }));
         names.forEach((n, i) => { data[n] = results[i]; });
     };
 
     await runPhase(1);
     await runPhase(2);
+    await runPhase(3);
 
     // Emit in declaration order regardless of which phase filled each key, so
     // the response shape is stable for a consumer diffing it.

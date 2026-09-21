@@ -1149,6 +1149,45 @@ app.get('/api/market-pulse/recommendations', requireAuth, async (req, res) => {
         res.status(500).json({ success: false, error: 'Recommendations failed' });
     }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/market-pulse/market-indicators
+//
+// The "Market Indicators" panel: the LLM's read of WHY the market is moving
+// (drivers), as opposed to /indicators, which is the raw prices themselves.
+// Two different things with confusingly similar names, so both exist:
+//
+//   /indicators          prices, energy, FX, ports.  No LLM. ~1s.
+//   /market-indicators   drivers behind the moves.   LLM.    ~4s.
+//
+// COSTS TOKENS.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/market-pulse/market-indicators', requireAuth, async (req, res) => {
+    try {
+        const payload = await composeMarketPulse({
+            app,
+            req,
+            sections: ['marketIndicators'],
+            skipMiddleware: [requireAuth],
+        });
+        const section = payload.data.marketIndicators || {};
+        if (section.success === false) {
+            return res.status(503).json({
+                success: false,
+                error: section.error || 'Market indicators unavailable',
+            });
+        }
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json({
+            success: true,
+            drivers: section.drivers || [],
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('Market indicators failed:', err.message);
+        res.status(500).json({ success: false, error: 'Market indicators failed' });
+    }
+});
 app.get('/api/commodities', requireAuth, async (req, res) => {
     const prices = Object.entries(COMMODITY_DATA)
         .map(([symbol, data]) => {
