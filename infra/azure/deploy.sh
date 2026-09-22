@@ -341,6 +341,7 @@ ENV_ARGS+=( "LLM_PROVIDER=${LLM_PROVIDER:-groq}" )
 ENV_ARGS+=( "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}" )
 ENV_ARGS+=( "OPENAI_MODEL=${OPENAI_MODEL:-}" )
 ENV_ARGS+=( "PRICE_TICK_MS=${PRICE_TICK_MS:-}" )
+ENV_ARGS+=( "ALERT_BACKFILL_COOLDOWN_MIN=${ALERT_BACKFILL_COOLDOWN_MIN:-}" )
 
 # Entra non-secret settings: same rule. An empty ENTRA_AUTHORITY must be ABSENT,
 # not present-and-empty, so entra.js falls back to the workforce /organizations

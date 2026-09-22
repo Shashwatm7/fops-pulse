@@ -73,7 +73,11 @@ async function runMigrations() {
       'migrations/023_tracked_currencies.sql',
       'migrations/024_audit_published_at.sql',
       'migrations/025_last_scan_result.sql',
-      'migrations/026_entra_sso.sql'
+      'migrations/026_entra_sso.sql',
+      // 027 shipped in the codebase but was never added here, so the audit
+      // dedupe index it creates has never actually run in any environment.
+      'migrations/027_audit_dedupe.sql',
+      'migrations/028_alert_acknowledged_at.sql',
     ];
     let failures = 0;
     for (const file of migrationFiles) {

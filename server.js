@@ -20,9 +20,9 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
-import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota } from './services/alert-relevance.js';
+import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
 import { matchPrecedents, computeAftermath, summarizePrecedent, buildMatcherPrompt, parseMatcherResponse, normalizeEventText } from './services/precedent-engine.js';
 import { findAnalogs, summarizeAnalogs } from './services/price-analogs.js';
@@ -2434,7 +2434,10 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
             analysis.alerts.sort((a, b) =>
                 (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
                 || new Date(b.detectedAt || b.timestamp || 0) - new Date(a.detectedAt || a.timestamp || 0));
-            analysis.alerts = applyAlertQuota(analysis.alerts);
+            // A recently acknowledged alert holds its quota slot empty, so the
+            // list shrinks on ack instead of instantly backfilling from the pool.
+            const recentAcks2437 = await countRecentAcksBySeverity(req.session.userId, ALERT_BACKFILL_COOLDOWN_MIN).catch(() => ({}));
+            analysis.alerts = applyAlertQuota(analysis.alerts, effectiveQuota(recentAcks2437));
         }
 
         // Attach raw simulated data to the response for the frontend UI
@@ -4139,7 +4142,8 @@ app.get('/api/morning-brief', requireAuth, async (req, res) => {
         rawAlerts.sort((a, b) =>
             (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
             || new Date(b.created_at || 0) - new Date(a.created_at || 0));
-        const newAlerts = applyAlertQuota(rawAlerts);
+        const recentAcksMb = await countRecentAcksBySeverity(userId, ALERT_BACKFILL_COOLDOWN_MIN).catch(() => ({}));
+        const newAlerts = applyAlertQuota(rawAlerts, effectiveQuota(recentAcksMb));
 
         const alertCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
         for (const a of newAlerts) {
@@ -4605,7 +4609,8 @@ app.get('/api/alerts', requireAuth, async (req, res) => {
     // the result reads critical-first.
     const raw = await getActiveAlerts(req.session.userId);
     raw.sort((a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9) || new Date(b.created_at) - new Date(a.created_at));
-    const alerts = applyAlertQuota(raw);
+    const recentAcksList = await countRecentAcksBySeverity(req.session.userId, ALERT_BACKFILL_COOLDOWN_MIN).catch(() => ({}));
+    const alerts = applyAlertQuota(raw, effectiveQuota(recentAcksList));
     res.json({ success: true, alerts });
   } catch (err) {
     console.error('Failed to fetch alerts:', err.message);

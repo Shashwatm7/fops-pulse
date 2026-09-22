@@ -169,3 +169,32 @@ export function applyAlertQuota(alerts, quota = ALERT_QUOTA) {
     }
     return out;
 }
+
+// ── Backfill cooldown ───────────────────────────────────────
+// Acknowledging an alert freed its quota slot immediately, so the next alert
+// of that severity was promoted on the very next read. The list stayed four
+// items deep and the action looked like it had done nothing.
+//
+// A recent acknowledgement now holds its slot empty for a while. The list
+// visibly shrinks, and the pool refills once the cooldown passes — alerts are
+// meant to be scarce and worth acting on, so a quieter list after triage is
+// the honest state, not a gap to paper over.
+export const ALERT_BACKFILL_COOLDOWN_MIN =
+    Number.parseInt(process.env.ALERT_BACKFILL_COOLDOWN_MIN ?? '30', 10);
+
+/**
+ * Reduce each severity's cap by the number of alerts of that severity the user
+ * acknowledged inside the cooldown window. Pure, so the cooldown logic is
+ * testable without a database.
+ *
+ * @param {Object<string, number>} recentAcks  severity -> count acked recently
+ * @param {Object<string, number>} quota       base caps (ALERT_QUOTA)
+ * @returns {Object<string, number>} caps with recent acks deducted, never < 0
+ */
+export function effectiveQuota(recentAcks = {}, quota = ALERT_QUOTA) {
+    const out = {};
+    for (const [severity, cap] of Object.entries(quota)) {
+        out[severity] = Math.max(0, cap - (recentAcks[severity] || 0));
+    }
+    return out;
+}

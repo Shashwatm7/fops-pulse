@@ -632,10 +632,30 @@ export async function getAcceptedArticlesSince(userId, hours = 24, limit = 5) {
 
 export async function acknowledgeAlert(userId, alertId) {
   const { rowCount } = await pool.query(
-    `UPDATE alerts SET status = 'acknowledged' WHERE id = $1 AND user_id = $2 AND status = 'active'`,
+    `UPDATE alerts SET status = 'acknowledged', acknowledged_at = now()
+      WHERE id = $1 AND user_id = $2 AND status = 'active'`,
     [alertId, userId]
   );
   return rowCount > 0;
+}
+
+/**
+ * How many alerts of each severity this user acknowledged inside the cooldown
+ * window. Feeds effectiveQuota() so an acked slot stays empty for a while
+ * instead of being refilled from the pool on the next read.
+ */
+export async function countRecentAcksBySeverity(userId, windowMinutes) {
+  const { rows } = await pool.query(
+    `SELECT severity, COUNT(*)::int AS n
+       FROM alerts
+      WHERE user_id = $1
+        AND status = 'acknowledged'
+        AND acknowledged_at IS NOT NULL
+        AND acknowledged_at > now() - make_interval(mins => $2)
+      GROUP BY severity`,
+    [userId, windowMinutes]
+  );
+  return Object.fromEntries(rows.map(r => [r.severity, r.n]));
 }
 
 // ═══════════════════════════════════════════════════════════════
