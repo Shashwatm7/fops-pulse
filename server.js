@@ -20,7 +20,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -1231,8 +1231,25 @@ app.get('/api/market-pulse/deep-dive', requireAuth, async (req, res) => {
                 error: section.error || 'Deep dive unavailable',
             });
         }
+        // Same persistence as the POST path. Both routes produce a deep dive
+        // that costs real tokens; only one of them storing it would make the
+        // history depend on which button the caller happened to use.
+        let deepDiveId = null;
+        if (typeof section.deepDive === 'string' && section.deepDive.length > 50) {
+            try {
+                const row = await insertDeepDive(req.session.userId, {
+                    timeframe: req.query.timeframe,
+                    deterministicAction: req.query.deterministicAction,
+                    deepDive: section.deepDive,
+                    model: OPENAI_ENABLED ? OPENAI_MODEL : GROQ_MODEL_REASONING,
+                });
+                deepDiveId = row.id;
+            } catch (e) {
+                console.error('Failed to persist deep dive:', e.message);
+            }
+        }
         res.setHeader('Cache-Control', 'private, no-store');
-        res.json({ success: true, ...section, generatedAt: new Date().toISOString() });
+        res.json({ success: true, ...section, deepDiveId, generatedAt: new Date().toISOString() });
     } catch (err) {
         console.error('Deep dive failed:', err.message);
         res.status(500).json({ success: false, error: 'Deep dive failed' });
@@ -2574,7 +2591,26 @@ Return a JSON object: {"deepDive": "your concise, structured, and informative pl
         const deepDive = typeof analysis.deepDive === 'string' ? analysis.deepDive.trim() : String(analysis.deepDive || '');
         if (deepDive.length < 50) throw new Error('AI Deep-Dive returned an empty or too-short response.');
 
-        res.json({ success: true, deepDive });
+        // Persist before responding. The deep dive is the most expensive
+        // output this service produces (~3000 tokens, ~30s); throwing it away
+        // on every request meant Regenerate re-bought identical text and a
+        // later Helpful / Not helpful rating pointed at nothing. A write
+        // failure must not lose the analysis the user is waiting for, so the
+        // id is best-effort and the body ships either way.
+        let deepDiveId = null;
+        try {
+            const row = await insertDeepDive(req.session.userId, {
+                timeframe,
+                deterministicAction,
+                deepDive,
+                model: OPENAI_ENABLED ? OPENAI_MODEL : GROQ_MODEL_REASONING,
+            });
+            deepDiveId = row.id;
+        } catch (e) {
+            console.error("Failed to persist deep dive:", e.message);
+        }
+
+        res.json({ success: true, deepDive, deepDiveId });
     } catch (err) {
         console.error('Deep Dive LLM Analysis failed:', err.response?.data || err.message);
         res.status(503).json({
@@ -4108,13 +4144,53 @@ app.put('/api/sop/:id', requireAuth, async (req, res) => {
 
 // ── API: AI Feedback ──
 app.post('/api/feedback', requireAuth, async (req, res) => {
-  const { featureName, context, aiResponse, isHelpful, userNotes } = req.body;
+  const { featureName, context, aiResponse, isHelpful, userNotes, deepDiveId } = req.body;
+  // isHelpful is NOT NULL in the schema, and the whole point of the row is
+  // which way the user voted — reject rather than let a malformed body 500
+  // on a constraint violation the caller cannot interpret.
+  if (typeof isHelpful !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'isHelpful must be true or false' });
+  }
+  if (!featureName || !aiResponse) {
+    return res.status(400).json({ success: false, error: 'featureName and aiResponse are required' });
+  }
   try {
-    const id = await insertAiFeedback(req.session.userId, featureName, context, aiResponse, isHelpful, userNotes);
+    const id = await insertAiFeedback(req.session.userId, featureName, context, aiResponse, isHelpful, userNotes, deepDiveId || null);
     res.json({ success: true, id });
   } catch (err) {
     console.error('Failed to insert AI feedback:', err);
     res.status(500).json({ success: false, error: 'Failed to record feedback' });
+  }
+});
+
+// GET /api/feedback[?featureName=RECOMMENDATION|DEEP_DIVE&limit=50]
+//
+// The read side of the Helpful / Not helpful buttons. POST /api/feedback has
+// always written to ai_feedback, but nothing exposed those rows, so from the
+// outside the buttons were indistinguishable from no-ops. Scoped to the
+// caller's own user_id — feedback is not shared between accounts.
+app.get('/api/feedback', requireAuth, async (req, res) => {
+  try {
+    const feedback = await listAiFeedback(req.session.userId, {
+      featureName: req.query.featureName || null,
+      limit: req.query.limit,
+    });
+    res.json({ success: true, count: feedback.length, feedback });
+  } catch (err) {
+    console.error('Failed to read AI feedback:', err);
+    res.status(500).json({ success: false, error: 'Failed to read feedback' });
+  }
+});
+
+// GET /api/deep-dives[?limit=10] — previously generated deep dives, newest
+// first. Costs no tokens: this reads ai_deep_dives, it never calls the model.
+app.get('/api/deep-dives', requireAuth, async (req, res) => {
+  try {
+    const deepDives = await getRecentDeepDives(req.session.userId, req.query.limit);
+    res.json({ success: true, count: deepDives.length, deepDives });
+  } catch (err) {
+    console.error('Failed to read deep dives:', err);
+    res.status(500).json({ success: false, error: 'Failed to read deep dives' });
   }
 });
 

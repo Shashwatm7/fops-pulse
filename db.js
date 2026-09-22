@@ -384,11 +384,11 @@ export async function updateSopPlan(planId, updates) {
 // PILLAR 5: Human-in-the-Loop AI Feedback
 // ═══════════════════════════════════════════════════════════════
 
-export async function insertAiFeedback(userId, featureName, context, aiResponse, isHelpful, userNotes) {
+export async function insertAiFeedback(userId, featureName, context, aiResponse, isHelpful, userNotes, deepDiveId = null) {
   const { rows } = await pool.query(
-    `INSERT INTO ai_feedback (user_id, feature_name, context, ai_response, is_helpful, user_notes)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [userId, featureName, JSON.stringify(context), aiResponse, isHelpful, userNotes || '']
+    `INSERT INTO ai_feedback (user_id, feature_name, context, ai_response, is_helpful, user_notes, deep_dive_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [userId, featureName, JSON.stringify(context), aiResponse, isHelpful, userNotes || '', deepDiveId]
   );
   return rows[0].id;
 }
@@ -406,6 +406,47 @@ export async function getRecentAiFeedback(userId, featureName = null, limit = 5)
   params.push(limit);
 
   const { rows } = await pool.query(query, params);
+  return rows;
+}
+
+// Feedback as a readable resource, not just a write sink. Without this there
+// was no way — from the UI or from an API key — to confirm a Helpful /
+// Not helpful click actually reached Postgres, which is exactly why the
+// buttons looked like they did nothing.
+export async function listAiFeedback(userId, { featureName = null, limit = 50 } = {}) {
+  const params = [userId];
+  let query = `SELECT id, feature_name, is_helpful, user_notes, deep_dive_id, created_at
+               FROM ai_feedback WHERE user_id = $1`;
+  if (featureName) {
+    params.push(featureName);
+    query += ` AND feature_name = $${params.length}`;
+  }
+  params.push(Math.min(Number(limit) || 50, 200));
+  query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
+  const { rows } = await pool.query(query, params);
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AI Deep Dives
+// ═══════════════════════════════════════════════════════════════
+
+export async function insertDeepDive(userId, { timeframe, deterministicAction, deepDive, model }) {
+  const { rows } = await pool.query(
+    `INSERT INTO ai_deep_dives (user_id, timeframe, deterministic_action, deep_dive, model)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+    [userId, timeframe || '90D', deterministicAction || null, deepDive, model || null]
+  );
+  return rows[0];
+}
+
+export async function getRecentDeepDives(userId, limit = 10) {
+  const { rows } = await pool.query(
+    `SELECT id, timeframe, deterministic_action, deep_dive, model, created_at
+     FROM ai_deep_dives WHERE user_id = $1
+     ORDER BY created_at DESC LIMIT $2`,
+    [userId, Math.min(Number(limit) || 10, 50)]
+  );
   return rows;
 }
 // ═══════════════════════════════════════════════════════════════

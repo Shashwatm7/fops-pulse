@@ -78,6 +78,7 @@ async function runMigrations() {
       // dedupe index it creates has never actually run in any environment.
       'migrations/027_audit_dedupe.sql',
       'migrations/028_alert_acknowledged_at.sql',
+      'migrations/029_deep_dives.sql',
     ];
     let failures = 0;
     for (const file of migrationFiles) {

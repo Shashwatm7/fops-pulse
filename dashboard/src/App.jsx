@@ -521,7 +521,7 @@ function ForexStrip({ rates, onAdd, onRemove }) {
 
 // Helpful / Not helpful, drawn as the mockup's pair of pill buttons. Rendered
 // inside a flex action row, so the optional note breaks onto its own line.
-function AiFeedbackWidget({ featureName, context, aiResponse }) {
+function AiFeedbackWidget({ featureName, context, aiResponse, deepDiveId }) {
   const [status, setStatus] = useState('idle'); // idle, rating, submitted, error
   const [isHelpful, setIsHelpful] = useState(null);
   const [notes, setNotes] = useState('');
@@ -532,14 +532,21 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
   };
 
   const handleSubmit = async () => {
-    setStatus('submitted');
+    // "submitted" is set only once the server confirms the row. It used to
+    // be set before the await and the response was never inspected, so a
+    // 401, a 500 or a rejected body still rendered "Thanks for the
+    // feedback" while the rating was silently dropped.
+    setStatus('sending');
     try {
-      await fetch(`${API_BASE}/feedback`, {
+      const res = await fetch(`${API_BASE}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ featureName, context, aiResponse, isHelpful, userNotes: notes })
+        body: JSON.stringify({ featureName, context, aiResponse, isHelpful, userNotes: notes, deepDiveId })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+      setStatus('submitted');
     } catch (err) {
       console.error('Feedback failed:', err);
       setStatus('error');
@@ -562,7 +569,7 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
       <button className="fp-btn fp-btn-sm" style={sel(false)} onClick={() => handleRate(false)}>
         <ThumbsDown size={13} /> Not helpful
       </button>
-      {status === 'rating' && (
+      {(status === 'rating' || status === 'sending' || status === 'error') && (
         <div style={{ flexBasis: '100%', display: 'flex', gap: '9px', marginTop: '4px' }}>
           <input
             type="text"
@@ -571,11 +578,11 @@ function AiFeedbackWidget({ featureName, context, aiResponse }) {
             onChange={e => setNotes(e.target.value)}
             style={{ flex: 1, height: '34px', padding: '0 12px', fontSize: '13px', background: '#fff', border: '1px solid var(--fp-input)', borderRadius: '9px', color: 'var(--fp-ink)', fontFamily: 'inherit', outline: 'none' }}
           />
-          <button className="fp-btn fp-btn-sm fp-btn-primary" onClick={handleSubmit}>Submit</button>
+          <button className="fp-btn fp-btn-sm fp-btn-primary" onClick={handleSubmit} disabled={status === 'sending'}>{status === 'sending' ? 'Sending…' : 'Submit'}</button>
         </div>
       )}
       {status === 'error' && (
-        <span style={{ fontSize: '13px', color: 'var(--fp-red)' }}>Could not send feedback.</span>
+        <span style={{ fontSize: '13px', color: 'var(--fp-red)' }}>Could not send feedback — not saved. Try Submit again.</span>
       )}
     </>
   );
@@ -735,6 +742,9 @@ export default function Dashboard() {
   const [deepDiveLoading, setDeepDiveLoading] = useState({});
   const [deepDiveText, setDeepDiveText] = useState({});
   const [deepDiveError, setDeepDiveError] = useState({});
+  // Server-assigned id of the stored deep dive, kept per recommendation row
+  // so a Helpful / Not helpful click can reference it.
+  const [deepDiveId, setDeepDiveId] = useState({});
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvKeywords, setCsvKeywords] = useState([]);
   const [mlForecasts, setMlForecasts] = useState([]);
@@ -905,6 +915,7 @@ export default function Dashboard() {
         throw new Error(data.error || 'AI Deep-Dive failed.');
       }
       setDeepDiveText(prev => ({...prev, [id]: data.deepDive}));
+      setDeepDiveId(prev => ({...prev, [id]: data.deepDiveId || null}));
       setDeepDiveError(prev => ({ ...prev, [id]: '' }));
     } catch (err) {
       // Keep the error OUT of the content slot. Writing it into deepDiveText
@@ -1642,7 +1653,7 @@ export default function Dashboard() {
             <div className="fp-rec-k">AI DEEP DIVE</div>
             {deepDiveText[i]}
             <div style={{ marginTop: '10px' }}>
-              <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[i]} />
+              <AiFeedbackWidget featureName="DEEP_DIVE" context={r} aiResponse={deepDiveText[i]} deepDiveId={deepDiveId[i]} />
             </div>
           </div>
         )}
