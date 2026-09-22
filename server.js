@@ -1231,11 +1231,14 @@ app.get('/api/market-pulse/deep-dive', requireAuth, async (req, res) => {
                 error: section.error || 'Deep dive unavailable',
             });
         }
-        // Same persistence as the POST path. Both routes produce a deep dive
-        // that costs real tokens; only one of them storing it would make the
-        // history depend on which button the caller happened to use.
-        let deepDiveId = null;
-        if (typeof section.deepDive === 'string' && section.deepDive.length > 50) {
+        // This route does NOT generate the deep dive itself -- it composes it
+        // by running the POST /api/analyze-deep-dive handler, which already
+        // persists and returns an id. Writing again here stored the identical
+        // text twice, 8ms apart, for one user action. Only persist when the
+        // composed section came back without an id (the handler's write
+        // failed), so the analysis is still recoverable.
+        let deepDiveId = section.deepDiveId || null;
+        if (!deepDiveId && typeof section.deepDive === 'string' && section.deepDive.length > 50) {
             try {
                 const row = await insertDeepDive(req.session.userId, {
                     timeframe: req.query.timeframe,
