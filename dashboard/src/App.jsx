@@ -2268,22 +2268,16 @@ export default function Dashboard() {
             })()
           )}
 
-          {missingData.length > 0 && (
-            <div className="fp-card">
-              <div style={{ fontSize: '16px', fontWeight: 700 }}>Data Gaps</div>
-              <div style={{ fontSize: '13px', color: 'var(--fp-mute)', margin: '4px 0 14px' }}>
-                Missing inputs that would improve recommendation quality
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {(missingData || []).map((m, i) => (
-                  <div key={i} className="fp-gap">
-                    <span className="fp-dot" style={{ background: '#d97706', marginTop: '6px' }} />
-                    <span>{m}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Data Gaps is deliberately NOT rendered. It listed data sources the
+              model wished it had (satellite soil moisture, EGP black-market
+              rates, per-terminal port dwell times) — accurate, but it reads to
+              a planner as a list of things the product cannot do, sitting
+              directly under the analysis they came to read.
+
+              The field is untouched: analysis.missingData still comes back on
+              /api/analyze and is still visible in the "Show analysis JSON"
+              panel below, so the signal is available to anyone deciding which
+              data sources to buy. This hides the card, not the data. */}
 
           <div style={{ marginTop: '22px' }}>
             <button className="fp-btn" onClick={() => setShowJson(!showJson)}>{showJson ? 'Hide' : 'Show'} analysis JSON</button>
