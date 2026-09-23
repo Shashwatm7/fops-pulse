@@ -158,10 +158,20 @@ export async function requireAuth(req, res, next) {
     // shared static key must not reach user management or tuning, even when the
     // user it acts as happens to be an admin.
     req.isApiKey = true;
-    // Handlers that read req.session.userId (insights, audit) need it present;
-    // the session itself is never persisted for a key request.
+    // Handlers that read req.session.userId (insights, audit) need it present.
+    //
+    // Setting it marks the express-session dirty, so the session IS persisted
+    // and the response carries a Set-Cookie — verified against the deployed
+    // app: an X-API-Key request returns a 24h connect.sid, and that cookie
+    // alone then authenticates with no key present. (An earlier comment here
+    // claimed the session is never persisted for a key request. It is.)
+    //
+    // On those cookie-only follow-ups req.isApiKey is unset, so the refusal in
+    // requireAdmin would silently stop applying. Record the provenance in the
+    // session itself so it survives into every request the cookie makes.
     if (!req.session) req.session = {};
     req.session.userId = user.id;
+    req.session.isApiKey = true;
     return next();
   }
 
@@ -183,7 +193,18 @@ export async function requireAuth(req, res, next) {
 export function requireAdmin(req, res, next) {
   // A shared static key must never reach user management or tuning, even when
   // the user it acts as is an admin: the key has no individual accountability.
-  if (req.isApiKey) {
+  //
+  // Both flags are load-bearing. req.isApiKey covers the request that presented
+  // the key; req.session.isApiKey covers every later request that presents only
+  // the cookie that request minted. Checking the first alone left a one-hop
+  // bypass: call any endpoint with the key, keep the returned connect.sid, then
+  // call an admin route with just the cookie.
+  //
+  // Not currently exploitable — fops-api-service is not an admin, so the
+  // is_admin check below still refuses. But signup makes the FIRST user in a
+  // database an admin automatically (auth.js, POST /signup), so provisioning
+  // that service account into an empty database would have made it live.
+  if (req.isApiKey || req.session?.isApiKey) {
     return res.status(403).json({ error: 'Admin routes require an interactive session, not an API key' });
   }
   if (!req.user?.is_admin) {
