@@ -4807,15 +4807,44 @@ app.post('/api/alerts/:id/summary', requireAuth, async (req, res) => {
         // summary, mislabelled basis ARTICLE. Unlike /api/article-summary we
         // always have a real fallback here (the alert itself), so anything too
         // thin to summarise is discarded rather than sent to the model.
+        // The alert's own facts are ALWAYS assembled, never only as a fallback.
+        // Classifying the fetched text turned out to be unwinnable: a Hormuz
+        // article's related-news sidebar is full of other Hormuz stories, so it
+        // passes any headline-overlap test while containing none of the article.
+        // Giving the model the alert record unconditionally means the worst case
+        // is a summary of the alert instead of a summary of nothing — the
+        // "article text could not be retrieved" reply cannot happen, because
+        // there is always real content in front of it. It also keeps
+        // groundKeyFigures honest: every figure must appear in what was shown.
+        const payloadFacts = [];
+        if (alert.payload && typeof alert.payload === 'object' && !Array.isArray(alert.payload)) {
+            for (const [k, v] of Object.entries(alert.payload)) {
+                if (v === null || v === undefined || typeof v === 'object') continue;
+                const line = `${k}: ${String(v)}`;
+                if (line.length <= 200) payloadFacts.push(line);
+                if (payloadFacts.length >= 12) break;
+            }
+        }
+        const alertFacts = [
+            `Alert: ${alert.title}`,
+            `Severity: ${alert.severity}`,
+            alert.category ? `Category: ${alert.category}` : null,
+            alert.source ? `Alert source: ${alert.source}` : null,
+            alert.relevance_score !== null && alert.relevance_score !== undefined
+                ? `Relevance score: ${alert.relevance_score}` : null,
+            cleanReason ? `Detail: ${cleanReason}` : null,
+            ...payloadFacts,
+        ].filter(Boolean).join('\n');
+
         let basis = 'ALERT';
-        let bodyText = null;
+        let articleText = null;
         if (alert.url) {
             const stripped = await fetchArticleText(alert.url, 3000).catch(() => null);
             const text = stripped?.text || null;
             const longEnough = !!text && text.trim().length >= MIN_ARTICLE_CHARS;
             const onTopic = longEnough && bodyMatchesHeadline(alert.title, text);
             if (longEnough && onTopic) {
-                bodyText = text;
+                articleText = text;
                 basis = 'ARTICLE';
             } else if (text) {
                 console.warn(`[ALERT-SUMMARY] alert ${alertId}: discarding fetched text ` +
@@ -4824,30 +4853,9 @@ app.post('/api/alerts/:id/summary', requireAuth, async (req, res) => {
             }
         }
 
-        // 4. No article body: summarise the alert itself. These facts are passed
-        // as the body so groundKeyFigures validates any figure the model emits
-        // against real alert data rather than letting it invent one.
-        if (!bodyText) {
-            const payloadFacts = [];
-            if (alert.payload && typeof alert.payload === 'object' && !Array.isArray(alert.payload)) {
-                for (const [k, v] of Object.entries(alert.payload)) {
-                    if (v === null || v === undefined || typeof v === 'object') continue;
-                    const line = `${k}: ${String(v)}`;
-                    if (line.length <= 200) payloadFacts.push(line);
-                    if (payloadFacts.length >= 12) break;
-                }
-            }
-            bodyText = [
-                `Alert: ${alert.title}`,
-                `Severity: ${alert.severity}`,
-                alert.category ? `Category: ${alert.category}` : null,
-                alert.source ? `Alert source: ${alert.source}` : null,
-                alert.relevance_score !== null && alert.relevance_score !== undefined
-                    ? `Relevance score: ${alert.relevance_score}` : null,
-                cleanReason ? `Detail: ${cleanReason}` : null,
-                ...payloadFacts,
-            ].filter(Boolean).join('\n');
-        }
+        const bodyText = articleText
+            ? `${articleText}\n\n--- Alert record ---\n${alertFacts}`
+            : alertFacts;
 
         const entities = extractLocalEntities(`${alert.title} ${bodyText}`, customer);
 
