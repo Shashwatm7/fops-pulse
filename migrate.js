@@ -79,6 +79,7 @@ async function runMigrations() {
       'migrations/027_audit_dedupe.sql',
       'migrations/028_alert_acknowledged_at.sql',
       'migrations/029_deep_dives.sql',
+      'migrations/030_alert_summaries.sql',
     ];
     let failures = 0;
     for (const file of migrationFiles) {

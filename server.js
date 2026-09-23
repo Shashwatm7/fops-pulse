@@ -20,7 +20,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -4707,6 +4707,184 @@ app.post('/api/alerts/:id/ack', requireAuth, async (req, res) => {
     console.error('Failed to acknowledge alert:', err.message);
     res.status(500).json({ success: false, error: 'Failed to acknowledge alert' });
   }
+});
+
+// ── AI Summary for a single alert ────────────────────────────────────────────
+//
+// Backs the "AI Summary" button in the Alerts section. Distinct from
+// POST /api/article-summary, which is article-centric: it requires a url and
+// makes the CLIENT supply title/description/source. That leaves out every
+// alert with no article behind it (PRICE thresholds, profile alerts), which is
+// why the button was previously rendered only when `a.url` was set.
+//
+// This route takes an ALERT id, reads the alert server-side, and summarises
+// whatever that alert actually is:
+//   - with a url  -> fetch the article body and summarise it (basis ARTICLE)
+//   - without one -> summarise the alert's own fields (basis ALERT)
+//
+// COSTS TOKENS on a miss. Cached per alert, so a second click is free.
+// Pass ?refresh=1 to force regeneration.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/alerts/:id/summary', requireAuth, async (req, res) => {
+    try {
+        const alertId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(alertId)) return res.status(400).json({ success: false, error: 'Invalid alert id' });
+
+        const alert = await getAlertById(req.session.userId, alertId);
+        if (!alert) return res.status(404).json({ success: false, error: 'Alert not found' });
+
+        const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+
+        // 1. A summary already stored against this alert is free.
+        if (!refresh) {
+            const stored = await getAlertSummary(req.session.userId, alertId);
+            if (stored) {
+                return res.json({
+                    success: true, source: 'cache', alertId, basis: stored.basis,
+                    insight: {
+                        summary: stored.summary, impact: stored.impact,
+                        action_note: stored.action_note,
+                        key_figures: stored.key_figures_json || [],
+                        entities: stored.entities_json || {},
+                    },
+                    generatedAt: stored.created_at,
+                });
+            }
+        }
+
+        const versionedModel = `${labelingConfig.models[labelingConfig.provider]}|${SUMMARY_VERSION}`;
+
+        // 2. If this alert points at an article somebody already summarised,
+        // reuse that instead of buying the same summary twice. Only cache
+        // written by the current prompt version is trusted.
+        if (!refresh && alert.url) {
+            const cached = await getArticleSummaryCache(alert.url);
+            if (cached && cached.model === versionedModel) {
+                const saved = await saveAlertSummary(req.session.userId, alertId, {
+                    summary: cached.summary, impact: cached.impact,
+                    action_note: cached.action_note,
+                    key_figures: cached.key_figures_json || [],
+                    entities: cached.entities_json || {},
+                    basis: 'ARTICLE', model: versionedModel,
+                }).catch(() => null);
+                return res.json({
+                    success: true, source: 'article-cache', alertId, basis: 'ARTICLE',
+                    insight: {
+                        summary: cached.summary, impact: cached.impact,
+                        action_note: cached.action_note,
+                        key_figures: cached.key_figures_json || [],
+                        entities: cached.entities_json || {},
+                    },
+                    generatedAt: saved?.created_at || null,
+                });
+            }
+        }
+
+        if (!labelingConfig.groqApiKey && labelingConfig.provider !== 'anthropic') {
+            return res.status(503).json({ success: false, error: 'Summary generation is not configured' });
+        }
+
+        const customer = await getCustomerProfileForUser(req.session.userId);
+
+        // The scanner writes score-talk into `reason` ("Score: 70. Commodity
+        // Match...") and news alerts can carry Google RSS link-soup. Neither is
+        // content; summarising it produces a summary of junk.
+        const cleanReason = (() => {
+            let d = String(alert.reason || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (!d) return null;
+            if (/news\.google\.com/i.test(d)) return null;
+            if (/^Score:\s*\d+/i.test(d)) return null;
+            return d;
+        })();
+
+        // 3. Prefer the real article body when the alert has a link.
+        let basis = 'ALERT';
+        let bodyText = null;
+        if (alert.url) {
+            const stripped = await fetchArticleText(alert.url, 3000).catch(() => null);
+            bodyText = stripped?.text || null;
+            if (bodyText) basis = 'ARTICLE';
+        }
+
+        // 4. No article body: summarise the alert itself. These facts are passed
+        // as the body so groundKeyFigures validates any figure the model emits
+        // against real alert data rather than letting it invent one.
+        if (!bodyText) {
+            const payloadFacts = [];
+            if (alert.payload && typeof alert.payload === 'object' && !Array.isArray(alert.payload)) {
+                for (const [k, v] of Object.entries(alert.payload)) {
+                    if (v === null || v === undefined || typeof v === 'object') continue;
+                    const line = `${k}: ${String(v)}`;
+                    if (line.length <= 200) payloadFacts.push(line);
+                    if (payloadFacts.length >= 12) break;
+                }
+            }
+            bodyText = [
+                `Alert: ${alert.title}`,
+                `Severity: ${alert.severity}`,
+                alert.category ? `Category: ${alert.category}` : null,
+                alert.source ? `Alert source: ${alert.source}` : null,
+                alert.relevance_score !== null && alert.relevance_score !== undefined
+                    ? `Relevance score: ${alert.relevance_score}` : null,
+                cleanReason ? `Detail: ${cleanReason}` : null,
+                ...payloadFacts,
+            ].filter(Boolean).join('\n');
+        }
+
+        const entities = extractLocalEntities(`${alert.title} ${bodyText}`, customer);
+
+        const result = await summarizeArticle(
+            { title: alert.title, description: cleanReason, source: alert.source },
+            entities, customer, bodyText
+        );
+
+        const saved = await saveAlertSummary(req.session.userId, alertId, {
+            summary: result.summary, impact: result.impact,
+            action_note: result.action_note,
+            key_figures: result.key_figures, entities,
+            basis, model: versionedModel,
+        });
+
+        // Share an article-derived summary with the news path so the same link
+        // is never summarised twice. Alert-derived ones are NOT written there:
+        // they describe the alert, not the article, and would poison that cache.
+        if (basis === 'ARTICLE' && alert.url) {
+            await saveArticleSummaryCache(alert.url, alert.title, {
+                ...result, entities, model: versionedModel,
+            }).catch(e => console.error('Failed to share alert summary to article cache:', e.message));
+        }
+
+        res.json({ success: true, source: 'generated', alertId, basis, insight: { ...result, entities }, generatedAt: saved.created_at });
+    } catch (err) {
+        console.error('Alert summary failed:', err.message);
+        res.status(503).json({ success: false, error: `Alert summary failed: ${err.message}` });
+    }
+});
+
+// GET the stored summary for an alert. Never calls the model, so it is safe to
+// poll and costs nothing: 404 means nobody has pressed the button yet.
+app.get('/api/alerts/:id/summary', requireAuth, async (req, res) => {
+    try {
+        const alertId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(alertId)) return res.status(400).json({ success: false, error: 'Invalid alert id' });
+
+        const stored = await getAlertSummary(req.session.userId, alertId);
+        if (!stored) return res.status(404).json({ success: false, error: 'No summary generated for this alert yet' });
+
+        res.json({
+            success: true, alertId, basis: stored.basis,
+            insight: {
+                summary: stored.summary, impact: stored.impact,
+                action_note: stored.action_note,
+                key_figures: stored.key_figures_json || [],
+                entities: stored.entities_json || {},
+            },
+            generatedAt: stored.created_at,
+        });
+    } catch (err) {
+        console.error('Failed to read alert summary:', err.message);
+        res.status(500).json({ success: false, error: 'Failed to read alert summary' });
+    }
 });
 
 

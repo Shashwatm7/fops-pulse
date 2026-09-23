@@ -671,6 +671,52 @@ export async function getAcceptedArticlesSince(userId, hours = 24, limit = 5) {
   return rows;
 }
 
+// Fetch one alert, scoped to its owner. Every alert-addressed route needs
+// this: taking the id straight from the URL without the user_id predicate
+// would let any authenticated caller read another user's alerts.
+export async function getAlertById(userId, alertId) {
+  const { rows } = await pool.query(
+    `SELECT id, source, category, severity, title, reason, url, relevance_score,
+            payload, status, created_at
+       FROM alerts WHERE id = $1 AND user_id = $2`,
+    [alertId, userId]
+  );
+  return rows[0] || null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Alert AI summaries
+// ═══════════════════════════════════════════════════════════════
+
+export async function getAlertSummary(userId, alertId) {
+  const { rows } = await pool.query(
+    `SELECT id, alert_id, summary, impact, action_note, key_figures_json,
+            entities_json, basis, model, created_at
+       FROM alert_summaries WHERE alert_id = $1 AND user_id = $2`,
+    [alertId, userId]
+  );
+  return rows[0] || null;
+}
+
+// Upsert: one summary per alert, so a regenerate replaces rather than
+// accumulating. Keyed on alert_id by idx_alert_summaries_alert.
+export async function saveAlertSummary(userId, alertId, { summary, impact, action_note, key_figures, entities, basis, model }) {
+  const { rows } = await pool.query(
+    `INSERT INTO alert_summaries
+       (alert_id, user_id, summary, impact, action_note, key_figures_json, entities_json, basis, model)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (alert_id) DO UPDATE SET
+       summary = EXCLUDED.summary, impact = EXCLUDED.impact,
+       action_note = EXCLUDED.action_note, key_figures_json = EXCLUDED.key_figures_json,
+       entities_json = EXCLUDED.entities_json, basis = EXCLUDED.basis,
+       model = EXCLUDED.model, created_at = NOW()
+     RETURNING *`,
+    [alertId, userId, summary, impact || null, action_note || null,
+     JSON.stringify(key_figures || []), JSON.stringify(entities || {}),
+     basis || 'ARTICLE', model || null]
+  );
+  return rows[0];
+}
 export async function acknowledgeAlert(userId, alertId) {
   const { rowCount } = await pool.query(
     `UPDATE alerts SET status = 'acknowledged', acknowledged_at = now()
