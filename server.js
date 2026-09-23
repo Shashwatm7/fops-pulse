@@ -4798,12 +4798,27 @@ app.post('/api/alerts/:id/summary', requireAuth, async (req, res) => {
         })();
 
         // 3. Prefer the real article body when the alert has a link.
+        //
+        // The length floor matters. A paywall interstitial, a cookie wall or a
+        // Google News redirect stub all return a NON-EMPTY string, so a bare
+        // truthiness check treats them as article text and the model dutifully
+        // reports "the full article text could not be retrieved" — a useless
+        // summary, mislabelled basis ARTICLE. Unlike /api/article-summary we
+        // always have a real fallback here (the alert itself), so anything too
+        // thin to summarise is discarded rather than sent to the model.
+        const MIN_ARTICLE_CHARS = 400;
         let basis = 'ALERT';
         let bodyText = null;
         if (alert.url) {
             const stripped = await fetchArticleText(alert.url, 3000).catch(() => null);
-            bodyText = stripped?.text || null;
-            if (bodyText) basis = 'ARTICLE';
+            const text = stripped?.text || null;
+            if (text && text.trim().length >= MIN_ARTICLE_CHARS) {
+                bodyText = text;
+                basis = 'ARTICLE';
+            } else if (text) {
+                console.warn(`[ALERT-SUMMARY] alert ${alertId}: article body too thin ` +
+                    `(${text.trim().length} chars < ${MIN_ARTICLE_CHARS}), summarising the alert instead`);
+            }
         }
 
         // 4. No article body: summarise the alert itself. These facts are passed
