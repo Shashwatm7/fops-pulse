@@ -15,6 +15,7 @@ import { NewsPipeline } from './services/news-pipeline/pipeline.js';
 import { canonicalRegionName, buildWatchlistProfile } from './services/news-pipeline/stages/2_profile_builder.js';
 import { effectiveSeeds, effectiveThreshold } from './services/news-pipeline/stages/6_semantic_filter.js';
 import { fetchArticleText } from './services/news-pipeline/utils/nlp_extractor.js';
+import { bodyMatchesHeadline, MIN_ARTICLE_CHARS } from './services/alert-summary-relevance.js';
 import { discoverTemplateCandidates } from './services/news-pipeline/discovery.js';
 import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
@@ -4806,18 +4807,20 @@ app.post('/api/alerts/:id/summary', requireAuth, async (req, res) => {
         // summary, mislabelled basis ARTICLE. Unlike /api/article-summary we
         // always have a real fallback here (the alert itself), so anything too
         // thin to summarise is discarded rather than sent to the model.
-        const MIN_ARTICLE_CHARS = 400;
         let basis = 'ALERT';
         let bodyText = null;
         if (alert.url) {
             const stripped = await fetchArticleText(alert.url, 3000).catch(() => null);
             const text = stripped?.text || null;
-            if (text && text.trim().length >= MIN_ARTICLE_CHARS) {
+            const longEnough = !!text && text.trim().length >= MIN_ARTICLE_CHARS;
+            const onTopic = longEnough && bodyMatchesHeadline(alert.title, text);
+            if (longEnough && onTopic) {
                 bodyText = text;
                 basis = 'ARTICLE';
             } else if (text) {
-                console.warn(`[ALERT-SUMMARY] alert ${alertId}: article body too thin ` +
-                    `(${text.trim().length} chars < ${MIN_ARTICLE_CHARS}), summarising the alert instead`);
+                console.warn(`[ALERT-SUMMARY] alert ${alertId}: discarding fetched text ` +
+                    `(${text.trim().length} chars, ${longEnough ? 'off-topic' : 'too thin'}) ` +
+                    '- summarising the alert itself instead');
             }
         }
 
