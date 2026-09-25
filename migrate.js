@@ -80,6 +80,7 @@ async function runMigrations() {
       'migrations/028_alert_acknowledged_at.sql',
       'migrations/029_deep_dives.sql',
       'migrations/030_alert_summaries.sql',
+      'migrations/031_api_service_user.sql',
     ];
     let failures = 0;
     for (const file of migrationFiles) {
