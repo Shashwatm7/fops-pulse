@@ -1295,17 +1295,39 @@ export default function Dashboard() {
       .catch(err => console.error('Alert insights fetch failed', err));
   }, [tab, user, analysis?.alerts]);
 
-  const openArticleSummary = (article) => {
+  // Alert-centric. POST /api/alerts/:id/summary reads the alert server-side,
+  // so the client sends an id and nothing else.
+  //
+  // Replaces a POST to /api/article-summary that required a url and made the
+  // client supply title/description/source. That endpoint could not serve an
+  // alert with no article behind it, which is why the button used to be
+  // hidden unless a.url was set - PRICE thresholds and profile alerts never
+  // got one. It also wrote to a url-keyed cache, so nothing was stored
+  // against the alert and /api/alerts could not return it inline.
+  const openAlertSummary = (alert) => {
+    const article = {
+      title: (alert.title || '').replace(/^🎯 Profile Alert:\s*/, ''),
+      source: alert.source,
+      url: alert.url,
+    };
+    // /api/alerts carries any existing summary inline, so a second viewing
+    // costs no request at all - not even a cached round trip.
+    if (alert.aiSummary) {
+      setArticleSummary({
+        article, loading: false, data: alert.aiSummary, error: null,
+        source: 'cache', basis: alert.aiSummary.basis,
+      });
+      return;
+    }
     setArticleSummary({ article, loading: true, data: null, error: null });
-    fetch(`${API_BASE}/article-summary`, {
+    fetch(`${API_BASE}/alerts/${alert.id}/summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ url: article.url, title: article.title, description: article.description, source: article.source }),
     })
       .then(r => r.json())
       .then(d => {
-        if (d.success) setArticleSummary({ article, loading: false, data: d.insight, error: null, source: d.source });
+        if (d.success) setArticleSummary({ article, loading: false, data: d.insight, error: null, source: d.source, basis: d.basis });
         else setArticleSummary({ article, loading: false, data: null, error: d.error || 'Failed to generate summary' });
       })
       .catch(() => setArticleSummary({ article, loading: false, data: null, error: 'Network error' }));
@@ -1859,10 +1881,12 @@ export default function Dashboard() {
                   style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#16a34a', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                 >📄 Key Sentences {openExtracts[a.id ?? a.title] ? '▴' : '▾'}</button>
               )}
-              {a.url && (
+              {/* No a.url gate: the endpoint summarises the alert record when
+                  there is no article to fetch, so every alert can have one. */}
+              {(
                 <button
-                  onClick={() => openArticleSummary({ url: a.url, title: (a.title || '').replace(/^🎯 Profile Alert:\s*/, ''), description: a.description || a.reason, source: a.source })}
-                  title="Generate a plain-English AI summary of this article"
+                  onClick={() => openAlertSummary(a)}
+                  title="Generate a plain-English AI summary of this alert"
                   style={{ marginTop: '8px', marginRight: '8px', background: 'rgba(0,57,156,0.1)', border: '1px solid rgba(0,57,156,0.35)', color: '#00399C', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                 >✨ AI Summary</button>
               )}
@@ -2512,8 +2536,16 @@ export default function Dashboard() {
                       </div>
                     );
                   })()}
-                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-                    <a href={articleSummary.article.url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', textDecoration: 'none' }}>Read Full Article ↗</a>
+                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    {articleSummary.article.url
+                      ? <a href={articleSummary.article.url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-cyan)', textDecoration: 'none' }}>Read Full Article ↗</a>
+                      : <span />}
+                    {/* basis ALERT means the article could not be fetched and the
+                        alert record was summarised instead. Say so rather than
+                        letting a thinner summary look like the article's. */}
+                    {articleSummary.basis === 'ALERT' && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Summarised from the alert</span>
+                    )}
                   </div>
                 </div>
               );
