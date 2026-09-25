@@ -698,6 +698,23 @@ export async function getAlertSummary(userId, alertId) {
   return rows[0] || null;
 }
 
+// Stored summaries for a batch of alerts, as { [alert_id]: row }. One query,
+// not one per alert: this feeds the alerts list and the /full aggregate, where
+// an N+1 would add a round trip per card on every page load.
+export async function getAlertSummariesForAlerts(userId, alertIds = []) {
+  const ids = alertIds.map(Number).filter(Number.isInteger);
+  if (ids.length === 0) return {};
+  const { rows } = await pool.query(
+    `SELECT alert_id, summary, impact, action_note, key_figures_json,
+            entities_json, basis, created_at
+       FROM alert_summaries WHERE user_id = $1 AND alert_id = ANY($2::int[])`,
+    [userId, ids]
+  );
+  const out = {};
+  for (const r of rows) out[r.alert_id] = r;
+  return out;
+}
+
 // Upsert: one summary per alert, so a regenerate replaces rather than
 // accumulating. Keyed on alert_id by idx_alert_summaries_alert.
 export async function saveAlertSummary(userId, alertId, { summary, impact, action_note, key_figures, entities, basis, model }) {

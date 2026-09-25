@@ -21,7 +21,7 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, getAlertSummariesForAlerts, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -2459,6 +2459,7 @@ Return ONLY a JSON object: {"drivers": [...]} with exactly 3 objects, each:
             // list shrinks on ack instead of instantly backfilling from the pool.
             const recentAcks2437 = await countRecentAcksBySeverity(req.session.userId, ALERT_BACKFILL_COOLDOWN_MIN).catch(() => ({}));
             analysis.alerts = applyAlertQuota(analysis.alerts, effectiveQuota(recentAcks2437));
+            await attachAlertSummaries(req.session.userId, analysis.alerts);
         }
 
         // Attach raw simulated data to the response for the frontend UI
@@ -4678,6 +4679,37 @@ app.post('/api/article-summary', requireAuth, async (req, res) => {
     }
 });
 
+// Attach any ALREADY-GENERATED AI summary to each alert, in place.
+//
+// Deliberately a read, never a generation. Summarising on this path would put
+// one LLM call per alert on every dashboard load and every /full call - the
+// same reason deep dive is not in the default aggregate. Alerts nobody has
+// pressed the button on simply come back with aiSummary: null, and the client
+// shows the button instead of the panel.
+async function attachAlertSummaries(userId, alerts) {
+    if (!Array.isArray(alerts) || alerts.length === 0) return alerts;
+    try {
+        const byId = await getAlertSummariesForAlerts(userId, alerts.map(a => a.id));
+        for (const a of alerts) {
+            const row = byId[a.id];
+            a.aiSummary = row ? {
+                summary: row.summary,
+                impact: row.impact,
+                action_note: row.action_note,
+                key_figures: row.key_figures_json || [],
+                entities: row.entities_json || {},
+                basis: row.basis,
+                generatedAt: row.created_at,
+            } : null;
+        }
+    } catch (e) {
+        // A summary is an enhancement; never fail the alerts list over it.
+        console.error('Failed to attach alert summaries:', e.message);
+        for (const a of alerts) if (a.aiSummary === undefined) a.aiSummary = null;
+    }
+    return alerts;
+}
+
 // ── Unified persistent alerts (event × exposure store) ──
 const SEV_RANK = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
@@ -4691,6 +4723,7 @@ app.get('/api/alerts', requireAuth, async (req, res) => {
     raw.sort((a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9) || new Date(b.created_at) - new Date(a.created_at));
     const recentAcksList = await countRecentAcksBySeverity(req.session.userId, ALERT_BACKFILL_COOLDOWN_MIN).catch(() => ({}));
     const alerts = applyAlertQuota(raw, effectiveQuota(recentAcksList));
+    await attachAlertSummaries(req.session.userId, alerts);
     res.json({ success: true, alerts });
   } catch (err) {
     console.error('Failed to fetch alerts:', err.message);
