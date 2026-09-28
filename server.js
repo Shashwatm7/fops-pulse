@@ -21,7 +21,8 @@ import { categorizeArticle } from './services/news-pipeline/categorizer.js';
 import { classifyPriority } from './services/news-pipeline/stages/8_priority_classifier.js';
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
-import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, getAlertSummariesForAlerts, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult } from './db.js';
+import { runJobIfDue } from './services/job-scheduler.js';
+import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, getAlertSummariesForAlerts, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult, getJobRunAgeMs, recordJobRun } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
 import { analyzePriceSeries, describeAnomaly, anomalyRelevanceScore } from './services/price-anomaly.js';
@@ -425,8 +426,10 @@ const EMBEDDING_DAILY_BUDGET = envInt('GEMINI_EMBEDDING_DAILY_BUDGET', 200);
 const EMBEDDING_COOLDOWN_MS = envMs('GEMINI_EMBEDDING_COOLDOWN_MS', 60 * 60 * 1000);
 const EMBEDDING_CACHE_LIMIT = envInt('GEMINI_EMBEDDING_CACHE_LIMIT', 500);
 
-const GEO_SCAN_INTERVAL_MS = envMs('GEO_SCAN_INTERVAL_MS', 30 * 60 * 1000);
-const USER_SCAN_INTERVAL_MS = envMs('USER_SCAN_INTERVAL_MS', 30 * 60 * 1000);
+// Alerts refresh every 3 hours — eight scans a day. Enforced durably via the
+// job_runs table, not by the interval timer alone (see runJobIfDue).
+const GEO_SCAN_INTERVAL_MS = envMs('GEO_SCAN_INTERVAL_MS', 3 * 60 * 60 * 1000);
+const USER_SCAN_INTERVAL_MS = envMs('USER_SCAN_INTERVAL_MS', 3 * 60 * 60 * 1000);
 const AI_WORKER_INTERVAL_MS = envMs('AI_WORKER_INTERVAL_MS', 2 * 60 * 60 * 1000);
 const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 2 * 60 * 60 * 1000);
 
@@ -4948,46 +4951,34 @@ app.get('/api/alerts/:id/summary', requireAuth, async (req, res) => {
 
 
 
+// How often to re-check. The cadence itself lives in job_runs, so this only
+// needs to be fine-grained enough that a due job is picked up promptly.
+const JOB_CHECK_MS = 60 * 60 * 1000;
+
 function scheduleScannerJobs() {
     if (!BACKGROUND_AI_ENABLED) {
         console.log('[SCANNERS] Background AI jobs disabled by configuration.');
         return;
     }
 
+    const schedule = (jobName, intervalMs, fn) => {
+        const check = () => runJobIfDue(jobName, intervalMs, fn, { getJobRunAgeMs, recordJobRun });
+        // Stagger the boot checks so a cold start does not run both scanners
+        // at once — they share the news pipeline and the LLM quota.
+        setTimeout(check, jobName === 'geo-scanner' ? 30000 : 10000);
+        setInterval(check, Math.min(intervalMs, JOB_CHECK_MS));
+        console.log(`[${jobName.toUpperCase()}] Scheduled every ${Math.round(intervalMs / 60000)} min (durable, survives restarts).`);
+    };
+
     if (GEO_SCANNER_ENABLED) {
-        setInterval(scanGeopoliticalNews, GEO_SCAN_INTERVAL_MS);
-        console.log(`[GEO-SCANNER] Live Geopolitical Alert Scanner initialized (polling every ${Math.round(GEO_SCAN_INTERVAL_MS / 60000)} min)`);
+        schedule('geo-scanner', GEO_SCAN_INTERVAL_MS, scanGeopoliticalNews);
     } else {
         console.log('[GEO-SCANNER] Disabled by configuration.');
     }
 
     if (USER_SCANNER_ENABLED) {
-        // Gate automatic scans on the last scan time recorded in the DB.
-        // On free-tier hosting the process restarts constantly, so a naive
-        // boot-time scan would run on every cold start (far more often than
-        // the configured interval), while a plain setInterval would rarely
-        // survive long enough to fire. This gives "at most once per
-        // USER_SCAN_INTERVAL_MS, whenever the instance is awake".
-        // Manual triggers (/api/trigger-scan) bypass the gate.
-        const scanIfDue = async () => {
-            try {
-                const { rows } = await pool.query(
-                    'SELECT EXTRACT(EPOCH FROM (NOW() - MAX(scanned_at))) AS age_s FROM pipeline_audit_logs'
-                );
-                const ageMs = rows[0]?.age_s != null ? Number(rows[0].age_s) * 1000 : Infinity;
-                if (ageMs < USER_SCAN_INTERVAL_MS) {
-                    console.log(`[USER-SCANNER] Skipping auto scan — last scan ${Math.round(ageMs / 60000)} min ago (interval ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min).`);
-                    return;
-                }
-            } catch (e) {
-                console.error('[USER-SCANNER] Last-scan check failed, proceeding with scan:', e.message);
-            }
-            await scanUserSpecificNews();
-        };
-        setTimeout(scanIfDue, 10000);
-        // Re-check while awake, at most hourly — the DB gate enforces the real cadence.
-        setInterval(scanIfDue, Math.min(USER_SCAN_INTERVAL_MS, 60 * 60 * 1000));
-        console.log(`[USER-SCANNER] Profile scanner initialized (auto scan when last scan is older than ${Math.round(USER_SCAN_INTERVAL_MS / 60000)} min).`);
+        // Manual triggers (/api/trigger-scan) bypass the gate deliberately.
+        schedule('user-scanner', USER_SCAN_INTERVAL_MS, scanUserSpecificNews);
     } else {
         console.log('[USER-SCANNER] Disabled by configuration.');
     }

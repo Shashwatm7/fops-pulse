@@ -943,3 +943,34 @@ export async function createSsoUser({ username, email, entra_tid, entra_oid, com
     client.release();
   }
 }
+
+// ── Background job scheduling ──────────────────────────────────────────────
+// setInterval is process-local, so a container restart resets every timer. The
+// due-check below is what actually enforces the cadence; the interval only
+// decides how often we bother asking.
+
+// Age in ms of the last recorded run, or Infinity when the job has never run.
+// Infinity reads as "due", which is what we want for a job with no history.
+export async function getJobRunAgeMs(jobName) {
+  const { rows } = await pool.query(
+    `SELECT EXTRACT(EPOCH FROM (NOW() - last_run_at)) AS age_s
+     FROM job_runs WHERE job_name = $1`,
+    [jobName]
+  );
+  const ageS = rows[0]?.age_s;
+  return ageS == null ? Infinity : Number(ageS) * 1000;
+}
+
+// Stamp a run. Called whether or not the run produced anything: the row records
+// that the job executed, not that it found news. Recording only productive runs
+// would make a quiet scan look like no scan and re-trigger it every check.
+export async function recordJobRun(jobName, status = 'ok', detail = null) {
+  await pool.query(
+    `INSERT INTO job_runs (job_name, last_run_at, last_status, last_detail)
+     VALUES ($1, NOW(), $2, $3)
+     ON CONFLICT (job_name) DO UPDATE
+       SET last_run_at = NOW(), last_status = EXCLUDED.last_status,
+           last_detail = EXCLUDED.last_detail`,
+    [jobName, status, detail ? String(detail).slice(0, 500) : null]
+  );
+}
