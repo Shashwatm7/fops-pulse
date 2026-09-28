@@ -73,6 +73,9 @@
      without these aliases those styles silently resolve to nothing
      (invisible buttons, borderless inputs). Keep them defined. */
   --accent: var(--brand-navy);
+  /* Referenced by OnboardingWizard's active step dot but never defined, so
+     that box-shadow was invalid and silently dropped. */
+  --accent-glow: rgba(0, 57, 156, 0.35);
   --border-color: var(--border-subtle);
 }
 

@@ -295,16 +295,34 @@ export default function LoginPage({ onLogin }) {
 
   // ── Styles ──
   const styles = {
+    // Clips the drifting orbs and particles, which deliberately extend past
+    // the viewport. It must NOT also clip the card — hence the scroll layer
+    // below rather than centring the card in here directly.
     wrapper: {
       position: 'fixed',
       inset: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
       background: 'linear-gradient(145deg, #0a0e17 0%, #111827 50%, #0d1321 100%)',
       fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
       overflow: 'hidden',
       zIndex: 10000,
+    },
+
+    // Measured on the deployed dev build at 1280x720: the Create Account form
+    // is 782px tall, so the card sat at top:-31px with the page reporting
+    // scrollHeight === clientHeight — the heading was cut off and there was no
+    // way to scroll to it. Two causes, both fixed here: the wrapper's
+    // overflow:hidden, and centring with alignItems, which pushes a too-tall
+    // item out of BOTH ends and makes the top unreachable even when scrolling
+    // is allowed. flex-start plus margin:'auto' on the card centres it while
+    // it fits and degrades to a normal scroll when it does not.
+    scrollLayer: {
+      position: 'absolute',
+      inset: 0,
+      overflowY: 'auto',
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+      padding: '24px 16px',
     },
 
     // Ambient orbs
@@ -347,6 +365,8 @@ export default function LoginPage({ onLogin }) {
       zIndex: 1,
       width: '100%',
       maxWidth: '420px',
+      margin: 'auto',
+      flexShrink: 0,
       padding: '40px 36px 36px',
       background: 'rgba(15, 23, 42, 0.75)',
       backdropFilter: 'blur(24px) saturate(150%)',
@@ -573,6 +593,9 @@ export default function LoginPage({ onLogin }) {
       <div style={styles.orb2} />
       <div style={styles.orb3} />
 
+      {/* Scrollable layer: the card lives here, not directly in the clipped
+          wrapper, so a tall form (Create Account) can be scrolled to. */}
+      <div style={styles.scrollLayer}>
       {/* Main card */}
       <div
         ref={cardRef}
@@ -778,8 +801,10 @@ export default function LoginPage({ onLogin }) {
         </div>
         )}
       </div>
+      </div>
 
-      {/* Version watermark */}
+      {/* Version watermark: decoration on the clipped wrapper, not content
+          inside the scroll layer, so it stays pinned while the card scrolls. */}
       <div style={styles.version}>v1.0 · secure</div>
     </div>
   );

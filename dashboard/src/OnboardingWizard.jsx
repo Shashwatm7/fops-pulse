@@ -240,17 +240,27 @@ const styles = {
   container: {
     minHeight: '100vh',
     display: 'flex',
-    alignItems: 'center',
+    // NOT alignItems:'center'. A centred flex item taller than its container
+    // overflows equally top and bottom, and the top overflow cannot be
+    // scrolled to — the wizard's later steps are tall enough to hit this on a
+    // laptop. flex-start plus margin:'auto' on the card centres it when it
+    // fits and keeps the top edge reachable when it does not.
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    background: 'radial-gradient(circle at center, #111827 0%, #0a0e17 100%)',
+    padding: '32px 16px',
+    // Was a dark radial gradient (#111827 -> #0a0e17) while --text-primary is
+    // #1a1d24, so the title, step headings and body text rendered near-black
+    // on near-black: 1.14:1, against the 4.5:1 AA floor. The app's theme is
+    // light; this screen never got migrated with it.
+    background: 'var(--bg-deep)',
     color: 'var(--text-primary)',
     fontFamily: 'Inter, system-ui, sans-serif',
   },
   card: {
     width: '100%',
     maxWidth: '800px',
-    background: 'rgba(15, 23, 42, 0.8)',
-    backdropFilter: 'blur(20px)',
+    margin: 'auto',
+    background: 'var(--bg-card)',
     borderRadius: '16px',
     padding: '40px',
     border: '1px solid var(--border-color)',
@@ -259,20 +269,28 @@ const styles = {
   title: { margin: '0 0 10px 0', fontSize: '28px', fontWeight: '600' },
   subtitle: { margin: '0 0 30px 0', color: 'var(--text-secondary)' },
   stepContainer: { display: 'flex', gap: '15px', marginBottom: '40px', justifyContent: 'center' },
-  stepDot: { width: '32px', height: '32px', borderRadius: '50%', background: '#ececf1', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', color:'var(--text-dim)', transition:'all 0.3s' },
-  stepDotActive: { background: 'var(--accent)', color: '#000', boxShadow: '0 0 15px var(--accent-glow)' },
+  // --text-dim on --border-subtle was 2.03:1 — the step number was barely
+  // visible on the dot it sits in. --text-secondary is 4.5:1 on the same fill.
+  stepDot: { width: '32px', height: '32px', borderRadius: '50%', background: 'var(--border-subtle)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', color:'var(--text-secondary)', transition:'all 0.3s' },
+  // --accent is the navy brand colour, so the active dot needs light text.
+  stepDotActive: { background: 'var(--accent)', color: '#ffffff', boxShadow: '0 0 15px var(--accent-glow)' },
   stepTitle: { fontSize: '20px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
-  templateCard: { padding: '20px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s' },
+  templateCard: { padding: '20px', background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s' },
   templateIcon: { fontSize: '32px', marginBottom: '10px' },
   templateName: { fontSize: '16px', fontWeight: '600', marginBottom: '5px' },
   templateDesc: { fontSize: '13px', color: 'var(--text-dim)', lineHeight: '1.4' },
   commodityGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' },
-  checkboxCard: { padding: '12px 15px', background: '#ffffff', borderRadius: '8px', border: '1px solid #ececf1', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'block', textAlign: 'center' },
-  checkboxCardActive: { border: '1px solid var(--accent)', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' },
-  input: { width: '100%', padding: '12px 15px', background: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', color: '#1a1d24', marginBottom: '15px', fontSize: '15px' },
+  checkboxCard: { padding: '12px 15px', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-subtle)', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'block', textAlign: 'center' },
+  // The selected tint was emerald while --accent is navy, so a selected
+  // commodity showed navy text on a green wash. Tint from the accent instead.
+  checkboxCardActive: { border: '1px solid var(--accent)', background: 'var(--nav-active-bg)', color: 'var(--accent)' },
+  input: { width: '100%', padding: '12px 15px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', marginBottom: '15px', fontSize: '15px' },
   btnRow: { display: 'flex', justifyContent: 'space-between', marginTop: '30px' },
-  btnPrimary: { padding: '12px 24px', background: '#1a1d24', color: '#1a1d24', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
+  // background and color were both #1a1d24 — the same value — so "Next" and
+  // "Complete Setup" rendered as an unlabelled dark rectangle. Matches
+  // .btn-primary in index.css: dark fill, page-coloured text.
+  btnPrimary: { padding: '12px 24px', background: 'var(--text-primary)', color: 'var(--bg-deep)', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
   btnSecondary: { padding: '12px 24px', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' },
-  reviewBox: { padding: '20px', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--border-color)' }
+  reviewBox: { padding: '20px', background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)' }
 };
