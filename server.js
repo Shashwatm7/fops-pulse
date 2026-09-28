@@ -22,6 +22,7 @@ import { classifyPriority } from './services/news-pipeline/stages/8_priority_cla
 import { fetchCuratedFeeds } from './services/ingestion/curated_feeds.js';
 import { matchEntities, entitiesToChips, REGION_CATALOG } from './services/news-pipeline/entity_matcher.js';
 import { runJobIfDue } from './services/job-scheduler.js';
+import { selectScanQueries } from './services/scan-query-pool.js';
 import { pool, getUserProfile, updateUserProfile, getAllUsers, getAllUserPriceAlerts, insertPriceTicksBatch, insertWeatherSnapshot, insertNewsEmbedding, getUnprocessedNews, updateNewsEmbedding, getPriceHistory, getWeatherHistory, searchSimilarNews, getRecentNewsEmbeddings, createSopPlan, getSopPlans, updateSopPlan, insertAiFeedback, getRecentAiFeedback, listAiFeedback, insertDeepDive, getRecentDeepDives, findUserById, insertPipelineAuditLog, getPipelineAuditLogs, getRejectedArticlesForDiscovery, appendCustomerTerm, insertAlert, getActiveAlerts, acknowledgeAlert, getAlertById, getAlertSummary, saveAlertSummary, getAlertSummariesForAlerts, countRecentAcksBySeverity, getRecentAlertsBySource, getAlertsSince, getAcceptedArticlesSince, getCustomerProfile, getCustomerProfileForUser, getInsightsForArticles, getRecentInsights, getRecentAcceptedArticles, getArticleSummaryCache, saveArticleSummaryCache, setWeatherRegions, setTrackedPorts, setTrackedCurrencies, setLastScanResult, getJobRunAgeMs, recordJobRun } from './db.js';
 import { GCC_PORTS, DEFAULT_TRACKED_PORTIDS, isGccPort, lookupPort, ingestPortActivity, getPortActivity } from './services/ingestion/port_activity.js';
 import { scoreAlertExposure, severityFromScore, severityFromPriority, applyAlertQuota, effectiveQuota, ALERT_BACKFILL_COOLDOWN_MIN } from './services/alert-relevance.js';
@@ -1263,7 +1264,17 @@ app.get('/api/market-pulse/deep-dive', requireAuth, async (req, res) => {
     }
 });
 app.get('/api/commodities', requireAuth, async (req, res) => {
+    // Respect the profile's tracked commodities. This route used to return
+    // every entry in COMMODITY_DATA regardless, so a user who ticked Wheat and
+    // Corn in Settings still saw all 13 in the price ticker — the setting
+    // looked broken because nothing it controlled ever changed.
+    //
+    // An EMPTY tracked list still means "show everything": that is the state of
+    // a profile nobody has configured, and an empty ticker there would read as
+    // a fault rather than a default.
+    const tracked = new Set(req.userProfile?.commodities || []);
     const prices = Object.entries(COMMODITY_DATA)
+        .filter(([symbol]) => tracked.size === 0 || tracked.has(symbol))
         .map(([symbol, data]) => {
             const live = livePrices[symbol];
             const currentPrice = live?.current || 0;
@@ -3857,11 +3868,19 @@ async function scanSingleUser(user, pipeline) {
     // by their canonical country/region instead.
     const regQueries = [...new Set(regions.map(r => canonicalRegionName(r)))].map(r => `${r} supply chain OR logistics`);
 
-    // Combine all sources into a single search pool
-    const combinedPool = [...new Set([...customKeywords, ...commQueries, ...commMarketQueries, ...regQueries])];
-    
-    // Shuffle array and take top 20 to ensure fair distribution across commodities/regions
-    let keywords = combinedPool.sort(() => 0.5 - Math.random()).slice(0, 20);
+    // Reserve slots for the commodity lanes instead of shuffling everything
+    // together. A plain shuffle over the combined pool made a tracked
+    // commodity almost invisible: 63 keywords + 16 regions + 2 commodities is
+    // ~83 entries of which 4 are the commodities, so sampling 20 routinely
+    // drew none. Verified on dev — a profile tracking Wheat and Corn ran 20
+    // queries with neither word in any of them.
+    let keywords = selectScanQueries(
+        {
+            commodityQueries: [...commQueries, ...commMarketQueries],
+            otherQueries: [...customKeywords, ...regQueries],
+        },
+        20,
+    );
 
     if (keywords.length === 0) {
         keywords = ['supply chain', 'logistics'];
