@@ -82,6 +82,7 @@ async function runMigrations() {
       'migrations/030_alert_summaries.sql',
       'migrations/031_api_service_user.sql',
       'migrations/032_job_runs.sql',
+      'migrations/033_generic_manufacturer_seeds.sql',
     ];
     let failures = 0;
     for (const file of migrationFiles) {

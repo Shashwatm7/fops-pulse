@@ -33,13 +33,46 @@ export function maskPhrases(text, phrases) {
 // piece ("chicken recipe", "how to cook") still trips it — the standalone
 // word survives masking.
 const CULINARY_IDIOMS = ['recipe for', 'recipes for', 'cooking up', 'cook up', 'cooking the books', 'cooking with gas'];
+
+// Commodity phrases that happen to CONTAIN a culinary blocklist word. The
+// fallback profile blocks the bare word "cooking", which killed "Palm oil
+// export levy raised, lifting cooking oil costs" — an edible-oils price story,
+// and about as on-topic as news gets for a food manufacturer. Masking the
+// phrase (rather than removing "cooking" from the blocklist) keeps a genuine
+// "cooking tips" piece rejected while letting the commodity sense through.
+const COMMODITY_CULINARY_PHRASES = [
+    'cooking oil', 'cooking oils', 'cooking fat', 'cooking fats',
+    'baking flour', 'baking fats',
+];
+
 export function maskIdioms(text) {
     let t = text;
-    for (const p of CULINARY_IDIOMS) {
+    for (const p of [...CULINARY_IDIOMS, ...COMMODITY_CULINARY_PHRASES]) {
         const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         t = t.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' § ');
     }
     return t;
+}
+
+/**
+ * Blocked topics are topic LABELS, not quotations. Matching them as literal
+ * adjacent phrases made every multi-word entry dead on arrival: a profile
+ * blocking "tourism leisure" needs those two words side by side, which no
+ * real headline writes, so "Dubai hotel occupancy climbs as tourism picks up"
+ * passed a blocklist that explicitly named tourism. Same for "real estate
+ * residential" against "residential real estate" — right words, wrong order.
+ *
+ * So: the verbatim phrase still matches, and failing that, a multi-word topic
+ * matches when every one of its words appears somewhere in the article. That
+ * makes word order irrelevant without loosening single-word topics at all.
+ * Words of 1-2 characters are ignored so a stray "of"/"in" cannot carry a
+ * match on its own.
+ */
+export function hasBlockedTopic(fullText, topic) {
+    if (hasExactTerm(fullText, topic)) return true;
+    const words = String(topic).split(/\s+/).filter(w => w.length > 2);
+    if (words.length < 2) return false; // single-word topic already tested above
+    return words.every(w => hasExactTerm(fullText, w));
 }
 
 export function applyRuleEngine(normArticle, profile) {
@@ -53,7 +86,7 @@ export function applyRuleEngine(normArticle, profile) {
     // 1. Must NOT have excluded contexts. Idioms are masked first so
     // "a recipe for rising prices" doesn't trip the culinary blocklist.
     const exclusionText = maskIdioms(text);
-    const excludedMatch = profile.excludedContexts.find(term => hasExactTerm(exclusionText, term));
+    const excludedMatch = profile.excludedContexts.find(term => hasBlockedTopic(exclusionText, term));
     if (excludedMatch) {
         return { passed: false, reason: `Matched excluded context: ${excludedMatch}`, matchData };
     }

@@ -63,7 +63,12 @@ export function canonicalRegionName(regionStr) {
  */
 function generateDefaultSeeds(commoditySeedGroups, userProfile) {
     const seeds = commoditySeedGroups.map(g => `${g} prices supply demand export import shortage`);
-    const focusBits = [userProfile.focus_product, userProfile.focus_region].filter(Boolean).join(' ');
+    // codeToPhrase, not the raw value: focus_product holds a catalog code
+    // ("food_service_distribution"), and an underscored token embeds nothing
+    // like the phrase it stands for. This is the same defect codeToPhrase was
+    // written for on commodity keys, missed on this one field.
+    const focusBits = [userProfile.focus_product, userProfile.focus_region]
+        .filter(Boolean).map(codeToPhrase).join(' ');
     seeds.push(`${focusBits} food supply chain disruption logistics port shipping freight delays`.trim());
     if (Array.isArray(userProfile.news_keywords) && userProfile.news_keywords.length > 0) {
         seeds.push(`${userProfile.news_keywords.join(' ')} disruption prices supply`);
