@@ -16,16 +16,16 @@ test('a recent ack holds that severity slot empty', () => {
     const q = effectiveQuota({ CRITICAL: 1 });
     assert.equal(q.CRITICAL, 0, 'the CRITICAL slot stays empty');
     assert.equal(q.HIGH, 2, 'other severities are untouched');
-    assert.equal(q.MEDIUM, 1);
+    assert.equal(q.MEDIUM, 2);
 });
 
 test('the list shrinks on ack instead of backfilling', () => {
     // 38 active alerts in the pool, as in production.
     const alerts = pool({ CRITICAL: 5, HIGH: 20, MEDIUM: 13 });
-    assert.equal(applyAlertQuota(alerts).length, 4, 'normally four are shown');
+    assert.equal(applyAlertQuota(alerts).length, 5, 'normally five are shown');
     // User acks the CRITICAL one.
     const after = applyAlertQuota(alerts, effectiveQuota({ CRITICAL: 1 }));
-    assert.equal(after.length, 3, 'three remain — no instant replacement');
+    assert.equal(after.length, 4, 'four remain — no instant replacement');
     assert.ok(!after.some(a => a.severity === 'CRITICAL'));
 });
 
@@ -33,7 +33,7 @@ test('acking both HIGH slots empties both', () => {
     const alerts = pool({ CRITICAL: 2, HIGH: 9, MEDIUM: 4 });
     const after = applyAlertQuota(alerts, effectiveQuota({ HIGH: 2 }));
     assert.equal(after.filter(a => a.severity === 'HIGH').length, 0);
-    assert.equal(after.length, 2, 'CRITICAL and MEDIUM still show');
+    assert.equal(after.length, 3, 'CRITICAL and both MEDIUM slots still show');
 });
 
 test('more acks than the cap never produces a negative quota', () => {
@@ -50,13 +50,13 @@ test('an unknown severity in the ack counts is ignored', () => {
     const q = effectiveQuota({ LOW: 3, NONSENSE: 9 });
     assert.equal(q.CRITICAL, 1);
     assert.equal(q.HIGH, 2);
-    assert.equal(q.MEDIUM, 1);
+    assert.equal(q.MEDIUM, 2);
     assert.equal(q.LOW, 0);
 });
 
 test('once the window passes, the pool refills', () => {
     // countRecentAcksBySeverity returns {} outside the cooldown, so the base
-    // quota applies again and the list returns to four.
+    // quota applies again and the list returns to five.
     const alerts = pool({ CRITICAL: 5, HIGH: 20, MEDIUM: 13 });
-    assert.equal(applyAlertQuota(alerts, effectiveQuota({})).length, 4);
+    assert.equal(applyAlertQuota(alerts, effectiveQuota({})).length, 5);
 });

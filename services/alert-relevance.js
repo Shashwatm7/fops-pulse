@@ -141,10 +141,18 @@ export function severityFromPriority(priority) {
 }
 
 // Scarcity quota: an "alert" should be rare and worth acting on, not every
-// qualifying article. At most 1 CRITICAL, 2 HIGH, 1 MEDIUM are ever shown —
-// LOW never surfaces. Applied across ALL alerts combined (news + price
-// anomaly), so the user sees at most 4 alerts total at any time.
-export const ALERT_QUOTA = { CRITICAL: 1, HIGH: 2, MEDIUM: 1, LOW: 0 };
+// qualifying article. Applied across ALL alerts combined (news + price
+// anomaly), so this is the total the user ever sees at once.
+//
+// Raised from 4 to 5 on request (2026-09-28). The extra slot went to MEDIUM
+// rather than CRITICAL: the severities are meant to mean something, and a
+// board showing two CRITICALs at a time teaches people to ignore the word.
+// LOW stays at 0 — it has never surfaced and promoting it would change what
+// "alert" means rather than how many there are.
+//
+// Per-severity caps, not one total, so a quiet news day cannot fill the board
+// with five MEDIUMs and bury the one thing that mattered.
+export const ALERT_QUOTA = { CRITICAL: 1, HIGH: 2, MEDIUM: 2, LOW: 0 };
 
 /**
  * Select the alerts to actually show, enforcing ALERT_QUOTA per severity.

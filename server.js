@@ -436,7 +436,9 @@ const AI_FORECAST_INTERVAL_MS = envMs('AI_FORECAST_INTERVAL_MS', 2 * 60 * 60 * 1
 
 const MAX_NEWS_SEMANTIC_ARTICLES = envInt('MAX_NEWS_SEMANTIC_ARTICLES', 20);
 const MAX_USER_SCANNER_CANDIDATES = envInt('MAX_USER_SCANNER_CANDIDATES', 10);
-const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 4);
+// Kept in step with ALERT_QUOTA's total: a scan that can only ever create 4
+// alerts cannot fill a board of 5 in one run.
+const MAX_USER_SCANNER_ALERTS = envInt('MAX_USER_SCANNER_ALERTS', 5);
 // Minimum priority for a news article to become an alert at all. An alert is
 // a "you should act" signal — Low-scoring articles (score 40-59) are noise at
 // alert altitude, so they are never generated (the display quota drops LOW
